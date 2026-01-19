@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Search, X, Heart, ListPlus, Star, Clock, Check } from "lucide-react";
+import { API_URL } from "@/config";
 
 interface MovieDetail {
   id: number;
@@ -34,14 +35,14 @@ export default function SearchPage() {
     e.preventDefault();
     if (!query) return;
     setLoading(true);
-    const res = await fetch(`http://127.0.0.1:8000/search?query=${query}`);
+    const res = await fetch(`${API_URL}/search?query=${query}`);
     const data = await res.json();
     setResults(data);
     setLoading(false);
   };
 
   const openDetails = async (id: number) => {
-    const res = await fetch(`http://127.0.0.1:8000/movie/${id}`);
+    const res = await fetch(`${API_URL}/movie/${id}`);
     const data = await res.json();
     setSelectedMovie(data);
     // On remet le sélecteur à zéro quand on ouvre un nouveau film
@@ -50,7 +51,7 @@ export default function SearchPage() {
 
   // 1. Récupérer les playlists dispos
   const fetchPlaylists = async () => {
-    const res = await fetch("http://127.0.0.1:8000/playlists");
+    const res = await fetch(`${API_URL}/playlists`);
     const data = await res.json();
     setMyPlaylists(data.filter((p: Playlist) => p.type !== "system"));
   };
@@ -64,7 +65,7 @@ export default function SearchPage() {
   // 3. Ajouter à une liste spécifique
   const addToSpecificPlaylist = (playlistId: number) => {
     if (selectedMovie) {
-      fetch(`http://127.0.0.1:8000/playlists/${playlistId}/add/${selectedMovie.id}`, { method: "POST" });
+      fetch(`${API_URL}/playlists/${playlistId}/add/${selectedMovie.id}`, { method: "POST" });
       alert("Film ajouté à la playlist ! ✅");
       setShowPlaylistSelector(false);
     }
@@ -73,7 +74,7 @@ export default function SearchPage() {
   // Optionnel : Bouton "J'ai déjà vu et j'aime" (Note 5/5 rapide)
   const rateAsLiked = () => {
     if (selectedMovie) {
-        fetch(`http://127.0.0.1:8000/movies/rate/${selectedMovie.id}/5`, { method: "POST" });
+        fetch(`${API_URL}/movies/rate/${selectedMovie.id}/5`, { method: "POST" });
         alert("Marqué comme vu et liké (5★) ! ⭐");
     }
   };

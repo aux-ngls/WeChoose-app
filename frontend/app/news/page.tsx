@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Calendar, Star } from "lucide-react";
+import { API_URL } from "@/config";
 
 interface MovieNews {
   id: number;
@@ -15,7 +16,7 @@ export default function NewsPage() {
   const [news, setNews] = useState<MovieNews[]>([]);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/movies/news")
+    fetch(`${API_URL}/movies/news`)
       .then((res) => res.json())
       .then((data) => setNews(data));
   }, []);

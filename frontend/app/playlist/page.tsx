@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Folder, Plus, ArrowLeft, Star, Film, Clock } from "lucide-react";
+import { API_URL } from "@/config";
 
 interface Playlist {
   id: number;
@@ -28,21 +29,21 @@ export default function PlaylistsPage() {
   }, []);
 
   const fetchPlaylists = () => {
-    fetch("http://127.0.0.1:8000/playlists")
+    fetch(`${API_URL}/playlists`)
       .then((res) => res.json())
       .then((data) => setPlaylists(data));
   };
 
   const openPlaylist = (playlist: Playlist) => {
     setSelectedPlaylist(playlist);
-    fetch(`http://127.0.0.1:8000/playlists/${playlist.id}`)
+    fetch(`${API_URL}/playlists/${playlist.id}`)
       .then((res) => res.json())
       .then((data) => setMovies(data));
   };
 
   const createPlaylist = async () => {
     if (!newPlaylistName) return;
-    await fetch("http://127.0.0.1:8000/playlists/create", {
+    await fetch(`${API_URL}/playlists/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newPlaylistName }),

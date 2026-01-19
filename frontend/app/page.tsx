@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { X, Clock, Loader2, Star, ListPlus, Check } from "lucide-react";
+import { API_URL } from "@/config";
 
 interface Movie { id: number; title: string; poster_url: string; rating: number; }
 interface Playlist { id: number; name: string; type: string; }
@@ -26,14 +27,14 @@ export default function Home() {
   }, []);
 
   const fetchMovies = () => {
-    fetch("http://127.0.0.1:8000/movies/feed?limit=10").then(r=>r.json()).then(d=>{
+    fetch(`${API_URL}/movies/feed?limit=10`).then(r=>r.json()).then(d=>{
         setMovies(p => [...p, ...d.filter((m:Movie) => !p.some(pm=>pm.id===m.id))]);
         setLoading(false);
     });
   };
 
   const fetchPlaylists = async () => {
-      const res = await fetch("http://127.0.0.1:8000/playlists");
+      const res = await fetch(`${API_URL}/playlists`);
       const data = await res.json();
       // On garde uniquement les listes où on peut ajouter des trucs (pas les listes auto)
       setMyPlaylists(data.filter((p: Playlist) => p.type !== "system"));
@@ -42,16 +43,16 @@ export default function Home() {
   const handleSwipe = (direction: "left" | "right", movie: Movie) => {
     if (direction === "right") {
       // AJOUTE À LA PLAYLIST PAR DÉFAUT (ID 1 = À regarder plus tard)
-      fetch(`http://127.0.0.1:8000/playlists/1/add/${movie.id}`, { method: "POST" });
+      fetch(`${API_URL}/playlists/1/add/${movie.id}`, { method: "POST" });
     } else {
       // NOTE 1/5 (Dislike / Vu)
-      fetch(`http://127.0.0.1:8000/movies/rate/${movie.id}/1`, { method: "POST" });
+      fetch(`${API_URL}/movies/rate/${movie.id}/1`, { method: "POST" });
     }
     removeCard();
   };
 
   const handleRate = (rating: number, movie: Movie) => {
-    fetch(`http://127.0.0.1:8000/movies/rate/${movie.id}/${rating}`, { method: "POST" });
+    fetch(`${API_URL}/movies/rate/${movie.id}/${rating}`, { method: "POST" });
     setExitDirection(rating >= 3 ? 1000 : -1000);
     setTimeout(() => removeCard(), 50);
   };
@@ -69,7 +70,7 @@ export default function Home() {
 
   const openDetails = async (id: number) => {
     if (exitDirection !== 0) return;
-    const res = await fetch(`http://127.0.0.1:8000/movie/${id}`);
+    const res = await fetch(`${API_URL}/movie/${id}`);
     const data = await res.json();
     setSelectedMovie(data);
   };
@@ -81,7 +82,7 @@ export default function Home() {
 
   const addToSpecificPlaylist = (playlistId: number) => {
       if(selectedMovie) {
-          fetch(`http://127.0.0.1:8000/playlists/${playlistId}/add/${selectedMovie.id}`, { method: "POST" });
+          fetch(`${API_URL}/playlists/${playlistId}/add/${selectedMovie.id}`, { method: "POST" });
           setShowPlaylistSelector(false);
           setSelectedMovie(null);
           manualSwipe("right"); // Animation de sortie positive
