@@ -1,0 +1,4 @@
+mkdir WeChoose-Pro
+cd WeChoose-Pro
+mkdir backend
+mkdir frontend

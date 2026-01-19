@@ -37,13 +37,8 @@ try:
     # Prétraitement pour éviter les bugs si des notes manquent
     movies_df['vote_average'] = movies_df['vote_average'].fillna(5.0) 
     
-    # Remplace la ligne du CountVectorizer par ça :
-# On garde 5000 (qualité max) mais on convertit le résultat en float32 (léger)
-    cv = CountVectorizer(max_features=5000, stop_words='english', dtype=np.float32) 
+    cv = CountVectorizer(max_features=5000, stop_words='english')
     vectors = cv.fit_transform(movies_df['soup']).toarray()
-
-    # Et pour être sûr, on force le type ici aussi :
-    vectors = vectors.astype(np.float32)
     print("✅ IA Prête !")
 except:
     movies_df = pd.DataFrame()
