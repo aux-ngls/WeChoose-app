@@ -19,6 +19,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "https://wechoose.dury.dev",
+        "https://api.wechoose.dury.dev"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -42,6 +44,8 @@ init_db()
 print("⏳ Chargement IA...")
 try:
     movies_df = pickle.load(open("movies.pkl", "rb"))
+
+    #print(movies_df.columns, movies_df['id'])
     
     # Prétraitement pour éviter les bugs si des notes manquent
     movies_df['vote_average'] = movies_df['vote_average'].fillna(5.0) 
@@ -49,7 +53,9 @@ try:
     cv = CountVectorizer(max_features=5000, stop_words='english')
     vectors = cv.fit_transform(movies_df['soup']).toarray()
     print("✅ IA Prête !")
-except:
+except Exception as ex:
+    print(ex)
+
     movies_df = pd.DataFrame()
     vectors = None
 
@@ -121,7 +127,7 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int):
 def rate_movie(movie_id: int, rating: int):
     conn = sqlite3.connect('wechoose.db')
     cursor = conn.cursor()
-    movie_row = movies_df[movies_df['movie_id'] == movie_id]
+    movie_row = movies_df[movies_df['id'] == movie_id]
     title = str(movie_row.iloc[0]['title']) if not movie_row.empty else "Inconnu"
     poster = fetch_poster_from_tmdb(movie_id)
     cursor.execute("INSERT OR REPLACE INTO user_ratings (movie_id, rating, title, poster_url) VALUES (?, ?, ?, ?)", (movie_id, rating, title, poster))
@@ -151,7 +157,7 @@ def get_movie_feed(limit: int = 10):
     
     if liked_ids and vectors is not None:
         try:
-            liked_indices = movies_df[movies_df['movie_id'].isin(liked_ids)].index
+            liked_indices = movies_df[movies_df['id'].isin(liked_ids)].index
             
             if len(liked_indices) > 0:
                 liked_vectors = vectors[liked_indices]
@@ -177,7 +183,7 @@ def get_movie_feed(limit: int = 10):
                 count = 0
                 for idx in indices:
                     row = movies_df.iloc[idx]
-                    if int(row['movie_id']) not in exclude_ids:
+                    if int(row['id']) not in exclude_ids:
                         recommendations.append(row)
                         count += 1
                         if count >= limit: break
@@ -188,7 +194,11 @@ def get_movie_feed(limit: int = 10):
     # Fallback Aléatoire (Mais on privilégie quand même les bons films > 6/10)
     if len(recommendations) < limit:
         # On filtre d'abord ceux qu'on n'a pas vus
-        avail = movies_df[~movies_df['movie_id'].isin(exclude_ids)]
+        #avail = movies_df[~movies_df['id'].isin(exclude_ids)]
+        
+        mask = movies_df['id'].isin(exclude_ids)
+        print(mask)
+        avail = movies_df[~mask]
         # On essaie de prendre ceux qui ont une note correcte (> 6)
         avail_good = avail[avail['vote_average'] > 6.0]
         
@@ -199,7 +209,7 @@ def get_movie_feed(limit: int = 10):
             needed = limit - len(recommendations)
             recommendations.extend([row for _, row in pool.sample(n=min(needed, len(pool))).iterrows()])
 
-    return [{"id": int(r['movie_id']), "title": str(r['title']), "poster_url": fetch_poster_from_tmdb(int(r['movie_id'])), "rating": float(r['vote_average'])} for r in recommendations]
+    return [{"id": int(r['id']), "title": str(r['title']), "poster_url": fetch_poster_from_tmdb(int(r['id'])), "rating": float(r['vote_average'])} for r in recommendations]
 
 # Endpoints standard
 @app.get("/search")
