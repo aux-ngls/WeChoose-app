@@ -188,3 +188,6 @@ websocket-client==1.9.0
 xarray==2025.10.1
 xyzservices==2025.4.0
 zarr==3.1.5
+passlib
+python-jose
+python-multipart
