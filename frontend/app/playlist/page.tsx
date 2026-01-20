@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Folder, Plus, ArrowLeft, Star, Film, Clock } from "lucide-react";
+import { Folder, Plus, ArrowLeft, Star, Film, Clock, X } from "lucide-react"; // Ajout de X
 import { API_URL } from "@/config";
 
 interface Playlist {
@@ -23,6 +23,9 @@ export default function PlaylistsPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  
+  // NOUVEAU : État pour le film sélectionné
+  const [selectedMovie, setSelectedMovie] = useState<any>(null);
 
   useEffect(() => {
     fetchPlaylists();
@@ -51,6 +54,13 @@ export default function PlaylistsPage() {
     setNewPlaylistName("");
     setShowCreate(false);
     fetchPlaylists();
+  };
+
+  // NOUVEAU : Fonction pour ouvrir les détails (copiée de la page d'accueil)
+  const openDetails = async (id: number) => {
+    const res = await fetch(`${API_URL}/movie/${id}`);
+    const data = await res.json();
+    setSelectedMovie(data);
   };
 
   // Icône selon le type de liste
@@ -126,7 +136,11 @@ export default function PlaylistsPage() {
           ) : (
             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {movies.map((movie) => (
-                <div key={movie.id} className="relative group">
+                <div 
+                    key={movie.id} 
+                    onClick={() => openDetails(movie.id)} // MODIFIÉ : Ajout du click
+                    className="relative group cursor-pointer hover:scale-105 transition-transform" // MODIFIÉ : Effet hover
+                >
                   <img src={movie.poster_url} className="rounded-lg w-full aspect-[2/3] object-cover" />
                   <p className="mt-1 text-[10px] text-gray-400 truncate">{movie.title}</p>
                 </div>
@@ -134,6 +148,44 @@ export default function PlaylistsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* MODAL DETAIL (Comme dans le "Tinder") */}
+      {selectedMovie && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-gray-900 w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-gray-800 relative">
+            <button onClick={() => setSelectedMovie(null)} className="absolute top-3 right-3 z-10 bg-black/60 p-1.5 rounded-full hover:bg-red-600 transition">
+                <X className="w-5 h-5"/>
+            </button>
+            
+            <div className="aspect-video bg-black">
+                {selectedMovie.trailer_url ? (
+                    <iframe src={selectedMovie.trailer_url} className="w-full h-full" allowFullScreen/>
+                ) : (
+                    <img src={selectedMovie.poster_url} className="w-full h-full object-cover opacity-60"/>
+                )}
+            </div>
+
+            <div className="p-5">
+                <h2 className="text-xl font-bold mb-1">{selectedMovie.title}</h2>
+                <div className="flex gap-2 text-xs text-gray-400 mb-4">
+                    <span>{selectedMovie.release_date}</span>
+                    <span className="text-yellow-400 flex items-center"><Star className="w-3 h-3 mr-1 fill-current"/>{selectedMovie.rating}</span>
+                </div>
+                
+                <p className="text-gray-300 text-sm mb-4">{selectedMovie.overview}</p>
+                
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {selectedMovie.cast?.map((a:any, i:number) => (
+                        <div key={i} className="w-16 flex-shrink-0 text-center">
+                            <img src={a.photo||""} className="w-12 h-12 rounded-full object-cover mx-auto mb-1 bg-gray-800"/>
+                            <p className="text-[10px] truncate">{a.name}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
