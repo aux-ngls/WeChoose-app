@@ -83,89 +83,115 @@ export default function Navbar() {
 
   return (
     <>
-      {/* --- BARRE DE NAVIGATION (Bas sur Mobile / Haut sur PC) --- */}
-      <nav className="fixed bottom-0 w-full bg-gray-900 border-t border-gray-800 p-3 md:top-0 md:bottom-auto md:border-b md:border-t-0 z-50 transition-all">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-            
-            {/* Logo (Visible seulement sur PC) */}
-            <Link href="/" className="hidden md:flex items-center">
-                <QulteLogo />
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-zinc-950/88 px-3 pb-[calc(0.8rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl md:top-0 md:bottom-auto md:border-b md:border-t-0 md:px-6 md:pb-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+          <Link href="/" className="hidden md:flex items-center">
+            <QulteLogo />
+          </Link>
+
+          <div className="grid flex-1 grid-cols-6 gap-1 md:flex md:w-auto md:flex-none md:gap-8">
+            <Link href="/" className={`flex flex-col items-center gap-1 ${isActive("/")}`}>
+              <Home size={22} />
+              <span className="text-[9px] md:text-xs">Accueil</span>
             </Link>
 
-            {/* Liens de Navigation */}
-            <div className="flex justify-around w-full md:w-auto md:gap-8">
-                <Link href="/" className={`flex flex-col items-center gap-1 ${isActive("/")}`}>
-                    <Home size={24} />
-                    <span className="text-[10px] md:text-xs">Accueil</span>
-                </Link>
-                
-                <Link href="/news" className={`flex flex-col items-center gap-1 ${isActive("/news")}`}>
-                    <Film size={24} />
-                    <span className="text-[10px] md:text-xs">A l'affiche</span>
-                </Link>
+            <Link href="/news" className={`flex flex-col items-center gap-1 ${isActive("/news")}`}>
+              <Film size={22} />
+              <span className="text-[9px] md:text-xs">Sorties</span>
+            </Link>
 
-                <Link href="/search" className={`flex flex-col items-center gap-1 ${isActive("/search")}`}>
-                    <Search size={24} />
-                    <span className="text-[10px] md:text-xs">Recherche</span>
-                </Link>
-                
-                <Link href="/playlist" className={`flex flex-col items-center gap-1 ${isActive("/playlist")}`}>
-                    <List size={24} />
-                    <span className="text-[10px] md:text-xs">Listes</span>
-                </Link>
+            <Link href="/search" className={`flex flex-col items-center gap-1 ${isActive("/search")}`}>
+              <Search size={22} />
+              <span className="text-[9px] md:text-xs">Cherche</span>
+            </Link>
 
-                <Link href="/social" className={`flex flex-col items-center gap-1 ${isActive("/social")}`}>
-                    <Users size={24} />
-                    <span className="text-[10px] md:text-xs">Social</span>
-                </Link>
+            <Link href="/playlist" className={`flex flex-col items-center gap-1 ${isActive("/playlist")}`}>
+              <List size={22} />
+              <span className="text-[9px] md:text-xs">Listes</span>
+            </Link>
 
-                <Link href="/messages" className={`flex flex-col items-center gap-1 ${isActive("/messages")}`}>
-                    <span className="relative">
-                        <MessageCircle size={24} />
-                        {unreadMessages > 0 && (
-                            <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                                {unreadMessages > 9 ? "9+" : unreadMessages}
-                            </span>
-                        )}
-                    </span>
-                    <span className="text-[10px] md:text-xs">Messages</span>
-                </Link>
-            </div>
+            <Link href="/social" className={`flex flex-col items-center gap-1 ${isActive("/social")}`}>
+              <Users size={22} />
+              <span className="text-[9px] md:text-xs">Social</span>
+            </Link>
 
-            {/* Zone Utilisateur (PC uniquement ici, Mobile géré en dessous) */}
-            <div className="hidden md:flex items-center gap-4">
-                {username ? (
-                    <>
-                        <span className="text-sm font-bold">👤 {username}</span>
-                        <button onClick={handleLogout} title="Déconnexion"><LogOut size={20}/></button>
-                    </>
-                ) : (
-                    <div className="flex gap-2">
-                        <Link href="/login" className="text-sm font-bold text-gray-300 hover:text-white">Connexion</Link>
-                        <Link href="/signup" className="px-3 py-1 bg-red-600 rounded text-sm font-bold">Inscription</Link>
-                    </div>
+            <Link href="/messages" className={`flex flex-col items-center gap-1 ${isActive("/messages")}`}>
+              <span className="relative">
+                <MessageCircle size={22} />
+                {unreadMessages > 0 && (
+                  <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                    {unreadMessages > 9 ? "9+" : unreadMessages}
+                  </span>
                 )}
-            </div>
+              </span>
+              <span className="text-[9px] md:text-xs">DM</span>
+            </Link>
+          </div>
+
+          <div className="hidden md:flex items-center gap-4">
+            {username ? (
+              <>
+                <span className="text-sm font-bold text-white">@{username}</span>
+                <button onClick={handleLogout} title="Déconnexion">
+                  <LogOut size={20} />
+                </button>
+              </>
+            ) : (
+              <div className="flex gap-2">
+                <Link href="/login" className="text-sm font-bold text-gray-300 hover:text-white">
+                  Connexion
+                </Link>
+                <Link href="/signup" className="rounded bg-red-600 px-3 py-1 text-sm font-bold">
+                  Inscription
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
-      {/* --- BOUTON CONNEXION MOBILE (Flottant en haut à droite) --- */}
-      <div className="md:hidden fixed top-4 left-4 z-50">
-        <Link href="/" className="flex items-center">
-          <QulteLogo compact />
-        </Link>
-      </div>
+      <div className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 md:hidden">
+        <div className="flex items-center justify-between rounded-[24px] border border-white/10 bg-zinc-950/82 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+          <Link href="/" className="flex min-w-0 items-center gap-3">
+            <QulteLogo compact />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-bold text-white">Qulte</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-amber-300/80">
+                Mobile
+              </div>
+            </div>
+          </Link>
 
-      <div className="md:hidden fixed top-4 right-4 z-50">
-        {username ? (
-             <button onClick={handleLogout} className="bg-gray-800/80 p-2 rounded-full text-red-500 backdrop-blur-sm border border-gray-700">
-                <LogOut size={20}/>
-             </button>
-        ) : (
-             <Link href="/login" className="flex items-center justify-center bg-red-600 p-2 rounded-full text-white shadow-lg">
-                <LogIn size={20}/>
-             </Link>
-        )}
+          {username ? (
+            <div className="flex items-center gap-2">
+              <span className="max-w-24 truncate text-xs font-medium text-gray-400">
+                @{username}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="rounded-full border border-white/10 bg-white/[0.04] p-2 text-red-400"
+                aria-label="Se déconnecter"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/login"
+                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white"
+              >
+                Connexion
+              </Link>
+              <Link
+                href="/signup"
+                className="rounded-full bg-red-600 px-3 py-2 text-xs font-semibold text-white"
+              >
+                Creer
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

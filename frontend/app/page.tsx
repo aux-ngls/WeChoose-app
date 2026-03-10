@@ -348,14 +348,14 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white px-4 pb-24">
-      <section className="mx-auto flex w-full max-w-5xl flex-col items-center pt-8">
-        <div className="mb-6 flex flex-col items-center gap-3 text-center">
+    <main className="min-h-screen bg-black text-white px-4 pb-6">
+      <section className="mx-auto flex w-full max-w-5xl flex-col items-center pt-2 md:pt-8">
+        <div className="mb-5 flex flex-col items-center gap-3 text-center md:mb-6">
           <span className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-red-200">
             <Sparkles className="h-3.5 w-3.5" />
             Recos Personnalisees
           </span>
-          <h1 className="text-4xl font-black tracking-tight text-white">Qulte</h1>
+          <h1 className="text-3xl font-black tracking-tight text-white md:text-4xl">Qulte</h1>
           <p className="max-w-xl text-sm text-gray-400">
             Swipe, note et laisse l&apos;IA recalculer tes prochains films selon tes gouts.
           </p>
@@ -367,7 +367,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="relative flex h-[62vh] w-full max-w-sm items-center justify-center">
+        <div className="relative flex h-[60svh] w-full max-w-sm items-center justify-center md:h-[62vh]">
           {movies.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-3xl border border-gray-800 bg-gray-950 px-8 py-10 text-center text-gray-400">
               <p>Chargement de nouveaux films...</p>
@@ -402,20 +402,22 @@ export default function Home() {
         </div>
 
         {movies.length > 0 && !selectedMovie && (
-          <div className="mt-8 flex gap-8">
+          <div className="mt-6 grid w-full max-w-sm grid-cols-2 gap-3 md:mt-8 md:flex md:justify-center md:gap-8">
             <button
               onClick={() => manualSwipe("left")}
-              className="rounded-full border border-gray-800 bg-gray-950 p-4 text-red-500 transition hover:scale-105 hover:border-red-700"
+              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-red-500 transition hover:scale-105 hover:border-red-700 md:rounded-full md:p-4"
               aria-label="Passer ce film"
             >
-              <X size={32} />
+              <X size={24} />
+              <span className="text-sm font-semibold md:hidden">Passer</span>
             </button>
             <button
               onClick={() => manualSwipe("right")}
-              className="rounded-full border border-gray-800 bg-gray-950 p-4 text-blue-400 transition hover:scale-105 hover:border-blue-700"
+              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-blue-400 transition hover:scale-105 hover:border-blue-700 md:rounded-full md:p-4"
               aria-label="Ajouter a regarder plus tard"
             >
-              <Clock size={32} />
+              <Clock size={24} />
+              <span className="text-sm font-semibold md:hidden">Plus tard</span>
             </button>
           </div>
         )}

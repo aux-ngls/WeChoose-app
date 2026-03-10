@@ -58,6 +58,9 @@ export default function SocialPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [replyTargets, setReplyTargets] = useState<Record<number, ReplyTarget | null>>({});
   const [openCommentReviews, setOpenCommentReviews] = useState<number[]>([]);
+  const [mobileSection, setMobileSection] = useState<"feed" | "write" | "people" | "alerts">(
+    "feed",
+  );
   const [feedLoading, setFeedLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(true);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
@@ -653,9 +656,51 @@ export default function SocialPage() {
           </div>
         </section>
 
+        <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md lg:hidden">
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { key: "feed", label: "Feed", icon: Film },
+              { key: "write", label: "Critique", icon: PenSquare },
+              { key: "people", label: "Profils", icon: Users },
+              { key: "alerts", label: "Alertes", icon: Bell },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = mobileSection === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() =>
+                    setMobileSection(tab.key as "feed" | "write" | "people" | "alerts")
+                  }
+                  className={`relative rounded-[18px] px-2 py-3 text-xs font-semibold transition ${
+                    isActive
+                      ? "bg-red-600 text-white"
+                      : "border border-white/10 bg-white/[0.04] text-gray-300"
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <Icon className="h-4 w-4" />
+                    <span>{tab.label}</span>
+                  </div>
+                  {tab.key === "alerts" && unreadNotifications > 0 && (
+                    <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[9px] font-bold text-black">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         <div className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
           <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-            <section className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+            <section
+              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+                mobileSection === "write" ? "block" : "hidden lg:block"
+              }`}
+            >
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-600/15 text-red-300">
                   <PenSquare className="h-5 w-5" />
@@ -797,7 +842,11 @@ export default function SocialPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+            <section
+              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+                mobileSection === "alerts" ? "block" : "hidden lg:block"
+              }`}
+            >
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
@@ -904,7 +953,11 @@ export default function SocialPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+            <section
+              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+                mobileSection === "people" ? "block" : "hidden lg:block"
+              }`}
+            >
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300">
                   <Users className="h-5 w-5" />
@@ -1007,7 +1060,11 @@ export default function SocialPage() {
             </section>
           </div>
 
-          <section className="rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6">
+          <section
+            className={`rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6 ${
+              mobileSection === "feed" ? "block" : "hidden lg:block"
+            }`}
+          >
             <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-gray-300">

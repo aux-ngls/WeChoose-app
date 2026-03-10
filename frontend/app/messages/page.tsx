@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ArrowLeft,
   Film,
   Loader2,
   MessageCircle,
@@ -59,6 +60,8 @@ function MessagesPageContent() {
   const [showMoviePicker, setShowMoviePicker] = useState(false);
   const [handledTargetUserId, setHandledTargetUserId] = useState<number | null>(null);
   const [handledSharedMovieKey, setHandledSharedMovieKey] = useState<string | null>(null);
+  const [mobileSidebarTab, setMobileSidebarTab] = useState<"inbox" | "discover">("inbox");
+  const [mobileView, setMobileView] = useState<"sidebar" | "chat">("sidebar");
   const [openedMovieDetail, setOpenedMovieDetail] = useState<MovieDetail | null>(null);
   const [movieDetailLoading, setMovieDetailLoading] = useState(false);
   const [conversationsLoading, setConversationsLoading] = useState(true);
@@ -133,6 +136,12 @@ function MessagesPageContent() {
       container.scrollHeight - container.scrollTop - container.clientHeight;
     shouldStickToBottomRef.current = distanceFromBottom < 120;
   };
+
+  const activeConversationTitle =
+    activeConversation?.conversation.participant.username ??
+    conversations.find((conversation) => conversation.id === activeConversationId)?.participant
+      .username ??
+    "Conversation";
 
   const fetchConversations = async (options?: { silent?: boolean }) => {
     const token = getTokenOrRedirect();
@@ -287,6 +296,8 @@ function MessagesPageContent() {
       const conversationId = Number(payload.id);
       await fetchConversations();
       setActiveConversationId(conversationId);
+      setMobileSidebarTab("inbox");
+      setMobileView("chat");
       setHandledTargetUserId(user.id);
       setUserQuery("");
       void fetchUsers("");
@@ -616,9 +627,63 @@ function MessagesPageContent() {
           </div>
         )}
 
+        <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md lg:hidden">
+          {mobileView === "chat" ? (
+            <div className="flex items-center justify-between gap-3 px-2 py-1">
+              <button
+                type="button"
+                onClick={() => setMobileView("sidebar")}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-semibold text-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Inbox
+              </button>
+              <div className="min-w-0 text-right">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                  Conversation
+                </div>
+                <div className="truncate text-sm font-bold text-white">@{activeConversationTitle}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarTab("inbox")}
+                className={`rounded-[18px] px-4 py-3 text-sm font-semibold transition ${
+                  mobileSidebarTab === "inbox"
+                    ? "bg-sky-500 text-black"
+                    : "border border-white/10 bg-white/[0.04] text-white"
+                }`}
+              >
+                Inbox
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileSidebarTab("discover")}
+                className={`rounded-[18px] px-4 py-3 text-sm font-semibold transition ${
+                  mobileSidebarTab === "discover"
+                    ? "bg-sky-500 text-black"
+                    : "border border-white/10 bg-white/[0.04] text-white"
+                }`}
+              >
+                Nouveau DM
+              </button>
+            </div>
+          )}
+        </section>
+
         <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-            <section className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+          <div
+            className={`space-y-6 lg:sticky lg:top-24 lg:self-start ${
+              mobileView === "chat" ? "hidden lg:block" : ""
+            }`}
+          >
+            <section
+              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+                mobileSidebarTab === "discover" ? "block" : "hidden lg:block"
+              }`}
+            >
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-300">
                   <Users className="h-5 w-5" />
@@ -689,7 +754,11 @@ function MessagesPageContent() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+            <section
+              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+                mobileSidebarTab === "inbox" ? "block" : "hidden lg:block"
+              }`}
+            >
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
                   <MessageCircle className="h-5 w-5" />
@@ -715,7 +784,11 @@ function MessagesPageContent() {
                     <button
                       key={conversation.id}
                       type="button"
-                      onClick={() => setActiveConversationId(conversation.id)}
+                      onClick={() => {
+                        setActiveConversationId(conversation.id);
+                        setMobileView("chat");
+                        setMobileSidebarTab("inbox");
+                      }}
                       className={`w-full rounded-[22px] border p-4 text-left transition ${
                         activeConversationId === conversation.id
                           ? "border-sky-500/40 bg-sky-500/10"
@@ -749,7 +822,11 @@ function MessagesPageContent() {
             </section>
           </div>
 
-          <section className="rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6">
+          <section
+            className={`rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6 ${
+              mobileView === "sidebar" ? "hidden lg:block" : "block"
+            }`}
+          >
             {conversationError && (
               <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                 {conversationError}
@@ -779,7 +856,7 @@ function MessagesPageContent() {
                     <div className="text-xs uppercase tracking-[0.16em] text-gray-500">Conversation privee</div>
                     <Link
                       href={`/social/${encodeURIComponent(activeConversation.conversation.participant.username)}`}
-                      className="mt-1 block text-2xl font-black tracking-tight transition hover:text-sky-300"
+                      className="mt-1 block text-xl font-black tracking-tight transition hover:text-sky-300 md:text-2xl"
                     >
                       @{activeConversation.conversation.participant.username}
                     </Link>
@@ -810,7 +887,7 @@ function MessagesPageContent() {
                         className={`flex ${message.is_mine ? "justify-end" : "justify-start"}`}
                       >
                         <div
-                          className={`max-w-[85%] rounded-[26px] px-4 py-3 md:max-w-[70%] ${
+                          className={`max-w-[92%] rounded-[26px] px-4 py-3 md:max-w-[70%] ${
                             message.is_mine
                               ? "bg-sky-500 text-black"
                               : "border border-white/10 bg-white/[0.05] text-white"

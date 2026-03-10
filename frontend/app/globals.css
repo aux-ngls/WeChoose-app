@@ -3,20 +3,55 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 html,
 body {
-  /* On utilise du CSS standard ici, c'est plus stable que @apply pour le global en v4 */
-  background-color: #000000;
+  background:
+    radial-gradient(circle at top, rgba(239, 68, 68, 0.12), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.08), transparent 24%),
+    #000000;
   color: #ffffff;
   height: 100%;
   margin: 0;
   padding: 0;
-  
-  /* Bloque l'effet élastique blanc */
+
   overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  background-color: #000000;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.015), transparent 22%);
+  z-index: -1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+img {
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* Utilitaires pour cacher la scrollbar */
@@ -25,5 +60,12 @@ body {
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-x: hidden;
   }
 }
