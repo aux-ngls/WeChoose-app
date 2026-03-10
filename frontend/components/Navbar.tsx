@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Search, Film, List, LogIn, LogOut, Users } from "lucide-react";
+import { Home, Search, Film, List, LogIn, LogOut, Users, MessageCircle } from "lucide-react";
 import QulteLogo from "@/components/QulteLogo";
+import { API_URL } from "@/config";
+import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
 
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [username, setUsername] = useState<string | null>(null);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
     const checkAuth = () => {
@@ -21,6 +24,37 @@ export default function Navbar() {
     const interval = setInterval(checkAuth, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const fetchUnreadMessages = async () => {
+      const token = getStoredToken();
+      if (!token) {
+        setUnreadMessages(0);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_URL}/messages/unread-count`, {
+          headers: buildAuthHeaders(token),
+        });
+        if (!res.ok) {
+          return;
+        }
+
+        const payload = await res.json();
+        setUnreadMessages(Number(payload?.unread_count ?? 0));
+      } catch {
+        setUnreadMessages(0);
+      }
+    };
+
+    void fetchUnreadMessages();
+    const interval = window.setInterval(() => {
+      void fetchUnreadMessages();
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [pathname, username]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -71,6 +105,18 @@ export default function Navbar() {
                 <Link href="/social" className={`flex flex-col items-center gap-1 ${isActive("/social")}`}>
                     <Users size={24} />
                     <span className="text-[10px] md:text-xs">Social</span>
+                </Link>
+
+                <Link href="/messages" className={`flex flex-col items-center gap-1 ${isActive("/messages")}`}>
+                    <span className="relative">
+                        <MessageCircle size={24} />
+                        {unreadMessages > 0 && (
+                            <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                                {unreadMessages > 9 ? "9+" : unreadMessages}
+                            </span>
+                        )}
+                    </span>
+                    <span className="text-[10px] md:text-xs">Messages</span>
                 </Link>
             </div>
 

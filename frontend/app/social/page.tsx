@@ -970,25 +970,34 @@ export default function SocialPage() {
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => void toggleFollow(user)}
-                            disabled={isPending}
-                            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                              user.is_following
-                                ? "border border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                                : "bg-amber-500 text-black hover:bg-amber-400"
-                            } disabled:cursor-not-allowed disabled:opacity-60`}
-                          >
-                            {isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : user.is_following ? (
-                              <UserMinus className="h-4 w-4" />
-                            ) : (
-                              <UserPlus className="h-4 w-4" />
-                            )}
-                            {user.is_following ? "Suivi" : "Suivre"}
-                          </button>
+                          <div className="flex flex-col items-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void toggleFollow(user)}
+                              disabled={isPending}
+                              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                user.is_following
+                                  ? "border border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                                  : "bg-amber-500 text-black hover:bg-amber-400"
+                              } disabled:cursor-not-allowed disabled:opacity-60`}
+                            >
+                              {isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : user.is_following ? (
+                                <UserMinus className="h-4 w-4" />
+                              ) : (
+                                <UserPlus className="h-4 w-4" />
+                              )}
+                              {user.is_following ? "Suivi" : "Suivre"}
+                            </button>
+
+                            <Link
+                              href={`/messages?userId=${user.id}`}
+                              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+                            >
+                              Message
+                            </Link>
+                          </div>
                         </div>
                       </div>
                     );

@@ -238,25 +238,34 @@ export default function SocialProfilePage() {
               </p>
 
               {!profile.is_self && (
-                <button
-                  type="button"
-                  onClick={() => void toggleFollow()}
-                  disabled={pendingFollow}
-                  className={`mt-6 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
-                    profile.is_following
-                      ? "border border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                      : "bg-amber-500 text-black hover:bg-amber-400"
-                  } disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  {pendingFollow ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : profile.is_following ? (
-                    <UserMinus className="h-4 w-4" />
-                  ) : (
-                    <UserPlus className="h-4 w-4" />
-                  )}
-                  {profile.is_following ? "Ne plus suivre" : "Suivre ce profil"}
-                </button>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void toggleFollow()}
+                    disabled={pendingFollow}
+                    className={`inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
+                      profile.is_following
+                        ? "border border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                        : "bg-amber-500 text-black hover:bg-amber-400"
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {pendingFollow ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : profile.is_following ? (
+                      <UserMinus className="h-4 w-4" />
+                    ) : (
+                      <UserPlus className="h-4 w-4" />
+                    )}
+                    {profile.is_following ? "Ne plus suivre" : "Suivre ce profil"}
+                  </button>
+
+                  <Link
+                    href={`/messages?userId=${profile.id}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/[0.08]"
+                  >
+                    Ecrire
+                  </Link>
+                </div>
               )}
             </div>
 

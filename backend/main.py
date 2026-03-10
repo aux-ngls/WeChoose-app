@@ -188,6 +188,28 @@ def init_db():
                         comment_id INTEGER,
                         is_read INTEGER DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+    # Table DIRECT_CONVERSATIONS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS direct_conversations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_one_id INTEGER,
+                        user_two_id INTEGER,
+                        user_one_last_read_message_id INTEGER DEFAULT 0,
+                        user_two_last_read_message_id INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_one_id, user_two_id))''')
+
+    # Table DIRECT_MESSAGES
+    cursor.execute('''CREATE TABLE IF NOT EXISTS direct_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        conversation_id INTEGER,
+                        sender_id INTEGER,
+                        content TEXT,
+                        movie_id INTEGER,
+                        movie_title TEXT,
+                        movie_poster_url TEXT,
+                        movie_rating REAL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     
     conn.commit()
     conn.close()
@@ -657,6 +679,232 @@ def fetch_notifications_payload(cursor, user_id: int, limit: int) -> dict:
         "unread_count": unread_count,
     }
 
+
+def normalize_direct_pair(user_one_id: int, user_two_id: int) -> tuple[int, int]:
+    return (user_one_id, user_two_id) if user_one_id < user_two_id else (user_two_id, user_one_id)
+
+
+def serialize_direct_message_row(row: sqlite3.Row, current_user_id: int) -> dict:
+    return {
+        "id": row["id"],
+        "content": row["content"] or "",
+        "created_at": row["created_at"],
+        "is_mine": row["sender_id"] == current_user_id,
+        "sender": {
+            "id": row["sender_id"],
+            "username": row["sender_username"],
+        },
+        "movie": (
+            {
+                "id": row["movie_id"],
+                "title": row["movie_title"],
+                "poster_url": row["movie_poster_url"],
+                "rating": row["movie_rating"],
+            }
+            if row["movie_id"] is not None
+            else None
+        ),
+    }
+
+
+def build_message_preview(content: Optional[str], movie_title: Optional[str]) -> str:
+    trimmed_content = (content or "").strip()
+    trimmed_movie_title = (movie_title or "").strip()
+
+    if trimmed_content:
+        return trimmed_content[:120]
+    if trimmed_movie_title:
+        return f"A partage {trimmed_movie_title}"
+    return "Nouvelle conversation"
+
+
+def serialize_direct_conversation_row(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "participant": {
+            "id": row["participant_id"],
+            "username": row["participant_username"],
+        },
+        "last_message": (
+            {
+                "id": row["last_message_id"],
+                "content": row["last_message_content"] or "",
+                "created_at": row["updated_at"],
+                "sender_id": row["last_sender_id"],
+                "preview": build_message_preview(row["last_message_content"], row["last_movie_title"]),
+                "movie": (
+                    {
+                        "id": row["last_movie_id"],
+                        "title": row["last_movie_title"],
+                        "poster_url": row["last_movie_poster_url"],
+                    }
+                    if row["last_movie_id"] is not None
+                    else None
+                ),
+            }
+            if row["last_message_id"] is not None
+            else None
+        ),
+        "unread_count": int(row["unread_count"]),
+    }
+
+
+def get_or_create_direct_conversation(cursor, current_user_id: int, target_user_id: int) -> int:
+    user_one_id, user_two_id = normalize_direct_pair(current_user_id, target_user_id)
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO direct_conversations (user_one_id, user_two_id)
+        VALUES (?, ?)
+        """,
+        (user_one_id, user_two_id),
+    )
+    cursor.execute(
+        """
+        SELECT id
+        FROM direct_conversations
+        WHERE user_one_id = ? AND user_two_id = ?
+        """,
+        (user_one_id, user_two_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=500, detail="Impossible de creer la conversation")
+    return int(row["id"] if isinstance(row, sqlite3.Row) else row[0])
+
+
+def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_id: int) -> sqlite3.Row:
+    cursor.execute(
+        """
+        SELECT
+            c.id,
+            c.user_one_id,
+            c.user_two_id,
+            c.user_one_last_read_message_id,
+            c.user_two_last_read_message_id,
+            c.created_at,
+            CASE
+                WHEN c.user_one_id = ? THEN c.user_two_id
+                ELSE c.user_one_id
+            END AS participant_id,
+            participant.username AS participant_username
+        FROM direct_conversations c
+        JOIN users participant
+            ON participant.id = CASE
+                WHEN c.user_one_id = ? THEN c.user_two_id
+                ELSE c.user_one_id
+            END
+        WHERE c.id = ?
+          AND (c.user_one_id = ? OR c.user_two_id = ?)
+        """,
+        (current_user_id, current_user_id, conversation_id, current_user_id, current_user_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Conversation introuvable")
+    return row
+
+
+def mark_direct_conversation_read(cursor, conversation_row: sqlite3.Row, current_user_id: int):
+    cursor.execute(
+        "SELECT MAX(id) FROM direct_messages WHERE conversation_id = ?",
+        (conversation_row["id"],),
+    )
+    last_message_id = int(cursor.fetchone()[0] or 0)
+
+    if conversation_row["user_one_id"] == current_user_id:
+        cursor.execute(
+            "UPDATE direct_conversations SET user_one_last_read_message_id = ? WHERE id = ?",
+            (last_message_id, conversation_row["id"]),
+        )
+    else:
+        cursor.execute(
+            "UPDATE direct_conversations SET user_two_last_read_message_id = ? WHERE id = ?",
+            (last_message_id, conversation_row["id"]),
+        )
+
+
+def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
+    cursor.execute(
+        """
+        SELECT
+            c.id,
+            c.created_at,
+            COALESCE(last_message.created_at, c.created_at) AS updated_at,
+            CASE
+                WHEN c.user_one_id = ? THEN c.user_two_id
+                ELSE c.user_one_id
+            END AS participant_id,
+            participant.username AS participant_username,
+            last_message.id AS last_message_id,
+            last_message.content AS last_message_content,
+            last_message.sender_id AS last_sender_id,
+            last_message.movie_id AS last_movie_id,
+            last_message.movie_title AS last_movie_title,
+            last_message.movie_poster_url AS last_movie_poster_url,
+            (
+                SELECT COUNT(*)
+                FROM direct_messages unread_message
+                WHERE unread_message.conversation_id = c.id
+                  AND unread_message.sender_id != ?
+                  AND unread_message.id > CASE
+                      WHEN c.user_one_id = ? THEN COALESCE(c.user_one_last_read_message_id, 0)
+                      ELSE COALESCE(c.user_two_last_read_message_id, 0)
+                  END
+            ) AS unread_count
+        FROM direct_conversations c
+        JOIN users participant
+            ON participant.id = CASE
+                WHEN c.user_one_id = ? THEN c.user_two_id
+                ELSE c.user_one_id
+            END
+        LEFT JOIN direct_messages last_message
+            ON last_message.id = (
+                SELECT dm.id
+                FROM direct_messages dm
+                WHERE dm.conversation_id = c.id
+                ORDER BY dm.id DESC
+                LIMIT 1
+            )
+        WHERE c.user_one_id = ? OR c.user_two_id = ?
+        ORDER BY updated_at DESC, c.id DESC
+        """,
+        (
+            current_user_id,
+            current_user_id,
+            current_user_id,
+            current_user_id,
+            current_user_id,
+            current_user_id,
+        ),
+    )
+    return [serialize_direct_conversation_row(row) for row in cursor.fetchall()]
+
+
+def get_total_unread_direct_messages(cursor, current_user_id: int) -> int:
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(unread_count), 0)
+        FROM (
+            SELECT (
+                SELECT COUNT(*)
+                FROM direct_messages unread_message
+                WHERE unread_message.conversation_id = c.id
+                  AND unread_message.sender_id != ?
+                  AND unread_message.id > CASE
+                      WHEN c.user_one_id = ? THEN COALESCE(c.user_one_last_read_message_id, 0)
+                      ELSE COALESCE(c.user_two_last_read_message_id, 0)
+                  END
+            ) AS unread_count
+            FROM direct_conversations c
+            WHERE c.user_one_id = ? OR c.user_two_id = ?
+        ) AS unread_counts
+        """,
+        (current_user_id, current_user_id, current_user_id, current_user_id),
+    )
+    return int(cursor.fetchone()[0] or 0)
+
 # --- 6. ROUTES PLAYLISTS & RATINGS ---
 class PlaylistCreate(BaseModel):
     name: str
@@ -673,6 +921,14 @@ class ReviewCreate(BaseModel):
 class CommentCreate(BaseModel):
     content: str
     parent_id: Optional[int] = None
+
+
+class MessageCreate(BaseModel):
+    content: Optional[str] = None
+    movie_id: Optional[int] = None
+    movie_title: Optional[str] = None
+    movie_poster_url: Optional[str] = None
+    movie_rating: Optional[float] = None
 
 @app.get("/playlists")
 def get_all_playlists(current_user: dict = Depends(get_current_user)):
@@ -1384,6 +1640,188 @@ def social_notifications_read_all(current_user: dict = Depends(get_current_user)
     conn.commit()
     conn.close()
     return {"status": "ok", "updated": updated_count}
+
+
+# --- 9. ROUTES MESSAGERIE ---
+@app.get("/messages/conversations")
+def message_conversations(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    conversations = fetch_direct_conversations(cursor, current_user["id"])
+    conn.close()
+    return conversations
+
+
+@app.post("/messages/conversations/start/{target_user_id}")
+def start_direct_conversation(target_user_id: int, current_user: dict = Depends(get_current_user)):
+    if target_user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas ouvrir une conversation avec vous-même")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    conversation_id = get_or_create_direct_conversation(cursor, current_user["id"], target_user_id)
+    conn.commit()
+    conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
+    conn.close()
+
+    return {
+        "id": conversation_row["id"],
+        "participant": {
+            "id": conversation_row["participant_id"],
+            "username": conversation_row["participant_username"],
+        },
+    }
+
+
+@app.get("/messages/conversations/{conversation_id}")
+def get_direct_conversation_messages(conversation_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
+
+    cursor.execute(
+        """
+        SELECT
+            dm.id,
+            dm.content,
+            dm.created_at,
+            dm.sender_id,
+            sender.username AS sender_username,
+            dm.movie_id,
+            dm.movie_title,
+            dm.movie_poster_url,
+            dm.movie_rating
+        FROM direct_messages dm
+        JOIN users sender ON sender.id = dm.sender_id
+        WHERE dm.conversation_id = ?
+        ORDER BY dm.id ASC
+        """,
+        (conversation_id,),
+    )
+    messages = [
+        serialize_direct_message_row(row, current_user["id"])
+        for row in cursor.fetchall()
+    ]
+
+    mark_direct_conversation_read(cursor, conversation_row, current_user["id"])
+    conn.commit()
+    conn.close()
+
+    return {
+        "conversation": {
+            "id": conversation_row["id"],
+            "participant": {
+                "id": conversation_row["participant_id"],
+                "username": conversation_row["participant_username"],
+            },
+        },
+        "messages": messages,
+    }
+
+
+@app.post("/messages/conversations/{conversation_id}/messages")
+def create_direct_message(
+    conversation_id: int,
+    payload: MessageCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    content = (payload.content or "").strip()
+
+    movie_id = payload.movie_id
+    movie_title = (payload.movie_title or "").strip()
+    movie_poster_url = (payload.movie_poster_url or "").strip()
+    movie_rating = payload.movie_rating
+
+    if movie_id is not None and (not movie_title or not movie_poster_url):
+        details = get_tmdb_details(movie_id)
+        if details:
+            movie_title = details["title"]
+            movie_poster_url = details["poster_url"]
+            movie_rating = details["rating"]
+
+    if not content and movie_id is None:
+        raise HTTPException(status_code=400, detail="Le message ne peut pas être vide")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
+
+    cursor.execute(
+        """
+        INSERT INTO direct_messages (
+            conversation_id,
+            sender_id,
+            content,
+            movie_id,
+            movie_title,
+            movie_poster_url,
+            movie_rating
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            conversation_id,
+            current_user["id"],
+            content,
+            movie_id,
+            movie_title or None,
+            movie_poster_url or None,
+            movie_rating,
+        ),
+    )
+    message_id = cursor.lastrowid
+
+    if conversation_row["user_one_id"] == current_user["id"]:
+        cursor.execute(
+            "UPDATE direct_conversations SET user_one_last_read_message_id = ? WHERE id = ?",
+            (message_id, conversation_id),
+        )
+    else:
+        cursor.execute(
+            "UPDATE direct_conversations SET user_two_last_read_message_id = ? WHERE id = ?",
+            (message_id, conversation_id),
+        )
+
+    conn.commit()
+    cursor.execute(
+        """
+        SELECT
+            dm.id,
+            dm.content,
+            dm.created_at,
+            dm.sender_id,
+            sender.username AS sender_username,
+            dm.movie_id,
+            dm.movie_title,
+            dm.movie_poster_url,
+            dm.movie_rating
+        FROM direct_messages dm
+        JOIN users sender ON sender.id = dm.sender_id
+        WHERE dm.id = ?
+        """,
+        (message_id,),
+    )
+    message_row = cursor.fetchone()
+    conn.close()
+
+    if not message_row:
+        raise HTTPException(status_code=500, detail="Impossible de relire le message créé")
+
+    return serialize_direct_message_row(message_row, current_user["id"])
+
+
+@app.get("/messages/unread-count")
+def unread_direct_message_count(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    unread_count = get_total_unread_direct_messages(cursor, current_user["id"])
+    conn.close()
+    return {"unread_count": unread_count}
 
 
 # --- 8. ENDPOINTS STANDARDS (Inchangé) ---
