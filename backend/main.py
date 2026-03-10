@@ -143,6 +143,51 @@ def init_db():
                         poster_url TEXT, 
                         rating REAL, 
                         UNIQUE(playlist_id, movie_id))''')
+
+    # Table FOLLOWS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS follows (
+                        follower_id INTEGER,
+                        followed_id INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (follower_id, followed_id))''')
+
+    # Table REVIEWS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS reviews (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        movie_id INTEGER,
+                        title TEXT,
+                        poster_url TEXT,
+                        rating INTEGER,
+                        content TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+    # Table REVIEW_LIKES
+    cursor.execute('''CREATE TABLE IF NOT EXISTS review_likes (
+                        review_id INTEGER,
+                        user_id INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (review_id, user_id))''')
+
+    # Table COMMENTS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS comments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        review_id INTEGER,
+                        user_id INTEGER,
+                        parent_id INTEGER,
+                        content TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+    # Table NOTIFICATIONS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS notifications (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        actor_user_id INTEGER,
+                        type TEXT,
+                        review_id INTEGER,
+                        comment_id INTEGER,
+                        is_read INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     
     conn.commit()
     conn.close()
@@ -407,9 +452,227 @@ def get_tmdb_discover_movies(page: int, genre_ids_key: str) -> tuple[dict, ...]:
 
     return tuple(normalized_movies)
 
+
+def serialize_review_row(row: sqlite3.Row) -> dict:
+    row_keys = set(row.keys())
+    return {
+        "id": row["id"],
+        "movie_id": row["movie_id"],
+        "title": row["title"],
+        "poster_url": row["poster_url"],
+        "rating": row["rating"],
+        "content": row["content"],
+        "created_at": row["created_at"],
+        "author": {
+            "id": row["user_id"],
+            "username": row["username"],
+        },
+        "likes_count": row["likes_count"],
+        "liked_by_me": bool(row["liked_by_me"]),
+        "comments_count": row["comments_count"] if "comments_count" in row_keys else 0,
+    }
+
+
+def serialize_user_row(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "followers_count": row["followers_count"],
+        "following_count": row["following_count"],
+        "reviews_count": row["reviews_count"],
+        "is_following": bool(row["is_following"]),
+    }
+
+
+def serialize_comment_row(row: sqlite3.Row) -> dict:
+    row_keys = set(row.keys())
+    return {
+        "id": row["id"],
+        "review_id": row["review_id"],
+        "parent_id": row["parent_id"],
+        "content": row["content"],
+        "created_at": row["created_at"],
+        "author": {
+            "id": row["user_id"],
+            "username": row["username"],
+        },
+        "reply_to_username": row["reply_to_username"] if "reply_to_username" in row_keys else None,
+    }
+
+
+def build_notification_message(row: sqlite3.Row) -> str:
+    actor_username = row["actor_username"]
+    review_title = row["review_title"] or "ce film"
+    notification_type = row["type"]
+
+    if notification_type == "follow":
+        return f"@{actor_username} s'est abonne a toi"
+    if notification_type == "like":
+        return f"@{actor_username} a aime ta critique sur {review_title}"
+    if notification_type == "review":
+        return f"@{actor_username} a publie une critique sur {review_title}"
+    if notification_type == "comment":
+        return f"@{actor_username} a commente ta critique sur {review_title}"
+    if notification_type == "reply":
+        return f"@{actor_username} a repondu a ton commentaire sur {review_title}"
+    return f"Nouvelle activite de @{actor_username}"
+
+
+def serialize_notification_row(row: sqlite3.Row) -> dict:
+    comment_preview = row["comment_preview"] or ""
+    return {
+        "id": row["id"],
+        "type": row["type"],
+        "created_at": row["created_at"],
+        "is_read": bool(row["is_read"]),
+        "message": build_notification_message(row),
+        "actor": {
+            "id": row["actor_user_id"],
+            "username": row["actor_username"],
+        },
+        "review": (
+            {
+                "id": row["review_id"],
+                "title": row["review_title"],
+                "poster_url": row["review_poster_url"],
+            }
+            if row["review_id"] is not None
+            else None
+        ),
+        "comment_preview": comment_preview[:120],
+    }
+
+
+def create_notification(
+    cursor,
+    user_id: int,
+    actor_user_id: int,
+    notification_type: str,
+    review_id: Optional[int] = None,
+    comment_id: Optional[int] = None,
+):
+    if user_id == actor_user_id:
+        return
+
+    cursor.execute(
+        """
+        INSERT INTO notifications (user_id, actor_user_id, type, review_id, comment_id)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (user_id, actor_user_id, notification_type, review_id, comment_id),
+    )
+
+
+def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, params=(), limit: Optional[int] = None) -> list[dict]:
+    query = f"""
+        SELECT
+            r.id,
+            r.user_id,
+            u.username,
+            r.movie_id,
+            r.title,
+            r.poster_url,
+            r.rating,
+            r.content,
+            r.created_at,
+            (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id = r.id) AS likes_count,
+            EXISTS(
+                SELECT 1
+                FROM review_likes rl
+                WHERE rl.review_id = r.id AND rl.user_id = ?
+            ) AS liked_by_me,
+            (SELECT COUNT(*) FROM comments c WHERE c.review_id = r.id) AS comments_count
+        FROM reviews r
+        JOIN users u ON u.id = r.user_id
+        WHERE {where_clause}
+        ORDER BY r.created_at DESC, r.id DESC
+    """
+
+    query_params = (current_user_id, *params)
+    if limit is not None:
+        query += " LIMIT ?"
+        query_params = (*query_params, limit)
+
+    cursor.execute(query, query_params)
+    return [serialize_review_row(row) for row in cursor.fetchall()]
+
+
+def fetch_review_comments(cursor, review_id: int) -> list[dict]:
+    cursor.execute(
+        """
+        SELECT
+            c.id,
+            c.review_id,
+            c.parent_id,
+            c.content,
+            c.created_at,
+            u.id AS user_id,
+            u.username,
+            parent_user.username AS reply_to_username
+        FROM comments c
+        JOIN users u ON u.id = c.user_id
+        LEFT JOIN comments parent_comment ON parent_comment.id = c.parent_id
+        LEFT JOIN users parent_user ON parent_user.id = parent_comment.user_id
+        WHERE c.review_id = ?
+        ORDER BY COALESCE(c.parent_id, c.id), c.parent_id IS NOT NULL, c.created_at ASC, c.id ASC
+        """,
+        (review_id,),
+    )
+    return [serialize_comment_row(row) for row in cursor.fetchall()]
+
+
+def fetch_notifications_payload(cursor, user_id: int, limit: int) -> dict:
+    cursor.execute(
+        "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,),
+    )
+    unread_count = int(cursor.fetchone()[0])
+
+    cursor.execute(
+        """
+        SELECT
+            n.id,
+            n.type,
+            n.created_at,
+            n.is_read,
+            n.actor_user_id,
+            actor.username AS actor_username,
+            n.review_id,
+            r.title AS review_title,
+            r.poster_url AS review_poster_url,
+            n.comment_id,
+            c.content AS comment_preview
+        FROM notifications n
+        JOIN users actor ON actor.id = n.actor_user_id
+        LEFT JOIN reviews r ON r.id = n.review_id
+        LEFT JOIN comments c ON c.id = n.comment_id
+        WHERE n.user_id = ?
+        ORDER BY n.created_at DESC, n.id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    )
+    return {
+        "items": [serialize_notification_row(row) for row in cursor.fetchall()],
+        "unread_count": unread_count,
+    }
+
 # --- 6. ROUTES PLAYLISTS & RATINGS ---
 class PlaylistCreate(BaseModel):
     name: str
+
+
+class ReviewCreate(BaseModel):
+    movie_id: int
+    title: str
+    poster_url: str
+    rating: int
+    content: str
+
+
+class CommentCreate(BaseModel):
+    content: str
+    parent_id: Optional[int] = None
 
 @app.get("/playlists")
 def get_all_playlists(current_user: dict = Depends(get_current_user)):
@@ -717,6 +980,411 @@ def get_movie_feed(
         }
         for _, row in selected_rows.head(limit).iterrows()
     ]
+
+# --- 8. ROUTES SOCIALES ---
+@app.get("/social/users")
+def social_users(
+    query: str = "",
+    limit: int = 12,
+    current_user: dict = Depends(get_current_user),
+):
+    search_value = query.strip()
+    safe_limit = max(1, min(limit, 30))
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            u.id,
+            u.username,
+            (SELECT COUNT(*) FROM follows f WHERE f.followed_id = u.id) AS followers_count,
+            (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
+            (SELECT COUNT(*) FROM reviews r WHERE r.user_id = u.id) AS reviews_count,
+            EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = ? AND f.followed_id = u.id
+            ) AS is_following
+        FROM users u
+        WHERE u.id != ?
+          AND (? = '' OR lower(u.username) LIKE lower(?))
+        ORDER BY reviews_count DESC, followers_count DESC, u.username ASC
+        LIMIT ?
+        """,
+        (
+            current_user["id"],
+            current_user["id"],
+            search_value,
+            f"%{search_value}%",
+            safe_limit,
+        ),
+    )
+    users = [serialize_user_row(row) for row in cursor.fetchall()]
+    conn.close()
+    return users
+
+
+@app.get("/social/profile/{username}")
+def social_profile(
+    username: str,
+    limit: int = 24,
+    current_user: dict = Depends(get_current_user),
+):
+    safe_limit = max(1, min(limit, 50))
+    profile_username = username.strip()
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            u.id,
+            u.username,
+            (SELECT COUNT(*) FROM follows f WHERE f.followed_id = u.id) AS followers_count,
+            (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
+            (SELECT COUNT(*) FROM reviews r WHERE r.user_id = u.id) AS reviews_count,
+            (SELECT COUNT(*) FROM user_ratings ur WHERE ur.user_id = u.id AND ur.rating >= 4) AS favorites_count,
+            EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = ? AND f.followed_id = u.id
+            ) AS is_following
+        FROM users u
+        WHERE lower(u.username) = lower(?)
+        """,
+        (current_user["id"], profile_username),
+    )
+    profile_row = cursor.fetchone()
+    if not profile_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Profil introuvable")
+
+    reviews = fetch_serialized_reviews(
+        cursor,
+        current_user["id"],
+        "r.user_id = ?",
+        (profile_row["id"],),
+        safe_limit,
+    )
+    conn.close()
+
+    return {
+        "id": profile_row["id"],
+        "username": profile_row["username"],
+        "followers_count": profile_row["followers_count"],
+        "following_count": profile_row["following_count"],
+        "reviews_count": profile_row["reviews_count"],
+        "favorites_count": profile_row["favorites_count"],
+        "is_following": bool(profile_row["is_following"]),
+        "is_self": profile_row["id"] == current_user["id"],
+        "reviews": reviews,
+    }
+
+
+@app.post("/social/follow/{target_user_id}")
+def follow_user(target_user_id: int, current_user: dict = Depends(get_current_user)):
+    if target_user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous suivre vous-même")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    cursor.execute(
+        "INSERT OR IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)",
+        (current_user["id"], target_user_id),
+    )
+    if cursor.rowcount > 0:
+        create_notification(cursor, target_user_id, current_user["id"], "follow")
+    conn.commit()
+    conn.close()
+    return {"status": "followed"}
+
+
+@app.delete("/social/follow/{target_user_id}")
+def unfollow_user(target_user_id: int, current_user: dict = Depends(get_current_user)):
+    if target_user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Action invalide")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM follows WHERE follower_id = ? AND followed_id = ?",
+        (current_user["id"], target_user_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "unfollowed"}
+
+
+@app.get("/social/feed")
+def social_feed(limit: int = 30, current_user: dict = Depends(get_current_user)):
+    safe_limit = max(1, min(limit, 60))
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    reviews = fetch_serialized_reviews(
+        cursor,
+        current_user["id"],
+        """
+        r.user_id = ?
+        OR r.user_id IN (
+            SELECT followed_id
+            FROM follows
+            WHERE follower_id = ?
+        )
+        """,
+        (current_user["id"], current_user["id"]),
+        safe_limit,
+    )
+    conn.close()
+    return reviews
+
+
+@app.post("/social/reviews")
+def create_review(review: ReviewCreate, current_user: dict = Depends(get_current_user)):
+    review_title = review.title.strip()
+    review_content = review.content.strip()
+    poster_url = review.poster_url.strip()
+
+    if review.rating < 1 or review.rating > 5:
+        raise HTTPException(status_code=400, detail="La note doit être comprise entre 1 et 5")
+    if len(review_title) < 1:
+        raise HTTPException(status_code=400, detail="Le titre du film est requis")
+    if len(review_content) < 10:
+        raise HTTPException(status_code=400, detail="La critique doit contenir au moins 10 caractères")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO reviews (user_id, movie_id, title, poster_url, rating, content)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            current_user["id"],
+            review.movie_id,
+            review_title,
+            poster_url,
+            review.rating,
+            review_content,
+        ),
+    )
+    review_id = cursor.lastrowid
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO user_ratings (user_id, movie_id, rating, title, poster_url)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            current_user["id"],
+            review.movie_id,
+            review.rating,
+            review_title,
+            poster_url,
+        ),
+    )
+    cursor.execute(
+        "SELECT follower_id FROM follows WHERE followed_id = ?",
+        (current_user["id"],),
+    )
+    for follower_row in cursor.fetchall():
+        create_notification(
+            cursor,
+            int(follower_row["follower_id"]),
+            current_user["id"],
+            "review",
+            review_id=review_id,
+        )
+    conn.commit()
+
+    created_reviews = fetch_serialized_reviews(
+        cursor,
+        current_user["id"],
+        "r.id = ?",
+        (review_id,),
+        1,
+    )
+    conn.close()
+
+    if not created_reviews:
+        raise HTTPException(status_code=500, detail="Impossible de relire la critique créée")
+
+    return created_reviews[0]
+
+
+@app.get("/social/reviews/{review_id}/comments")
+def social_review_comments(review_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM reviews WHERE id = ?", (review_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+
+    comments = fetch_review_comments(cursor, review_id)
+    conn.close()
+    return comments
+
+
+@app.post("/social/reviews/{review_id}/comments")
+def create_review_comment(
+    review_id: int,
+    payload: CommentCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    content = payload.content.strip()
+    if len(content) < 2:
+        raise HTTPException(status_code=400, detail="Le commentaire est trop court")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, user_id FROM reviews WHERE id = ?",
+        (review_id,),
+    )
+    review_row = cursor.fetchone()
+    if not review_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+
+    parent_user_id = None
+    if payload.parent_id is not None:
+        cursor.execute(
+            "SELECT id, user_id FROM comments WHERE id = ? AND review_id = ?",
+            (payload.parent_id, review_id),
+        )
+        parent_row = cursor.fetchone()
+        if not parent_row:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Réponse invalide")
+        parent_user_id = int(parent_row["user_id"])
+
+    cursor.execute(
+        """
+        INSERT INTO comments (review_id, user_id, parent_id, content)
+        VALUES (?, ?, ?, ?)
+        """,
+        (review_id, current_user["id"], payload.parent_id, content),
+    )
+    comment_id = cursor.lastrowid
+
+    review_owner_id = int(review_row["user_id"])
+    if review_owner_id != current_user["id"]:
+        create_notification(
+            cursor,
+            review_owner_id,
+            current_user["id"],
+            "comment",
+            review_id=review_id,
+            comment_id=comment_id,
+        )
+
+    if parent_user_id is not None and parent_user_id not in (current_user["id"], review_owner_id):
+        create_notification(
+            cursor,
+            parent_user_id,
+            current_user["id"],
+            "reply",
+            review_id=review_id,
+            comment_id=comment_id,
+        )
+
+    conn.commit()
+    cursor.execute(
+        """
+        SELECT
+            c.id,
+            c.review_id,
+            c.parent_id,
+            c.content,
+            c.created_at,
+            u.id AS user_id,
+            u.username,
+            parent_user.username AS reply_to_username
+        FROM comments c
+        JOIN users u ON u.id = c.user_id
+        LEFT JOIN comments parent_comment ON parent_comment.id = c.parent_id
+        LEFT JOIN users parent_user ON parent_user.id = parent_comment.user_id
+        WHERE c.id = ?
+        """,
+        (comment_id,),
+    )
+    created_comment = cursor.fetchone()
+    conn.close()
+
+    if not created_comment:
+        raise HTTPException(status_code=500, detail="Impossible de relire le commentaire créé")
+
+    return serialize_comment_row(created_comment)
+
+
+@app.post("/social/reviews/{review_id}/like")
+def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM reviews WHERE id = ?", (review_id,))
+    review_row = cursor.fetchone()
+    if not review_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+    review_owner_id = int(review_row[0])
+
+    cursor.execute(
+        "SELECT 1 FROM review_likes WHERE review_id = ? AND user_id = ?",
+        (review_id, current_user["id"]),
+    )
+    already_liked = cursor.fetchone() is not None
+
+    if already_liked:
+        cursor.execute(
+            "DELETE FROM review_likes WHERE review_id = ? AND user_id = ?",
+            (review_id, current_user["id"]),
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO review_likes (review_id, user_id) VALUES (?, ?)",
+            (review_id, current_user["id"]),
+        )
+        create_notification(cursor, review_owner_id, current_user["id"], "like", review_id=review_id)
+
+    conn.commit()
+    cursor.execute(
+        "SELECT COUNT(*) FROM review_likes WHERE review_id = ?",
+        (review_id,),
+    )
+    likes_count = cursor.fetchone()[0]
+    conn.close()
+    return {"liked": not already_liked, "likes_count": likes_count}
+
+
+@app.get("/social/notifications")
+def social_notifications(limit: int = 20, current_user: dict = Depends(get_current_user)):
+    safe_limit = max(1, min(limit, 50))
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    payload = fetch_notifications_payload(cursor, current_user["id"], safe_limit)
+    conn.close()
+    return payload
+
+
+@app.post("/social/notifications/read-all")
+def social_notifications_read_all(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+        (current_user["id"],),
+    )
+    updated_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "updated": updated_count}
+
 
 # --- 8. ENDPOINTS STANDARDS (Inchangé) ---
 @app.get("/search")

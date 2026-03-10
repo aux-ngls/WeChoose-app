@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Search, Film, List, LogIn, LogOut } from "lucide-react";
+import { Home, Search, Film, List, LogIn, LogOut, Users } from "lucide-react";
 import QulteLogo from "@/components/QulteLogo";
 
 export default function Navbar() {
@@ -29,7 +29,11 @@ export default function Navbar() {
     router.push("/login");
   };
 
-  const isActive = (path: string) => pathname === path ? "text-red-500" : "text-gray-400 hover:text-white";
+  const isActive = (path: string) => {
+    const active =
+      pathname === path || (path !== "/" && pathname.startsWith(`${path}/`));
+    return active ? "text-red-500" : "text-gray-400 hover:text-white";
+  };
 
   return (
     <>
@@ -62,6 +66,11 @@ export default function Navbar() {
                 <Link href="/playlist" className={`flex flex-col items-center gap-1 ${isActive("/playlist")}`}>
                     <List size={24} />
                     <span className="text-[10px] md:text-xs">Listes</span>
+                </Link>
+
+                <Link href="/social" className={`flex flex-col items-center gap-1 ${isActive("/social")}`}>
+                    <Users size={24} />
+                    <span className="text-[10px] md:text-xs">Social</span>
                 </Link>
             </div>
 
