@@ -354,7 +354,7 @@ export default function Home() {
             <Sparkles className="h-3.5 w-3.5" />
             Recos Personnalisees
           </span>
-          <h1 className="text-4xl font-black tracking-tight text-white">WeChoose</h1>
+          <h1 className="text-4xl font-black tracking-tight text-white">Qulte</h1>
           <p className="max-w-xl text-sm text-gray-400">
             Swipe, note et laisse l&apos;IA recalculer tes prochains films selon tes gouts.
           </p>

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Search, Film, List, LogIn, LogOut, User } from "lucide-react";
+import { Home, Search, Film, List, LogIn, LogOut } from "lucide-react";
+import QulteLogo from "@/components/QulteLogo";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -37,8 +38,8 @@ export default function Navbar() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
             
             {/* Logo (Visible seulement sur PC) */}
-            <Link href="/" className="hidden md:block text-xl font-bold text-red-600 tracking-tighter">
-                WeChoose 🍿
+            <Link href="/" className="hidden md:flex items-center">
+                <QulteLogo />
             </Link>
 
             {/* Liens de Navigation */}
@@ -82,6 +83,12 @@ export default function Navbar() {
       </nav>
 
       {/* --- BOUTON CONNEXION MOBILE (Flottant en haut à droite) --- */}
+      <div className="md:hidden fixed top-4 left-4 z-50">
+        <Link href="/" className="flex items-center">
+          <QulteLogo compact />
+        </Link>
+      </div>
+
       <div className="md:hidden fixed top-4 right-4 z-50">
         {username ? (
              <button onClick={handleLogout} className="bg-gray-800/80 p-2 rounded-full text-red-500 backdrop-blur-sm border border-gray-700">
