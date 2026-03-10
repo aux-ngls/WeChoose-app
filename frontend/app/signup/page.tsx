@@ -17,12 +17,20 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    const normalizedUsername = username.trim();
+    const normalizedPassword = password.trim();
+
+    if (!normalizedUsername || !normalizedPassword) {
+      setError("Merci de remplir tous les champs.");
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch(`${API_URL}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: normalizedUsername, password: normalizedPassword }),
       });
 
       const data = await res.json();
@@ -31,7 +39,7 @@ export default function SignupPage() {
 
       // Sauvegarde du token
       localStorage.setItem("token", data.access_token);
-      localStorage.setItem("username", username);
+      localStorage.setItem("username", normalizedUsername);
       
       router.push("/"); // Redirection vers l'accueil
     } catch (err: any) {

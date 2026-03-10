@@ -1,6 +1,8 @@
 
 const isDev = process.env.NODE_ENV === "development";
-//const fallback = "http://localhost:8000";
-const fallback = "https://api.wechoose.dury.dev";
+const devFallback = "http://127.0.0.1:8080";
+const prodFallback = "https://api.wechoose.dury.dev";
 
-export const API_URL = (isDev ? process.env.NEXT_PUBLIC_DEV_API_URL??fallback : process.env.NEXT_PUBLIC_API_URL??fallback);
+export const API_URL = isDev
+  ? (process.env.NEXT_PUBLIC_DEV_API_URL ?? devFallback)
+  : (process.env.NEXT_PUBLIC_API_URL ?? prodFallback);

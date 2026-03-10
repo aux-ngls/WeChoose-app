@@ -17,11 +17,19 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    const normalizedUsername = username.trim();
+    const normalizedPassword = password.trim();
+
+    if (!normalizedUsername || !normalizedPassword) {
+      setError("Merci de remplir tous les champs.");
+      setLoading(false);
+      return;
+    }
 
     // FastAPI attend un format "Form Data" pour le login OAuth2 standard
     const formData = new URLSearchParams();
-    formData.append("username", username);
-    formData.append("password", password);
+    formData.append("username", normalizedUsername);
+    formData.append("password", normalizedPassword);
 
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
@@ -35,7 +43,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error("Identifiants incorrects");
 
       localStorage.setItem("token", data.access_token);
-      localStorage.setItem("username", username);
+      localStorage.setItem("username", normalizedUsername);
       
       router.push("/");
     } catch (err: any) {
