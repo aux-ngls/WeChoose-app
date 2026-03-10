@@ -7,6 +7,7 @@ import { Home, Search, Film, List, LogIn, LogOut, Users, MessageCircle } from "l
 import QulteLogo from "@/components/QulteLogo";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
+import { unregisterNativePushToken } from "@/lib/native-app";
 import { buildRealtimeWebSocketUrl } from "@/lib/realtime";
 
 export default function Navbar() {
@@ -68,7 +69,8 @@ export default function Navbar() {
     };
   }, [pathname, username]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await unregisterNativePushToken();
     localStorage.removeItem("token");
     localStorage.removeItem("username");
     setUsername(null);

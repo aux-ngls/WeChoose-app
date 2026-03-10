@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Qulte</string>
+    <string name="title_activity_main">Qulte</string>
+    <string name="package_name">dev.dury.qulte</string>
+    <string name="custom_url_scheme">dev.dury.qulte</string>
+    <string name="default_notification_channel_id">qulte-updates</string>
+</resources>

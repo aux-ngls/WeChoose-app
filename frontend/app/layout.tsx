@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import NativeBridge from "@/components/NativeBridge";
 import PwaProvider from "@/components/PwaProvider";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -46,6 +47,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={`${inter.className} bg-black text-white`}>
+        <NativeBridge />
         <PwaProvider />
         <Navbar />
         <div className="min-h-screen pb-[calc(6.4rem+env(safe-area-inset-bottom))] pt-[calc(4.8rem+env(safe-area-inset-top))] md:pb-0 md:pt-20">

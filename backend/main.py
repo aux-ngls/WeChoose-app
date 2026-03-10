@@ -1,4 +1,5 @@
 import ast
+import os
 import sqlite3
 import datetime
 from functools import lru_cache
@@ -25,7 +26,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
-app = FastAPI(title="WeChoose API")
+FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "").strip()
+app = FastAPI(title="Qulte API")
 
 WATCH_LATER_SYSTEM_ID = -1
 FAVORITES_SYSTEM_ID = -2
@@ -242,6 +244,20 @@ def init_db():
                         movie_poster_url TEXT,
                         movie_rating REAL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+    # Table MOBILE_DEVICES
+    cursor.execute('''CREATE TABLE IF NOT EXISTS mobile_devices (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        platform TEXT,
+                        token TEXT UNIQUE,
+                        app_version TEXT,
+                        is_active INTEGER DEFAULT 1,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mobile_devices_user_id ON mobile_devices(user_id)"
+    )
     
     conn.commit()
     conn.close()
@@ -621,6 +637,114 @@ def create_notification(
     )
 
 
+def build_direct_message_push_body(sender_username: str, content: str, movie_title: str) -> str:
+    cleaned_content = content.strip()
+    cleaned_movie_title = movie_title.strip()
+    if cleaned_content and cleaned_movie_title:
+        return f"@{sender_username}: {cleaned_content[:90]}"
+    if cleaned_content:
+        return f"@{sender_username}: {cleaned_content[:120]}"
+    if cleaned_movie_title:
+        return f"@{sender_username} t'a partage {cleaned_movie_title}"
+    return f"Nouveau message de @{sender_username}"
+
+
+def fetch_active_mobile_tokens(cursor, user_ids: list[int]) -> list[str]:
+    unique_user_ids = list(dict.fromkeys(user_ids))
+    if not unique_user_ids:
+        return []
+
+    placeholders = ",".join("?" for _ in unique_user_ids)
+    cursor.execute(
+        f"""
+        SELECT token
+        FROM mobile_devices
+        WHERE is_active = 1
+        AND user_id IN ({placeholders})
+        """,
+        tuple(unique_user_ids),
+    )
+
+    tokens: list[str] = []
+    for row in cursor.fetchall():
+        token = row["token"] if isinstance(row, sqlite3.Row) else row[0]
+        if token:
+            tokens.append(str(token))
+    return tokens
+
+
+def send_native_push_notifications(
+    cursor,
+    user_ids: list[int],
+    *,
+    title: str,
+    body: str,
+    route: str,
+    extra_data: Optional[dict] = None,
+):
+    if not FCM_SERVER_KEY:
+        return
+
+    device_tokens = fetch_active_mobile_tokens(cursor, user_ids)
+    if not device_tokens:
+        return
+
+    serialized_data = {"route": route}
+    if extra_data:
+        serialized_data.update(
+            {key: str(value) for key, value in extra_data.items() if value is not None}
+        )
+
+    headers = {
+        "Authorization": f"key={FCM_SERVER_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    for device_token in device_tokens:
+        try:
+            response = requests.post(
+                "https://fcm.googleapis.com/fcm/send",
+                headers=headers,
+                json={
+                    "to": device_token,
+                    "priority": "high",
+                    "notification": {
+                        "title": title,
+                        "body": body,
+                    },
+                    "data": serialized_data,
+                    "content_available": True,
+                    "mutable_content": True,
+                },
+                timeout=8,
+            )
+        except requests.RequestException:
+            continue
+
+        try:
+            response_payload = response.json()
+        except ValueError:
+            response_payload = {}
+
+        if response.status_code != 200:
+            continue
+
+        results = response_payload.get("results") or []
+        if not results:
+            continue
+
+        error_code = results[0].get("error")
+        if error_code in {"InvalidRegistration", "NotRegistered", "MismatchSenderId"}:
+            cursor.execute(
+                """
+                UPDATE mobile_devices
+                SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE token = ?
+                """,
+                (device_token,),
+            )
+
+
 def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, params=(), limit: Optional[int] = None) -> list[dict]:
     query = f"""
         SELECT
@@ -965,6 +1089,16 @@ class MessageCreate(BaseModel):
     movie_title: Optional[str] = None
     movie_poster_url: Optional[str] = None
     movie_rating: Optional[float] = None
+
+
+class MobileDeviceRegister(BaseModel):
+    token: str
+    platform: str
+    app_version: Optional[str] = None
+
+
+class MobileDeviceUnregister(BaseModel):
+    token: str
 
 @app.get("/playlists")
 def get_all_playlists(current_user: dict = Depends(get_current_user)):
@@ -1392,6 +1526,14 @@ def follow_user(target_user_id: int, current_user: dict = Depends(get_current_us
     )
     if cursor.rowcount > 0:
         create_notification(cursor, target_user_id, current_user["id"], "follow")
+        send_native_push_notifications(
+            cursor,
+            [target_user_id],
+            title="Nouveau follower",
+            body=f"@{current_user['username']} s'est abonne a toi",
+            route="/social",
+            extra_data={"type": "follow"},
+        )
     conn.commit()
     conn.close()
     return {"status": "followed"}
@@ -1411,6 +1553,64 @@ def unfollow_user(target_user_id: int, current_user: dict = Depends(get_current_
     conn.commit()
     conn.close()
     return {"status": "unfollowed"}
+
+
+@app.post("/mobile/devices/register")
+def register_mobile_device(
+    payload: MobileDeviceRegister,
+    current_user: dict = Depends(get_current_user),
+):
+    device_token = payload.token.strip()
+    platform = payload.platform.strip().lower()
+    app_version = (payload.app_version or "").strip() or None
+
+    if not device_token:
+        raise HTTPException(status_code=400, detail="Le token device est requis")
+    if platform not in {"ios", "android"}:
+        raise HTTPException(status_code=400, detail="Plateforme mobile invalide")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO mobile_devices (user_id, platform, token, app_version, is_active)
+        VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT(token) DO UPDATE SET
+            user_id = excluded.user_id,
+            platform = excluded.platform,
+            app_version = excluded.app_version,
+            is_active = 1,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (current_user["id"], platform, device_token, app_version),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "registered"}
+
+
+@app.post("/mobile/devices/unregister")
+def unregister_mobile_device(
+    payload: MobileDeviceUnregister,
+    current_user: dict = Depends(get_current_user),
+):
+    device_token = payload.token.strip()
+    if not device_token:
+        raise HTTPException(status_code=400, detail="Le token device est requis")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE mobile_devices
+        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND token = ?
+        """,
+        (current_user["id"], device_token),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "unregistered"}
 
 
 @app.get("/social/feed")
@@ -1485,12 +1685,21 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         (current_user["id"],),
     )
     for follower_row in cursor.fetchall():
+        follower_id = int(follower_row["follower_id"])
         create_notification(
             cursor,
-            int(follower_row["follower_id"]),
+            follower_id,
             current_user["id"],
             "review",
             review_id=review_id,
+        )
+        send_native_push_notifications(
+            cursor,
+            [follower_id],
+            title="Nouvelle critique",
+            body=f"@{current_user['username']} a publie une critique sur {review_title}",
+            route="/social",
+            extra_data={"type": "review", "reviewId": review_id},
         )
     conn.commit()
 
@@ -1575,6 +1784,14 @@ def create_review_comment(
             review_id=review_id,
             comment_id=comment_id,
         )
+        send_native_push_notifications(
+            cursor,
+            [review_owner_id],
+            title="Nouveau commentaire",
+            body=f"@{current_user['username']} a commente ta critique",
+            route="/social",
+            extra_data={"type": "comment", "reviewId": review_id},
+        )
 
     if parent_user_id is not None and parent_user_id not in (current_user["id"], review_owner_id):
         create_notification(
@@ -1584,6 +1801,14 @@ def create_review_comment(
             "reply",
             review_id=review_id,
             comment_id=comment_id,
+        )
+        send_native_push_notifications(
+            cursor,
+            [parent_user_id],
+            title="Nouvelle reponse",
+            body=f"@{current_user['username']} a repondu a ton commentaire",
+            route="/social",
+            extra_data={"type": "reply", "reviewId": review_id},
         )
 
     conn.commit()
@@ -1617,14 +1842,15 @@ def create_review_comment(
 
 @app.post("/social/reviews/{review_id}/like")
 def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_user)):
-    conn = get_db_connection()
+    conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM reviews WHERE id = ?", (review_id,))
+    cursor.execute("SELECT user_id, title FROM reviews WHERE id = ?", (review_id,))
     review_row = cursor.fetchone()
     if not review_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Critique introuvable")
-    review_owner_id = int(review_row[0])
+    review_owner_id = int(review_row["user_id"])
+    review_title = str(review_row["title"] or "ce film")
 
     cursor.execute(
         "SELECT 1 FROM review_likes WHERE review_id = ? AND user_id = ?",
@@ -1643,6 +1869,14 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
             (review_id, current_user["id"]),
         )
         create_notification(cursor, review_owner_id, current_user["id"], "like", review_id=review_id)
+        send_native_push_notifications(
+            cursor,
+            [review_owner_id],
+            title="Critique aimee",
+            body=f"@{current_user['username']} a aime ta critique sur {review_title}",
+            route="/social",
+            extra_data={"type": "like", "reviewId": review_id},
+        )
 
     conn.commit()
     cursor.execute(
@@ -1843,14 +2077,28 @@ async def create_direct_message(
         (message_id,),
     )
     message_row = cursor.fetchone()
-    conn.close()
 
     if not message_row:
+        conn.close()
         raise HTTPException(status_code=500, detail="Impossible de relire le message créé")
 
     serialized_message = serialize_direct_message_row(message_row, current_user["id"])
+    recipient_user_id = int(conversation_row["participant_id"])
+    send_native_push_notifications(
+        cursor,
+        [recipient_user_id],
+        title=f"Message de @{current_user['username']}",
+        body=build_direct_message_push_body(current_user["username"], content, movie_title),
+        route=f"/messages?conversationId={conversation_id}",
+        extra_data={
+            "type": "dm",
+            "conversationId": conversation_id,
+        },
+    )
+    conn.commit()
+    conn.close()
     await realtime_manager.broadcast_to_users(
-        [current_user["id"], int(conversation_row["participant_id"])],
+        [current_user["id"], recipient_user_id],
         {
             "type": "messages.updated",
             "conversation_id": conversation_id,

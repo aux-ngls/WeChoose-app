@@ -83,6 +83,16 @@ function MessagesPageContent() {
     return Number.isFinite(parsed) ? parsed : null;
   }, [searchParams]);
 
+  const requestedConversationId = useMemo(() => {
+    const raw = searchParams.get("conversationId");
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [searchParams]);
+
   const sharedMovieSeed = useMemo(() => {
     const rawMovieId = searchParams.get("shareMovieId");
     if (!rawMovieId) {
@@ -173,7 +183,7 @@ function MessagesPageContent() {
       setConversations(nextConversations);
       setPageError("");
 
-      if (!activeConversationId && nextConversations.length > 0) {
+      if (!activeConversationId && !requestedConversationId && nextConversations.length > 0) {
         setActiveConversationId(nextConversations[0].id);
       }
     } catch (error) {
@@ -518,6 +528,16 @@ function MessagesPageContent() {
 
     void startConversation(targetUser);
   }, [handledTargetUserId, targetUserId, userResults]);
+
+  useEffect(() => {
+    if (!requestedConversationId || activeConversationId === requestedConversationId) {
+      return;
+    }
+
+    setActiveConversationId(requestedConversationId);
+    setMobileView("chat");
+    setMobileSidebarTab("inbox");
+  }, [activeConversationId, requestedConversationId]);
 
   useEffect(() => {
     if (!sharedMovieSeed) {
