@@ -3,7 +3,7 @@ import sqlite3
 import datetime
 from functools import lru_cache
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pandas as pd
@@ -31,6 +31,38 @@ WATCH_LATER_SYSTEM_ID = -1
 FAVORITES_SYSTEM_ID = -2
 HISTORY_SYSTEM_ID = -3
 WATCH_LATER_NAME = "À regarder plus tard"
+
+
+class RealtimeConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[int, list[WebSocket]] = {}
+
+    async def connect(self, user_id: int, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.setdefault(user_id, []).append(websocket)
+
+    def disconnect(self, user_id: int, websocket: WebSocket):
+        user_connections = self.active_connections.get(user_id, [])
+        if websocket in user_connections:
+            user_connections.remove(websocket)
+        if not user_connections and user_id in self.active_connections:
+            del self.active_connections[user_id]
+
+    async def send_to_user(self, user_id: int, payload: dict):
+        user_connections = list(self.active_connections.get(user_id, []))
+        for connection in user_connections:
+            try:
+                await connection.send_json(payload)
+            except Exception:
+                self.disconnect(user_id, connection)
+
+    async def broadcast_to_users(self, user_ids: list[int], payload: dict):
+        unique_user_ids = list(dict.fromkeys(user_ids))
+        for user_id in unique_user_ids:
+            await self.send_to_user(user_id, payload)
+
+
+realtime_manager = RealtimeConnectionManager()
 
 app.add_middleware(
     CORSMiddleware,
@@ -266,7 +298,7 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_user_from_token(token: str) -> dict:
     credentials_exception = HTTPException(status_code=401, detail="Non autorisé", headers={"WWW-Authenticate": "Bearer"})
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -281,6 +313,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     conn.close()
     if user is None: raise credentials_exception
     return {"id": user[0], "username": user[1]}
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    return get_user_from_token(token)
 
 # --- 4. ROUTES AUTH ---
 @app.post("/auth/signup", response_model=Token)
@@ -1725,7 +1761,7 @@ def get_direct_conversation_messages(conversation_id: int, current_user: dict = 
 
 
 @app.post("/messages/conversations/{conversation_id}/messages")
-def create_direct_message(
+async def create_direct_message(
     conversation_id: int,
     payload: MessageCreate,
     current_user: dict = Depends(get_current_user),
@@ -1812,7 +1848,16 @@ def create_direct_message(
     if not message_row:
         raise HTTPException(status_code=500, detail="Impossible de relire le message créé")
 
-    return serialize_direct_message_row(message_row, current_user["id"])
+    serialized_message = serialize_direct_message_row(message_row, current_user["id"])
+    await realtime_manager.broadcast_to_users(
+        [current_user["id"], int(conversation_row["participant_id"])],
+        {
+            "type": "messages.updated",
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+        },
+    )
+    return serialized_message
 
 
 @app.get("/messages/unread-count")
@@ -1822,6 +1867,24 @@ def unread_direct_message_count(current_user: dict = Depends(get_current_user)):
     unread_count = get_total_unread_direct_messages(cursor, current_user["id"])
     conn.close()
     return {"unread_count": unread_count}
+
+
+@app.websocket("/ws/realtime")
+async def realtime_websocket(websocket: WebSocket, token: str = Query(...)):
+    try:
+        user = get_user_from_token(token)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
+    await realtime_manager.connect(user["id"], websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        realtime_manager.disconnect(user["id"], websocket)
+    except Exception:
+        realtime_manager.disconnect(user["id"], websocket)
 
 
 # --- 8. ENDPOINTS STANDARDS (Inchangé) ---

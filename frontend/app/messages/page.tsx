@@ -28,11 +28,24 @@ import {
   type DirectConversationSummary,
   type DirectMessage,
 } from "@/lib/messages";
+import { buildRealtimeWebSocketUrl } from "@/lib/realtime";
+
+interface MovieDetail extends SearchMovie {
+  overview?: string;
+  trailer_url?: string;
+  cast?: { name: string; character: string; photo: string | null }[];
+  release_date?: string;
+}
 
 function MessagesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const shouldAutoScrollNextUpdateRef = useRef(false);
+  const previousConversationIdRef = useRef<number | null>(null);
+  const previousMessageCountRef = useRef(0);
 
   const [conversations, setConversations] = useState<DirectConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
@@ -44,6 +57,10 @@ function MessagesPageContent() {
   const [movieResults, setMovieResults] = useState<SearchMovie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<SearchMovie | null>(null);
   const [showMoviePicker, setShowMoviePicker] = useState(false);
+  const [handledTargetUserId, setHandledTargetUserId] = useState<number | null>(null);
+  const [handledSharedMovieKey, setHandledSharedMovieKey] = useState<string | null>(null);
+  const [openedMovieDetail, setOpenedMovieDetail] = useState<MovieDetail | null>(null);
+  const [movieDetailLoading, setMovieDetailLoading] = useState(false);
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [conversationLoading, setConversationLoading] = useState(false);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -63,6 +80,33 @@ function MessagesPageContent() {
     return Number.isFinite(parsed) ? parsed : null;
   }, [searchParams]);
 
+  const sharedMovieSeed = useMemo(() => {
+    const rawMovieId = searchParams.get("shareMovieId");
+    if (!rawMovieId) {
+      return null;
+    }
+
+    const movieId = Number(rawMovieId);
+    if (!Number.isFinite(movieId)) {
+      return null;
+    }
+
+    const movieTitle = searchParams.get("shareMovieTitle");
+    const moviePoster = searchParams.get("shareMoviePoster");
+    const movieRating = Number(searchParams.get("shareMovieRating") ?? "0");
+    const key = `${movieId}:${movieTitle ?? ""}:${moviePoster ?? ""}:${movieRating}`;
+
+    return {
+      key,
+      movie: {
+        id: movieId,
+        title: movieTitle ?? "Film partage",
+        poster_url: moviePoster ?? FALLBACK_POSTER,
+        rating: Number.isFinite(movieRating) ? movieRating : 0,
+      } satisfies SearchMovie,
+    };
+  }, [searchParams]);
+
   const redirectToLogin = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("username");
@@ -76,6 +120,18 @@ function MessagesPageContent() {
       return null;
     }
     return token;
+  };
+
+  const updateStickToBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      shouldStickToBottomRef.current = true;
+      return;
+    }
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom < 120;
   };
 
   const fetchConversations = async (options?: { silent?: boolean }) => {
@@ -231,7 +287,7 @@ function MessagesPageContent() {
       const conversationId = Number(payload.id);
       await fetchConversations();
       setActiveConversationId(conversationId);
-      router.replace("/messages");
+      setHandledTargetUserId(user.id);
       setUserQuery("");
       void fetchUsers("");
     } catch (error) {
@@ -287,6 +343,7 @@ function MessagesPageContent() {
       }
 
       const createdMessage = payload as DirectMessage;
+      shouldAutoScrollNextUpdateRef.current = true;
       setActiveConversation((current) =>
         current
           ? {
@@ -342,6 +399,29 @@ function MessagesPageContent() {
     }
   };
 
+  const openMovieDetails = async (movieId: number) => {
+    setMovieDetailLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/movie/${movieId}`);
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.detail ?? "Impossible de charger les détails de ce film");
+      }
+
+      setOpenedMovieDetail(payload as MovieDetail);
+      setConversationError("");
+    } catch (error) {
+      console.error(error);
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Impossible de charger les détails de ce film",
+      );
+    } finally {
+      setMovieDetailLoading(false);
+    }
+  };
+
   useEffect(() => {
     const token = getStoredToken();
     if (!token) {
@@ -352,6 +432,34 @@ function MessagesPageContent() {
     void fetchConversations();
     void fetchUsers("");
   }, []);
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      return;
+    }
+
+    const socket = new WebSocket(buildRealtimeWebSocketUrl(token));
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as { type?: string; conversation_id?: number };
+        if (payload.type !== "messages.updated") {
+          return;
+        }
+
+        void fetchConversations({ silent: true });
+        if (payload.conversation_id && payload.conversation_id === activeConversationId) {
+          void openConversation(payload.conversation_id, { silent: true });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [activeConversationId]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -366,6 +474,7 @@ function MessagesPageContent() {
       return;
     }
 
+    shouldAutoScrollNextUpdateRef.current = true;
     void openConversation(activeConversationId);
   }, [activeConversationId]);
 
@@ -387,13 +496,32 @@ function MessagesPageContent() {
       return;
     }
 
+    if (handledTargetUserId === targetUserId) {
+      return;
+    }
+
     const targetUser = userResults.find((user) => user.id === targetUserId);
     if (!targetUser) {
       return;
     }
 
     void startConversation(targetUser);
-  }, [targetUserId, userResults]);
+  }, [handledTargetUserId, targetUserId, userResults]);
+
+  useEffect(() => {
+    if (!sharedMovieSeed) {
+      return;
+    }
+
+    if (handledSharedMovieKey === sharedMovieSeed.key) {
+      return;
+    }
+
+    setSelectedMovie(sharedMovieSeed.movie);
+    setShowMoviePicker(true);
+    setMovieQuery(sharedMovieSeed.movie.title);
+    setHandledSharedMovieKey(sharedMovieSeed.key);
+  }, [handledSharedMovieKey, sharedMovieSeed]);
 
   useEffect(() => {
     if (!showMoviePicker) {
@@ -430,8 +558,31 @@ function MessagesPageContent() {
   }, [movieQuery, showMoviePicker]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeConversation?.messages]);
+    if (!activeConversation) {
+      previousConversationIdRef.current = null;
+      previousMessageCountRef.current = 0;
+      return;
+    }
+
+    const currentMessageCount = activeConversation.messages.length;
+    const conversationChanged =
+      previousConversationIdRef.current !== activeConversation.conversation.id;
+    const newMessagesArrived = currentMessageCount > previousMessageCountRef.current;
+
+    const shouldScroll =
+      shouldAutoScrollNextUpdateRef.current ||
+      conversationChanged ||
+      (newMessagesArrived && shouldStickToBottomRef.current);
+
+    if (shouldScroll) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      shouldStickToBottomRef.current = true;
+    }
+
+    shouldAutoScrollNextUpdateRef.current = false;
+    previousConversationIdRef.current = activeConversation.conversation.id;
+    previousMessageCountRef.current = currentMessageCount;
+  }, [activeConversation]);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_28%),#000] px-4 py-6 text-white">
@@ -642,7 +793,11 @@ function MessagesPageContent() {
                   </Link>
                 </div>
 
-                <div className="flex-1 space-y-4 overflow-y-auto rounded-[28px] border border-white/10 bg-black/20 p-4 md:p-5">
+                <div
+                  ref={messagesContainerRef}
+                  onScroll={updateStickToBottom}
+                  className="flex-1 space-y-4 overflow-y-auto rounded-[28px] border border-white/10 bg-black/20 p-4 md:p-5"
+                >
                   {activeConversation.messages.length === 0 ? (
                     <div className="flex min-h-[280px] flex-col items-center justify-center text-center text-sm text-gray-500">
                       <Film className="mb-4 h-10 w-10 text-gray-400" />
@@ -666,11 +821,13 @@ function MessagesPageContent() {
                           </div>
 
                           {message.movie && (
-                            <div
-                              className={`mb-3 overflow-hidden rounded-[22px] border ${
+                            <button
+                              type="button"
+                              onClick={() => void openMovieDetails(message.movie!.id)}
+                              className={`mb-3 block w-full overflow-hidden rounded-[22px] border text-left transition hover:scale-[1.01] ${
                                 message.is_mine
-                                  ? "border-black/10 bg-black/10"
-                                  : "border-white/10 bg-black/20"
+                                  ? "border-black/10 bg-black/10 hover:bg-black/15"
+                                  : "border-white/10 bg-black/20 hover:bg-black/30"
                               }`}
                             >
                               <div className="grid grid-cols-[78px_minmax(0,1fr)] gap-0">
@@ -692,7 +849,7 @@ function MessagesPageContent() {
                                   )}
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           )}
 
                           {message.content && <p className="text-sm leading-6">{message.content}</p>}
@@ -840,6 +997,71 @@ function MessagesPageContent() {
           </section>
         </div>
       </div>
+
+      {(movieDetailLoading || openedMovieDetail) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
+          {movieDetailLoading && !openedMovieDetail ? (
+            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm text-gray-300">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Chargement du film...
+            </div>
+          ) : openedMovieDetail ? (
+            <div className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
+              <button
+                onClick={() => setOpenedMovieDetail(null)}
+                className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-1.5 transition hover:bg-red-600"
+              >
+                <X className="h-5 w-5 text-white" />
+              </button>
+
+              <div className="aspect-video w-full bg-black">
+                {openedMovieDetail.trailer_url ? (
+                  <iframe
+                    src={openedMovieDetail.trailer_url}
+                    className="h-full w-full"
+                    allowFullScreen
+                    title={openedMovieDetail.title}
+                  />
+                ) : (
+                  <img
+                    src={openedMovieDetail.poster_url || FALLBACK_POSTER}
+                    alt={openedMovieDetail.title}
+                    className="h-full w-full object-cover opacity-60"
+                  />
+                )}
+              </div>
+
+              <div className="p-5">
+                <h2 className="mb-1 text-xl font-bold">{openedMovieDetail.title}</h2>
+                <div className="mb-4 flex items-center gap-2 text-xs text-gray-400">
+                  <span>{openedMovieDetail.release_date}</span>
+                  <span className="flex items-center text-yellow-400">
+                    <Star className="mr-1 h-3 w-3 fill-current" />
+                    {openedMovieDetail.rating.toFixed(1)}
+                  </span>
+                </div>
+
+                <p className="mb-6 text-sm leading-relaxed text-gray-300">
+                  {openedMovieDetail.overview}
+                </p>
+
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {openedMovieDetail.cast?.map((actor) => (
+                    <div key={`${actor.name}-${actor.character}`} className="w-16 flex-shrink-0 text-center">
+                      <img
+                        src={actor.photo || "https://via.placeholder.com/100"}
+                        alt={actor.name}
+                        className="mx-auto mb-1 h-12 w-12 rounded-full border border-gray-700 object-cover"
+                      />
+                      <p className="truncate text-[10px] font-medium">{actor.name}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
     </main>
   );
 }

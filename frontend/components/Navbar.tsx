@@ -7,6 +7,7 @@ import { Home, Search, Film, List, LogIn, LogOut, Users, MessageCircle } from "l
 import QulteLogo from "@/components/QulteLogo";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
+import { buildRealtimeWebSocketUrl } from "@/lib/realtime";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -49,11 +50,22 @@ export default function Navbar() {
     };
 
     void fetchUnreadMessages();
+    const token = getStoredToken();
+    const socket = token ? new WebSocket(buildRealtimeWebSocketUrl(token)) : null;
+    if (socket) {
+      socket.onmessage = () => {
+        void fetchUnreadMessages();
+      };
+    }
+
     const interval = window.setInterval(() => {
       void fetchUnreadMessages();
     }, 30000);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      socket?.close();
+    };
   }, [pathname, username]);
 
   const handleLogout = () => {

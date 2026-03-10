@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock, Heart, ListPlus, Search, Star, X } from "lucide-react";
+import { Clock, Heart, ListPlus, Search, Share2, Star, X } from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
 import { canAddToPlaylist, type PlaylistSummary } from "@/lib/playlists";
+import { buildMessageShareHref } from "@/lib/movie-share";
 
 interface MovieDetail {
   id: number;
@@ -273,6 +274,13 @@ export default function SearchPage() {
                     >
                       <Heart className="h-4 w-4" />
                       J&apos;adore
+                    </button>
+                    <button
+                      onClick={() => router.push(buildMessageShareHref(selectedMovie))}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-amber-700 bg-amber-950/60 py-2 text-sm font-bold text-amber-100 transition hover:bg-amber-700"
+                    >
+                      <Share2 className="h-4 w-4" />
+                      Partager
                     </button>
                   </div>
 

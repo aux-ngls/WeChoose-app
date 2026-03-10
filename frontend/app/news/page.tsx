@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock, ListPlus, Star, X } from "lucide-react";
+import { Clock, ListPlus, Share2, Star, X } from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
 import { canAddToPlaylist, type PlaylistSummary } from "@/lib/playlists";
+import { buildMessageShareHref } from "@/lib/movie-share";
 
 interface Movie {
   id: number;
@@ -217,13 +218,22 @@ export default function NewsPage() {
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => void openPlaylistSelector()}
-                    className="mb-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 font-bold transition hover:bg-blue-500"
-                  >
-                    <ListPlus className="h-5 w-5" />
-                    Ajouter a une liste
-                  </button>
+                  <div className="mb-6 flex gap-2">
+                    <button
+                      onClick={() => void openPlaylistSelector()}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 font-bold transition hover:bg-blue-500"
+                    >
+                      <ListPlus className="h-5 w-5" />
+                      Ajouter a une liste
+                    </button>
+                    <button
+                      onClick={() => router.push(buildMessageShareHref(selectedMovie))}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-700 bg-amber-950/60 py-3 font-bold text-amber-100 transition hover:bg-amber-700"
+                    >
+                      <Share2 className="h-5 w-5" />
+                      Partager
+                    </button>
+                  </div>
 
                   <p className="mb-6 text-sm leading-relaxed text-gray-300">{selectedMovie.overview}</p>
 
