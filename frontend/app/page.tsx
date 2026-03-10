@@ -115,6 +115,20 @@ export default function Home() {
     void fetchMovies();
   }, []);
 
+  useEffect(() => {
+    if (loading || movies.length >= 4) {
+      return;
+    }
+
+    const queuedIds = movies.map((movie) => movie.id);
+    const refillDelay = movies.length === 0 ? 500 : 150;
+    const refillTimer = window.setTimeout(() => {
+      void fetchMovies(queuedIds);
+    }, refillDelay);
+
+    return () => window.clearTimeout(refillTimer);
+  }, [loading, movies]);
+
   const removeFrontCard = () => {
     let shouldLoadMore = false;
     let remainingIds: number[] = [];
@@ -355,7 +369,7 @@ export default function Home() {
         <div className="relative flex h-[62vh] w-full max-w-sm items-center justify-center">
           {movies.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-3xl border border-gray-800 bg-gray-950 px-8 py-10 text-center text-gray-400">
-              <p>Plus de films a proposer pour le moment.</p>
+              <p>Chargement de nouveaux films...</p>
               <button
                 onClick={() => {
                   setLoading(true);

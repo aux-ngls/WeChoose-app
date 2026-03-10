@@ -77,6 +77,38 @@ def extract_json_names(value) -> list[str]:
     return names
 
 
+def extract_json_ids(value) -> list[int]:
+    if not isinstance(value, str) or not value:
+        return []
+
+    try:
+        items = ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        return []
+
+    parsed_ids: list[int] = []
+    for item in items:
+        item_id = item.get("id") if isinstance(item, dict) else None
+        if isinstance(item_id, int):
+            parsed_ids.append(item_id)
+    return parsed_ids
+
+
+def normalize_tmdb_movie(movie: dict) -> Optional[dict]:
+    movie_id = movie.get("id")
+    title = movie.get("title")
+    if not isinstance(movie_id, int) or not title:
+        return None
+
+    poster_path = movie.get("poster_path")
+    return {
+        "id": movie_id,
+        "title": str(title),
+        "poster_url": f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else "https://via.placeholder.com/500",
+        "rating": float(movie.get("vote_average") or 0.0),
+    }
+
+
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -126,6 +158,11 @@ try:
     movies_df["vote_count"] = pd.to_numeric(movies_df.get("vote_count", 0), errors="coerce").fillna(0.0)
     movies_df["genre_tokens"] = (
         movies_df["genres"].apply(extract_json_names)
+        if "genres" in movies_df.columns
+        else [[] for _ in range(len(movies_df))]
+    )
+    movies_df["genre_ids"] = (
+        movies_df["genres"].apply(extract_json_ids)
         if "genres" in movies_df.columns
         else [[] for _ in range(len(movies_df))]
     )
@@ -308,6 +345,67 @@ def get_tmdb_related_movie_ids(movie_id: int) -> tuple[int, ...]:
                 related_ids.append(movie_id_value)
 
     return tuple(related_ids)
+
+
+@lru_cache(maxsize=256)
+def get_tmdb_related_movies(movie_id: int) -> tuple[dict, ...]:
+    related_movies: list[dict] = []
+    endpoints = (
+        f"https://api.themoviedb.org/3/movie/{movie_id}/recommendations?api_key={TMDB_API_KEY}&language=fr-FR&page=1",
+        f"https://api.themoviedb.org/3/movie/{movie_id}/similar?api_key={TMDB_API_KEY}&language=fr-FR&page=1",
+    )
+
+    seen_ids: set[int] = set()
+    for url in endpoints:
+        try:
+            results = requests.get(url, timeout=2).json().get("results", [])[:12]
+        except Exception:
+            results = []
+
+        for movie in results:
+            normalized_movie = normalize_tmdb_movie(movie)
+            if not normalized_movie:
+                continue
+            if normalized_movie["id"] in seen_ids:
+                continue
+            seen_ids.add(normalized_movie["id"])
+            related_movies.append(normalized_movie)
+
+    return tuple(related_movies)
+
+
+@lru_cache(maxsize=64)
+def get_tmdb_discover_movies(page: int, genre_ids_key: str) -> tuple[dict, ...]:
+    params = [
+        f"api_key={TMDB_API_KEY}",
+        "language=fr-FR",
+        "sort_by=popularity.desc",
+        "include_adult=false",
+        "include_video=false",
+        f"page={page}",
+        "vote_count.gte=200",
+    ]
+    if genre_ids_key:
+        params.append(f"with_genres={genre_ids_key}")
+
+    url = f"https://api.themoviedb.org/3/discover/movie?{'&'.join(params)}"
+    try:
+        results = requests.get(url, timeout=2).json().get("results", [])[:20]
+    except Exception:
+        results = []
+
+    normalized_movies: list[dict] = []
+    seen_ids: set[int] = set()
+    for movie in results:
+        normalized_movie = normalize_tmdb_movie(movie)
+        if not normalized_movie:
+            continue
+        if normalized_movie["id"] in seen_ids:
+            continue
+        seen_ids.add(normalized_movie["id"])
+        normalized_movies.append(normalized_movie)
+
+    return tuple(normalized_movies)
 
 # --- 6. ROUTES PLAYLISTS & RATINGS ---
 class PlaylistCreate(BaseModel):
