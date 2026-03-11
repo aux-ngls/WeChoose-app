@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clock, Heart, ListPlus, Search, Share2, Star, X } from "lucide-react";
 import { API_URL } from "@/config";
-import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
+import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import { canAddToPlaylist, type PlaylistSummary } from "@/lib/playlists";
 import { buildMessageShareHref } from "@/lib/movie-share";
+import MobilePageHeader from "@/components/MobilePageHeader";
 
 interface MovieDetail {
   id: number;
@@ -30,8 +31,7 @@ export default function SearchPage() {
   const [error, setError] = useState("");
 
   const redirectToLogin = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
+    clearStoredSession();
     router.push("/login");
   };
 
@@ -176,8 +176,38 @@ export default function SearchPage() {
   };
 
   return (
-    <main className="min-h-screen bg-black p-4 pb-24 text-white">
-      <div className="sticky top-0 z-10 mb-2 bg-black/95 py-2">
+    <main className="min-h-screen bg-black px-4 pb-24 pt-3 text-white md:p-4 md:pb-24">
+      <MobilePageHeader
+        title="Recherche"
+        subtitle="Trouve vite un film et ouvre sa fiche"
+        icon={Search}
+        accent="red"
+        trailing={
+          results.length > 0 ? (
+            <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white">
+              {results.length}
+            </div>
+          ) : null
+        }
+      />
+
+      <div className="sticky top-0 z-10 mb-3 bg-black/90 py-2 backdrop-blur md:hidden">
+        <form
+          onSubmit={handleSearch}
+          className="relative overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] px-3 py-3 shadow-[0_18px_42px_rgba(0,0,0,0.32)]"
+        >
+          <Search className="pointer-events-none absolute left-6 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            placeholder="Recherche un film"
+            className="w-full rounded-2xl border border-white/10 bg-black/40 px-10 py-3 text-sm text-white outline-none transition focus:border-red-600"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </form>
+      </div>
+
+      <div className="sticky top-0 z-10 mb-2 hidden bg-black/95 py-2 md:block">
         <form onSubmit={handleSearch} className="relative mx-auto max-w-lg">
           <input
             type="text"
@@ -197,33 +227,69 @@ export default function SearchPage() {
       )}
 
       {loading ? (
-        <p className="mt-10 text-center text-gray-500">Recherche en cours...</p>
-      ) : (
-        <div className="grid grid-cols-3 gap-3 md:grid-cols-5 lg:grid-cols-7">
-          {results.map((movie) => (
-            <button
-              key={movie.id}
-              onClick={() => void openDetails(movie.id)}
-              className="group relative cursor-pointer text-left"
-            >
-              <div className="aspect-[2/3] overflow-hidden rounded-lg border border-gray-800">
-                <img
-                  src={movie.poster_url || "https://via.placeholder.com/500x750?text=No+Image"}
-                  alt={movie.title}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-                />
-              </div>
-              <h3 className="mt-1 truncate text-[10px] font-bold text-gray-300 group-hover:text-white md:text-xs">
-                {movie.title}
-              </h3>
-            </button>
-          ))}
+        <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-10 text-center text-sm text-gray-400 md:mt-10 md:border-0 md:bg-transparent">
+          Recherche en cours...
         </div>
+      ) : (
+        <>
+          <div className="space-y-3 md:hidden">
+            {results.length === 0 ? (
+              <div className="rounded-[24px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-10 text-center text-sm text-gray-500">
+                {query.trim() ? "Aucun film ne correspond pour l'instant." : "Commence par saisir un titre."}
+              </div>
+            ) : (
+              results.map((movie) => (
+                <button
+                  key={movie.id}
+                  onClick={() => void openDetails(movie.id)}
+                  className="flex w-full items-center gap-3 rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-3 text-left shadow-[0_16px_34px_rgba(0,0,0,0.28)] transition active:scale-[0.99]"
+                >
+                  <img
+                    src={movie.poster_url || "https://via.placeholder.com/500x750?text=No+Image"}
+                    alt={movie.title}
+                    className="h-24 w-16 rounded-2xl object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-base font-bold text-white">{movie.title}</div>
+                    <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-semibold text-yellow-300">
+                      <Star className="h-3.5 w-3.5 fill-current" />
+                      {movie.rating.toFixed(1)}
+                    </div>
+                    <div className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                      Ouvrir la fiche
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="hidden grid-cols-3 gap-3 md:grid md:grid-cols-5 lg:grid-cols-7">
+            {results.map((movie) => (
+              <button
+                key={movie.id}
+                onClick={() => void openDetails(movie.id)}
+                className="group relative cursor-pointer text-left"
+              >
+                <div className="aspect-[2/3] overflow-hidden rounded-lg border border-gray-800">
+                  <img
+                    src={movie.poster_url || "https://via.placeholder.com/500x750?text=No+Image"}
+                    alt={movie.title}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  />
+                </div>
+                <h3 className="mt-1 truncate text-[10px] font-bold text-gray-300 group-hover:text-white md:text-xs">
+                  {movie.title}
+                </h3>
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {selectedMovie && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
-          <div className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/90 p-0 backdrop-blur-sm md:items-center md:p-4">
+          <div className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[30px] border border-gray-800 bg-gray-900 shadow-2xl md:max-h-[85vh] md:rounded-2xl">
             {!showPlaylistSelector ? (
               <>
                 <button

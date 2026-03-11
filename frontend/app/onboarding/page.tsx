@@ -11,6 +11,7 @@ import {
   markOnboardingCompleted,
 } from "@/lib/auth";
 import { FALLBACK_POSTER, type SearchMovie } from "@/lib/social";
+import MobilePageHeader from "@/components/MobilePageHeader";
 
 const GENRE_OPTIONS = [
   "Action",
@@ -283,7 +284,14 @@ export default function OnboardingPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.20),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.16),_transparent_24%),#000] px-4 py-6 text-white">
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
-        <section className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.38)] backdrop-blur-md md:p-7">
+        <MobilePageHeader
+          title="Onboarding IA"
+          subtitle="Configure ton premier feed cinema"
+          icon={Sparkles}
+          accent="red"
+        />
+
+        <section className="hidden overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.38)] backdrop-blur-md md:block md:p-7">
           <div className="inline-flex items-center gap-2 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-red-200">
             <Sparkles className="h-3.5 w-3.5" />
             Onboarding IA

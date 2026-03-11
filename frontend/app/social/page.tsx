@@ -30,6 +30,7 @@ import {
   type SocialUser,
   formatSocialDate,
 } from "@/lib/social";
+import MobilePageHeader from "@/components/MobilePageHeader";
 
 interface NotificationsPayload {
   items: SocialNotification[];
@@ -633,7 +634,19 @@ export default function SocialPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.22),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.16),_transparent_26%),#000] px-4 py-3 text-white md:py-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 md:gap-6">
-        <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md">
+        <MobilePageHeader
+          title="Social"
+          subtitle="Critiques, profils et alertes"
+          icon={Users}
+          accent="red"
+          trailing={
+            <div className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-[11px] font-semibold text-white">
+              {unreadNotifications}
+            </div>
+          }
+        />
+
+        <section className="hidden overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md md:block">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:p-5">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-500/12 text-red-200">

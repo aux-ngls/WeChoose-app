@@ -28,6 +28,7 @@ import {
   type DirectMessage,
 } from "@/lib/messages";
 import { buildRealtimeWebSocketUrl } from "@/lib/realtime";
+import MobilePageHeader from "@/components/MobilePageHeader";
 
 interface MovieDetail extends SearchMovie {
   overview?: string;
@@ -616,7 +617,19 @@ function MessagesPageContent() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_28%),#000] px-4 py-3 text-white md:py-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 md:gap-6">
-        <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md">
+        <MobilePageHeader
+          title="Messages"
+          subtitle={mobileView === "chat" ? `@${activeConversationTitle}` : "Inbox et nouveaux DM"}
+          icon={MessageCircle}
+          accent="sky"
+          trailing={
+            <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white">
+              {conversations.length}
+            </div>
+          }
+        />
+
+        <section className="hidden overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md md:block">
           <div className="flex items-center justify-between gap-3 px-4 py-3 md:p-5">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/12 text-sky-200">

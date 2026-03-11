@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clock, ListPlus, Share2, Star, X } from "lucide-react";
 import { API_URL } from "@/config";
-import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
+import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import { canAddToPlaylist, type PlaylistSummary } from "@/lib/playlists";
 import { buildMessageShareHref } from "@/lib/movie-share";
+import MobilePageHeader from "@/components/MobilePageHeader";
 
 interface Movie {
   id: number;
@@ -32,8 +33,7 @@ export default function NewsPage() {
   const [error, setError] = useState("");
 
   const redirectToLogin = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
+    clearStoredSession();
     router.push("/login");
   };
 
@@ -141,8 +141,22 @@ export default function NewsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-black p-4 pb-24 text-white">
-      <h1 className="mb-6 text-2xl font-bold tracking-tighter text-red-600">A l&apos;affiche</h1>
+    <main className="min-h-screen bg-black px-4 pb-24 pt-3 text-white md:p-4 md:pb-24">
+      <MobilePageHeader
+        title="A l'affiche"
+        subtitle="Les sorties a surveiller en ce moment"
+        icon={Clock}
+        accent="amber"
+        trailing={
+          movies.length > 0 ? (
+            <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white">
+              {movies.length}
+            </div>
+          ) : null
+        }
+      />
+
+      <h1 className="mb-6 hidden text-2xl font-bold tracking-tighter text-red-600 md:block">A l&apos;affiche</h1>
 
       {error && (
         <div className="mx-auto mb-4 max-w-lg rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-100">
@@ -153,35 +167,63 @@ export default function NewsPage() {
       {loading ? (
         <p className="mt-10 text-center text-gray-500">Chargement des sorties...</p>
       ) : (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
-          {movies.map((movie) => (
-            <button
-              key={movie.id}
-              onClick={() => void openDetails(movie.id)}
-              className="group cursor-pointer text-left"
-            >
-              <div className="relative mb-2 aspect-[2/3] overflow-hidden rounded-xl border border-gray-800">
+        <>
+          <div className="space-y-3 md:hidden">
+            {movies.map((movie) => (
+              <button
+                key={movie.id}
+                onClick={() => void openDetails(movie.id)}
+                className="flex w-full items-center gap-3 rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-3 text-left shadow-[0_16px_34px_rgba(0,0,0,0.28)] transition active:scale-[0.99]"
+              >
                 <img
                   src={movie.poster_url}
                   alt={movie.title}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  className="h-24 w-16 rounded-2xl object-cover"
                 />
-                <div className="absolute right-2 top-2 flex items-center rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-yellow-400 backdrop-blur-sm">
-                  <Star className="mr-1 h-3 w-3 fill-current" />
-                  {movie.rating.toFixed(1)}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-base font-bold text-white">{movie.title}</div>
+                  <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-semibold text-yellow-300">
+                    <Star className="h-3.5 w-3.5 fill-current" />
+                    {movie.rating.toFixed(1)}
+                  </div>
+                  <div className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                    Voir la fiche
+                  </div>
                 </div>
-              </div>
-              <h3 className="text-sm font-bold leading-tight text-gray-200 transition-colors group-hover:text-white">
-                {movie.title}
-              </h3>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="hidden grid-cols-2 gap-4 md:grid md:grid-cols-4 lg:grid-cols-5">
+            {movies.map((movie) => (
+              <button
+                key={movie.id}
+                onClick={() => void openDetails(movie.id)}
+                className="group cursor-pointer text-left"
+              >
+                <div className="relative mb-2 aspect-[2/3] overflow-hidden rounded-xl border border-gray-800">
+                  <img
+                    src={movie.poster_url}
+                    alt={movie.title}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  />
+                  <div className="absolute right-2 top-2 flex items-center rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-yellow-400 backdrop-blur-sm">
+                    <Star className="mr-1 h-3 w-3 fill-current" />
+                    {movie.rating.toFixed(1)}
+                  </div>
+                </div>
+                <h3 className="text-sm font-bold leading-tight text-gray-200 transition-colors group-hover:text-white">
+                  {movie.title}
+                </h3>
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {selectedMovie && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
-          <div className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/90 p-0 backdrop-blur-sm md:items-center md:p-4">
+          <div className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[30px] border border-gray-800 bg-gray-900 shadow-2xl md:max-h-[85vh] md:rounded-2xl">
             {!showPlaylistSelector ? (
               <>
                 <button

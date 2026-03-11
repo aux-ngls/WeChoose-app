@@ -103,9 +103,18 @@ export default function Navbar() {
     return active ? "text-red-500" : "text-gray-400 hover:text-white";
   };
 
+  const mobileNavItems = [
+    { href: "/", label: "Accueil", icon: Home },
+    { href: "/news", label: "Sorties", icon: Film },
+    { href: "/search", label: "Recherche", icon: Search },
+    { href: "/playlist", label: "Listes", icon: List },
+    { href: "/social", label: "Social", icon: Users },
+    { href: "/messages", label: "DM", icon: MessageCircle },
+  ] as const;
+
   return (
     <>
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-zinc-950/88 px-3 pb-[calc(0.8rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl md:top-0 md:bottom-auto md:border-b md:border-t-0 md:px-6 md:pb-3">
+      <nav className="hidden md:fixed md:inset-x-0 md:top-0 md:z-50 md:block md:border-b md:border-white/10 md:bg-zinc-950/88 md:px-6 md:py-3 md:backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
           <Link href="/" className="hidden md:flex items-center">
             <QulteLogo />
@@ -168,6 +177,49 @@ export default function Navbar() {
                 </Link>
               </div>
             )}
+          </div>
+        </div>
+      </nav>
+
+      <nav className="fixed inset-x-3 bottom-[calc(0.7rem+env(safe-area-inset-bottom))] z-50 md:hidden">
+        <div className="mx-auto max-w-md rounded-[30px] border border-white/10 bg-zinc-950/88 p-2 shadow-[0_18px_48px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
+          <div className="flex items-center gap-1.5">
+            {mobileNavItems.map((item) => {
+              const Icon = item.icon;
+              const active =
+                pathname === item.href ||
+                (item.href !== "/" && pathname.startsWith(`${item.href}/`));
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`group relative flex min-w-0 flex-1 items-center justify-center rounded-full px-2 py-2.5 transition ${
+                    active
+                      ? "bg-white text-black shadow-[0_10px_24px_rgba(255,255,255,0.12)]"
+                      : "text-gray-400 hover:bg-white/[0.04] hover:text-white"
+                  }`}
+                >
+                  <span className="relative flex items-center gap-2">
+                    <span className="relative">
+                      <Icon size={18} />
+                      {item.href === "/messages" && unreadMessages > 0 && (
+                        <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                          {unreadMessages > 9 ? "9+" : unreadMessages}
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className={`overflow-hidden text-[11px] font-semibold transition-all ${
+                        active ? "max-w-20 opacity-100" : "max-w-0 opacity-0"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </nav>
