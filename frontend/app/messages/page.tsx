@@ -13,7 +13,6 @@ import {
   Share2,
   Sparkles,
   Star,
-  Users,
   X,
 } from "lucide-react";
 import { API_URL } from "@/config";
@@ -695,87 +694,75 @@ function MessagesPageContent() {
 
         <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
           <div
-            className={`space-y-6 lg:sticky lg:top-24 lg:self-start ${
+            className={`space-y-4 lg:sticky lg:top-24 lg:flex lg:max-h-[calc(100svh-11rem)] lg:flex-col lg:self-start ${
               mobileView === "chat" ? "hidden lg:block" : ""
             }`}
           >
             <section
-              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+              className={`relative rounded-[24px] border border-white/10 bg-zinc-950/90 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
                 mobileSidebarTab === "discover" ? "block" : "hidden lg:block"
               }`}
             >
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-300">
-                  <Users className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold">Nouveau message</h2>
-                  <p className="text-sm text-gray-400">Trouve un utilisateur et ouvre un DM.</p>
-                </div>
-              </div>
-
-              <div className="relative mb-4">
+              <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-500" />
                 <input
                   value={userQuery}
                   onChange={(event) => setUserQuery(event.target.value)}
-                  placeholder="Chercher un utilisateur"
+                  placeholder="Nouveau message: chercher un utilisateur"
                   className="w-full rounded-2xl border border-white/10 bg-black/40 px-10 py-3 text-sm text-white outline-none transition focus:border-sky-500/70"
                 />
               </div>
 
-              <div className="space-y-3">
-                {usersLoading ? (
-                  <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-black/30 px-4 py-8 text-sm text-gray-400">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Chargement des utilisateurs...
-                  </div>
-                ) : userResults.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
-                    Aucun utilisateur disponible.
-                  </div>
-                ) : (
-                  userResults.map((user) => {
-                    const isStarting = startingConversationIds.includes(user.id);
-                    return (
-                      <div
-                        key={user.id}
-                        className="flex items-center justify-between gap-3 rounded-[22px] border border-white/10 bg-white/[0.03] p-4"
-                      >
-                        <div className="min-w-0">
-                          <Link
-                            href={`/social/${encodeURIComponent(user.username)}`}
-                            className="truncate text-base font-semibold transition hover:text-sky-300"
-                          >
-                            @{user.username}
-                          </Link>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-400">
-                            <span className="rounded-full bg-white/[0.04] px-2 py-1">
-                              {user.reviews_count} critiques
-                            </span>
-                            <span className="rounded-full bg-white/[0.04] px-2 py-1">
-                              {user.followers_count} abonnes
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => void startConversation(user)}
-                          disabled={isStarting}
-                          className="rounded-full bg-sky-500 px-4 py-2 text-sm font-bold text-black transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+              {(userQuery.trim().length >= 2 || usersLoading) && (
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-[22px] border border-white/10 bg-black/85 p-2 lg:absolute lg:left-3 lg:right-3 lg:top-[4.7rem] lg:z-20 lg:mt-0 lg:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
+                  {usersLoading ? (
+                    <div className="flex items-center justify-center rounded-2xl bg-black/30 px-4 py-8 text-sm text-gray-400">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Chargement des utilisateurs...
+                    </div>
+                  ) : userResults.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
+                      Aucun utilisateur disponible.
+                    </div>
+                  ) : (
+                    userResults.map((user) => {
+                      const isStarting = startingConversationIds.includes(user.id);
+                      return (
+                        <div
+                          key={user.id}
+                          className="flex items-center justify-between gap-3 rounded-[18px] border border-white/10 bg-white/[0.03] p-3"
                         >
-                          {isStarting ? "..." : "DM"}
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                          <div className="min-w-0">
+                            <Link
+                              href={`/social/${encodeURIComponent(user.username)}`}
+                              className="truncate text-sm font-semibold transition hover:text-sky-300"
+                            >
+                              @{user.username}
+                            </Link>
+                            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-400">
+                              <span>{user.reviews_count} critiques</span>
+                              <span>{user.followers_count} abonnes</span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => void startConversation(user)}
+                            disabled={isStarting}
+                            className="rounded-full bg-sky-500 px-3 py-2 text-xs font-bold text-black transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isStarting ? "..." : "DM"}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </section>
 
             <section
-              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col ${
                 mobileSidebarTab === "inbox" ? "block" : "hidden lg:block"
               }`}
             >
@@ -789,7 +776,7 @@ function MessagesPageContent() {
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
                 {conversationsLoading ? (
                   <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-black/30 px-4 py-8 text-sm text-gray-400">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

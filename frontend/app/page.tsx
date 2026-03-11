@@ -48,6 +48,7 @@ export default function Home() {
   const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const isFetchingRef = useRef(false);
+  const isSwipingRef = useRef(false);
 
   const redirectToLogin = () => {
     localStorage.removeItem("token");
@@ -198,27 +199,54 @@ export default function Home() {
     return true;
   };
 
-  const handleSwipe = async (direction: SwipeDirection, movie: Movie) => {
-    try {
-      if (direction === "right") {
-        const added = await addToPlaylist(WATCH_LATER_PLAYLIST_ID, movie.id);
-        if (!added) {
-          return;
-        }
-      } else {
-        const rated = await rateMovie(movie.id, 1);
-        if (!rated) {
-          return;
-        }
+  const restoreMovieToFront = (movie: Movie) => {
+    setMovies((current) => {
+      if (current.some((entry) => entry.id === movie.id)) {
+        return current;
       }
+      return [movie, ...current];
+    });
+  };
 
-      removeFrontCard();
-      setError("");
-    } catch (swipeError) {
-      console.error(swipeError);
-      setError("Impossible d'enregistrer cette action.");
-      setExitDirection(0);
+  const persistSwipeAction = async (direction: SwipeDirection, movie: Movie) => {
+    if (direction === "right") {
+      const added = await addToPlaylist(WATCH_LATER_PLAYLIST_ID, movie.id);
+      if (!added) {
+        throw new Error("Ajout a la liste impossible");
+      }
+      return;
     }
+
+    const rated = await rateMovie(movie.id, 1);
+    if (!rated) {
+      throw new Error("Notation impossible");
+    }
+  };
+
+  const triggerSwipe = (direction: SwipeDirection, movie: Movie) => {
+    if (isSwipingRef.current) {
+      return;
+    }
+
+    isSwipingRef.current = true;
+    setExitDirection(direction === "left" ? -1000 : 1000);
+    window.setTimeout(() => removeFrontCard(), 28);
+
+    void persistSwipeAction(direction, movie)
+      .then(() => {
+        setError("");
+      })
+      .catch((swipeError) => {
+        console.error(swipeError);
+        restoreMovieToFront(movie);
+        setError("Impossible d'enregistrer cette action.");
+        setExitDirection(0);
+      })
+      .finally(() => {
+        window.setTimeout(() => {
+          isSwipingRef.current = false;
+        }, 140);
+      });
   };
 
   const handleRate = async (rating: number, movie: Movie) => {
@@ -240,14 +268,10 @@ export default function Home() {
 
   const manualSwipe = (direction: SwipeDirection) => {
     const frontMovie = movies[0];
-    if (!frontMovie) {
+    if (!frontMovie || isSwipingRef.current) {
       return;
     }
-
-    setExitDirection(direction === "left" ? -1000 : 1000);
-    window.setTimeout(() => {
-      void handleSwipe(direction, frontMovie);
-    }, 60);
+    triggerSwipe(direction, frontMovie);
   };
 
   const openDetails = async (id: number) => {
@@ -348,26 +372,22 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white px-4 pb-6">
-      <section className="mx-auto flex w-full max-w-5xl flex-col items-center pt-2 md:pt-8">
-        <div className="mb-5 flex flex-col items-center gap-3 text-center md:mb-6">
+    <main className="h-[calc(100svh-8.8rem)] overflow-hidden bg-black px-4 pb-2 text-white md:h-[calc(100svh-6.8rem)]">
+      <section className="mx-auto flex h-full w-full max-w-5xl flex-col items-center justify-between gap-4 pt-1 md:pt-3">
+        <div className="flex w-full max-w-sm flex-col gap-3 md:max-w-md">
           <span className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-red-200">
             <Sparkles className="h-3.5 w-3.5" />
-            Recos Personnalisees
+            Recommandations IA
           </span>
-          <h1 className="text-3xl font-black tracking-tight text-white md:text-4xl">Qulte</h1>
-          <p className="max-w-xl text-sm text-gray-400">
-            Swipe, note et laisse l&apos;IA recalculer tes prochains films selon tes gouts.
-          </p>
         </div>
 
         {error && (
-          <div className="mb-5 w-full max-w-md rounded-2xl border border-red-900/60 bg-red-950/50 px-4 py-3 text-sm text-red-100">
+          <div className="w-full max-w-sm rounded-2xl border border-red-900/60 bg-red-950/50 px-4 py-3 text-sm text-red-100 md:max-w-md">
             {error}
           </div>
         )}
 
-        <div className="relative flex h-[60svh] w-full max-w-sm items-center justify-center md:h-[62vh]">
+        <div className="relative flex min-h-0 flex-1 w-full max-w-sm items-center justify-center md:max-w-md">
           {movies.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-3xl border border-gray-800 bg-gray-950 px-8 py-10 text-center text-gray-400">
               <p>Chargement de nouveaux films...</p>
@@ -382,7 +402,7 @@ export default function Home() {
               </button>
             </div>
           ) : (
-            <AnimatePresence initial={false}>
+            <AnimatePresence initial={false} mode="popLayout">
               {movies
                 .slice(0, 2)
                 .map((movie, index) => (
@@ -393,7 +413,7 @@ export default function Home() {
                     exitDirection={exitDirection}
                     onInfoClick={() => void openDetails(movie.id)}
                     onRate={(rating) => void handleRate(rating, movie)}
-                    onSwipe={(direction) => void handleSwipe(direction, movie)}
+                    onSwipe={(direction) => triggerSwipe(direction, movie)}
                   />
                 ))
                 .reverse()}
@@ -402,22 +422,22 @@ export default function Home() {
         </div>
 
         {movies.length > 0 && !selectedMovie && (
-          <div className="mt-6 grid w-full max-w-sm grid-cols-2 gap-3 md:mt-8 md:flex md:justify-center md:gap-8">
+          <div className="grid w-full max-w-sm grid-cols-2 items-center gap-3 md:max-w-md">
             <button
               onClick={() => manualSwipe("left")}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-red-500 transition hover:scale-105 hover:border-red-700 md:rounded-full md:p-4"
+              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-red-500 transition hover:scale-105 hover:border-red-700"
               aria-label="Passer ce film"
             >
               <X size={24} />
-              <span className="text-sm font-semibold md:hidden">Passer</span>
+              <span className="text-sm font-semibold">Passer</span>
             </button>
             <button
               onClick={() => manualSwipe("right")}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-blue-400 transition hover:scale-105 hover:border-blue-700 md:rounded-full md:p-4"
+              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-blue-400 transition hover:scale-105 hover:border-blue-700"
               aria-label="Ajouter a regarder plus tard"
             >
               <Clock size={24} />
-              <span className="text-sm font-semibold md:hidden">Plus tard</span>
+              <span className="text-sm font-semibold">Plus tard</span>
             </button>
           </div>
         )}
@@ -561,18 +581,18 @@ function MovieCard({
   onSwipe,
 }: MovieCardProps) {
   const x = useMotionValue(0);
-  const rotate = useTransform(x, [-220, 220], [-22, 22]);
-  const opacity = useTransform(x, [-220, -160, 0, 160, 220], [0, 1, 1, 1, 0]);
-  const blueOverlay = useTransform(x, [0, 120], [0, 0.45]);
-  const redOverlay = useTransform(x, [-120, 0], [0.45, 0]);
+  const rotate = useTransform(x, [-180, 180], [-18, 18]);
+  const opacity = useTransform(x, [-200, -120, 0, 120, 200], [0.15, 1, 1, 1, 0.15]);
+  const blueOverlay = useTransform(x, [0, 80], [0, 0.55]);
+  const redOverlay = useTransform(x, [-80, 0], [0.55, 0]);
 
   const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    if (info.offset.x > 110) {
+    if (info.offset.x > 78 || info.velocity.x > 520) {
       onSwipe("right");
       return;
     }
 
-    if (info.offset.x < -110) {
+    if (info.offset.x < -78 || info.velocity.x < -520) {
       onSwipe("left");
     }
   };
@@ -582,17 +602,21 @@ function MovieCard({
       style={{ x, rotate, opacity, zIndex: isFront ? 1 : 0 }}
       drag={isFront ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.12}
+      dragMomentum={true}
       onDragEnd={handleDragEnd}
-      animate={{ scale: isFront ? 1 : 0.96, opacity: 1 }}
+      whileDrag={isFront ? { scale: 1.015 } : undefined}
+      animate={{ scale: isFront ? 1 : 0.965, opacity: 1 }}
       exit={{ x: exitDirection || (x.get() < 0 ? -1000 : 1000), opacity: 0 }}
-      className={`absolute top-0 h-full w-[88%] overflow-hidden rounded-[2rem] border border-gray-800 bg-gray-950 shadow-2xl ${
+      transition={{ type: "spring", stiffness: 340, damping: 28, mass: 0.8 }}
+      className={`absolute top-0 h-full w-[92%] overflow-hidden rounded-[2rem] border border-gray-800 bg-gray-950 shadow-2xl md:w-[88%] ${
         isFront ? "" : "pointer-events-none"
       }`}
     >
       <div className="relative flex h-full flex-col">
         <button
           onClick={onInfoClick}
-          className="relative h-[74%] w-full overflow-hidden bg-black text-left"
+          className="relative h-[76%] w-full overflow-hidden bg-black text-left"
         >
           <img
             src={movie.poster_url}
@@ -601,7 +625,7 @@ function MovieCard({
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-transparent" />
           <div className="absolute bottom-4 left-4 right-4">
-            <h2 className="text-2xl font-black text-white drop-shadow-lg">{movie.title}</h2>
+            <h2 className="text-[1.7rem] font-black text-white drop-shadow-lg md:text-2xl">{movie.title}</h2>
             <div className="mt-1 flex items-center text-sm text-yellow-400">
               <Star className="mr-1 h-4 w-4 fill-current" />
               {movie.rating.toFixed(1)} / 10
@@ -609,7 +633,7 @@ function MovieCard({
           </div>
         </button>
 
-        <div className="flex h-[26%] flex-col justify-between px-4 py-4">
+        <div className="flex h-[24%] flex-col justify-between px-4 py-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.22em] text-gray-500">
               Deja vu ? Note-le pour affiner l&apos;IA

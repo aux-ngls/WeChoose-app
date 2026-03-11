@@ -829,6 +829,7 @@ def fetch_notifications_payload(cursor, user_id: int, limit: int) -> dict:
         LEFT JOIN reviews r ON r.id = n.review_id
         LEFT JOIN comments c ON c.id = n.comment_id
         WHERE n.user_id = ?
+        AND n.is_read = 0
         ORDER BY n.created_at DESC, n.id DESC
         LIMIT ?
         """,

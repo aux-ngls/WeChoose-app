@@ -53,14 +53,13 @@ export default function SocialPage() {
   const [selectedMovie, setSelectedMovie] = useState<SearchMovie | null>(null);
   const [reviewContent, setReviewContent] = useState("");
   const [reviewRating, setReviewRating] = useState(4);
+  const [composerSearchMode, setComposerSearchMode] = useState<"movies" | "people">("movies");
   const [userQuery, setUserQuery] = useState("");
   const [commentsByReview, setCommentsByReview] = useState<Record<number, SocialComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [replyTargets, setReplyTargets] = useState<Record<number, ReplyTarget | null>>({});
   const [openCommentReviews, setOpenCommentReviews] = useState<number[]>([]);
-  const [mobileSection, setMobileSection] = useState<"feed" | "write" | "people" | "alerts">(
-    "feed",
-  );
+  const [mobileSection, setMobileSection] = useState<"feed" | "write" | "alerts">("feed");
   const [feedLoading, setFeedLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(true);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
@@ -258,14 +257,24 @@ export default function SocialPage() {
   }, []);
 
   useEffect(() => {
+    if (composerSearchMode !== "people") {
+      return;
+    }
+
     const handle = window.setTimeout(() => {
       void fetchUsers(userQuery);
     }, 250);
 
     return () => window.clearTimeout(handle);
-  }, [userQuery]);
+  }, [composerSearchMode, userQuery]);
 
   useEffect(() => {
+    if (composerSearchMode !== "movies") {
+      setMovieSearchLoading(false);
+      setSearchError("");
+      return;
+    }
+
     const trimmedQuery = movieQuery.trim();
 
     if (!trimmedQuery || trimmedQuery.length < 2) {
@@ -552,7 +561,7 @@ export default function SocialPage() {
       }
 
       setUnreadNotifications(0);
-      setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
+      setNotifications([]);
       setNotificationsError("");
     } catch (error) {
       console.error(error);
@@ -657,11 +666,10 @@ export default function SocialPage() {
         </section>
 
         <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md lg:hidden">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {[
               { key: "feed", label: "Feed", icon: Film },
               { key: "write", label: "Critique", icon: PenSquare },
-              { key: "people", label: "Profils", icon: Users },
               { key: "alerts", label: "Alertes", icon: Bell },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -670,9 +678,7 @@ export default function SocialPage() {
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() =>
-                    setMobileSection(tab.key as "feed" | "write" | "people" | "alerts")
-                  }
+                  onClick={() => setMobileSection(tab.key as "feed" | "write" | "alerts")}
                   className={`relative rounded-[18px] px-2 py-3 text-xs font-semibold transition ${
                     isActive
                       ? "bg-red-600 text-white"
@@ -706,35 +712,72 @@ export default function SocialPage() {
                   <PenSquare className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">Nouvelle critique</h2>
-                  <p className="text-sm text-gray-400">Choisis un film, note-le, puis publie ton avis.</p>
+                  <h2 className="text-lg font-bold">Recherche et critique</h2>
+                  <p className="text-sm text-gray-400">Films et profils sont maintenant dans la meme barre.</p>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
-                    Film
+                    Recherche
                   </label>
+                  <div className="mb-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setComposerSearchMode("movies")}
+                      className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                        composerSearchMode === "movies"
+                          ? "bg-red-600 text-white"
+                          : "border border-white/10 bg-white/[0.03] text-gray-300 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      Films
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setComposerSearchMode("people")}
+                      className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                        composerSearchMode === "people"
+                          ? "bg-amber-500 text-black"
+                          : "border border-white/10 bg-white/[0.03] text-gray-300 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      Profils
+                    </button>
+                  </div>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-500" />
                     <input
-                      value={movieQuery}
+                      value={composerSearchMode === "movies" ? movieQuery : userQuery}
                       onChange={(event) => {
-                        setMovieQuery(event.target.value);
-                        setSelectedMovie(null);
+                        if (composerSearchMode === "movies") {
+                          setMovieQuery(event.target.value);
+                          setSelectedMovie(null);
+                          return;
+                        }
+                        setUserQuery(event.target.value);
                       }}
-                      placeholder="Recherche un film a chroniquer"
+                      placeholder={
+                        composerSearchMode === "movies"
+                          ? "Recherche un film a chroniquer"
+                          : "Recherche un pseudo"
+                      }
                       className="w-full rounded-2xl border border-white/10 bg-black/40 px-10 py-3 text-sm text-white outline-none transition focus:border-red-500/70"
                     />
-                    {movieSearchLoading && (
+                    {(composerSearchMode === "movies" ? movieSearchLoading : usersLoading) && (
                       <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-gray-400" />
                     )}
                   </div>
 
-                  {searchError && <p className="mt-2 text-sm text-red-300">{searchError}</p>}
+                  {composerSearchMode === "movies" && searchError && (
+                    <p className="mt-2 text-sm text-red-300">{searchError}</p>
+                  )}
+                  {composerSearchMode === "people" && usersError && (
+                    <p className="mt-2 text-sm text-red-300">{usersError}</p>
+                  )}
 
-                  {!selectedMovie && movieResults.length > 0 && (
+                  {composerSearchMode === "movies" && !selectedMovie && movieResults.length > 0 && (
                     <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-2xl border border-white/10 bg-black/50 p-2">
                       {movieResults.map((movie) => (
                         <button
@@ -764,9 +807,85 @@ export default function SocialPage() {
                       ))}
                     </div>
                   )}
+
+                  {composerSearchMode === "people" && (
+                    <div className="mt-3 space-y-3">
+                      {usersLoading ? (
+                        <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-black/30 px-4 py-8 text-sm text-gray-400">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Chargement des profils...
+                        </div>
+                      ) : users.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
+                          Aucun profil ne correspond a cette recherche.
+                        </div>
+                      ) : (
+                        users.map((user) => {
+                          const isPending = pendingUserIds.includes(user.id);
+                          return (
+                            <div
+                              key={user.id}
+                              className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <Link
+                                    href={`/social/${encodeURIComponent(user.username)}`}
+                                    className="truncate text-base font-semibold transition hover:text-amber-300"
+                                  >
+                                    @{user.username}
+                                  </Link>
+                                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-400">
+                                    <span className="rounded-full bg-white/[0.04] px-2 py-1">
+                                      {user.reviews_count} critiques
+                                    </span>
+                                    <span className="rounded-full bg-white/[0.04] px-2 py-1">
+                                      {user.followers_count} abonnes
+                                    </span>
+                                    <span className="rounded-full bg-white/[0.04] px-2 py-1">
+                                      {user.following_count} abonnements
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col items-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void toggleFollow(user)}
+                                    disabled={isPending}
+                                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                      user.is_following
+                                        ? "border border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                                        : "bg-amber-500 text-black hover:bg-amber-400"
+                                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                                  >
+                                    {isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : user.is_following ? (
+                                      <UserMinus className="h-4 w-4" />
+                                    ) : (
+                                      <UserPlus className="h-4 w-4" />
+                                    )}
+                                    {user.is_following ? "Suivi" : "Suivre"}
+                                  </button>
+
+                                  <Link
+                                    href={`/messages?userId=${user.id}`}
+                                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+                                  >
+                                    Message
+                                  </Link>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {selectedMovie && (
+                {composerSearchMode === "movies" && selectedMovie && (
                   <div className="flex items-center gap-3 rounded-[22px] border border-red-500/20 bg-red-500/[0.08] p-3">
                     <img
                       src={selectedMovie.poster_url || FALLBACK_POSTER}
@@ -786,7 +905,7 @@ export default function SocialPage() {
                   </div>
                 )}
 
-                <div>
+                <div className={composerSearchMode === "movies" ? "block" : "hidden"}>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
                     Ta note
                   </label>
@@ -808,7 +927,7 @@ export default function SocialPage() {
                   </div>
                 </div>
 
-                <div>
+                <div className={composerSearchMode === "movies" ? "block" : "hidden"}>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
                     Ton avis
                   </label>
@@ -830,15 +949,21 @@ export default function SocialPage() {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => void submitReview()}
-                  disabled={publishing || !selectedMovie || reviewContent.trim().length < 10}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-red-950/70 disabled:text-red-200/60"
-                >
-                  {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Publier la critique
-                </button>
+                {composerSearchMode === "movies" ? (
+                  <button
+                    type="button"
+                    onClick={() => void submitReview()}
+                    disabled={publishing || !selectedMovie || reviewContent.trim().length < 10}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-red-950/70 disabled:text-red-200/60"
+                  >
+                    {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    Publier la critique
+                  </button>
+                ) : (
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.08] px-4 py-3 text-sm text-amber-100">
+                    Selectionne l&apos;onglet Films pour choisir un film et publier une critique.
+                  </div>
+                )}
               </div>
             </section>
 
@@ -953,111 +1078,6 @@ export default function SocialPage() {
               </div>
             </section>
 
-            <section
-              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
-                mobileSection === "people" ? "block" : "hidden lg:block"
-              }`}
-            >
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300">
-                  <Users className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold">Trouver des profils</h2>
-                  <p className="text-sm text-gray-400">Repere les comptes actifs et suis leurs critiques.</p>
-                </div>
-              </div>
-
-              <div className="relative mb-4">
-                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-500" />
-                <input
-                  value={userQuery}
-                  onChange={(event) => setUserQuery(event.target.value)}
-                  placeholder="Chercher un pseudo"
-                  className="w-full rounded-2xl border border-white/10 bg-black/40 px-10 py-3 text-sm text-white outline-none transition focus:border-amber-500/70"
-                />
-              </div>
-
-              {usersError && (
-                <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                  {usersError}
-                </div>
-              )}
-
-              <div className="space-y-3">
-                {usersLoading ? (
-                  <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-black/30 px-4 py-8 text-sm text-gray-400">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Chargement des profils...
-                  </div>
-                ) : users.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
-                    Aucun profil ne correspond a cette recherche.
-                  </div>
-                ) : (
-                  users.map((user) => {
-                    const isPending = pendingUserIds.includes(user.id);
-                    return (
-                      <div
-                        key={user.id}
-                        className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <Link
-                              href={`/social/${encodeURIComponent(user.username)}`}
-                              className="truncate text-base font-semibold transition hover:text-amber-300"
-                            >
-                              @{user.username}
-                            </Link>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-400">
-                              <span className="rounded-full bg-white/[0.04] px-2 py-1">
-                                {user.reviews_count} critiques
-                              </span>
-                              <span className="rounded-full bg-white/[0.04] px-2 py-1">
-                                {user.followers_count} abonnes
-                              </span>
-                              <span className="rounded-full bg-white/[0.04] px-2 py-1">
-                                {user.following_count} abonnements
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col items-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void toggleFollow(user)}
-                              disabled={isPending}
-                              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                                user.is_following
-                                  ? "border border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                                  : "bg-amber-500 text-black hover:bg-amber-400"
-                              } disabled:cursor-not-allowed disabled:opacity-60`}
-                            >
-                              {isPending ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : user.is_following ? (
-                                <UserMinus className="h-4 w-4" />
-                              ) : (
-                                <UserPlus className="h-4 w-4" />
-                              )}
-                              {user.is_following ? "Suivi" : "Suivre"}
-                            </button>
-
-                            <Link
-                              href={`/messages?userId=${user.id}`}
-                              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
-                            >
-                              Message
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </section>
           </div>
 
           <section
