@@ -11,7 +11,6 @@ import {
   Search,
   Send,
   Share2,
-  Sparkles,
   Star,
   X,
 } from "lucide-react";
@@ -615,27 +614,24 @@ function MessagesPageContent() {
   }, [activeConversation]);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_28%),#000] px-4 py-6 text-white">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <section className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] shadow-[0_25px_80px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <div className="flex flex-col gap-5 p-5 md:flex-row md:items-end md:justify-between md:p-8">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-200">
-                <Sparkles className="h-3.5 w-3.5" />
-                Qulte Messages
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_28%),#000] px-4 py-3 text-white md:py-6">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 md:gap-6">
+        <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 md:p-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/12 text-sky-200">
+                <MessageCircle className="h-4 w-4" />
               </div>
-              <h1 className="max-w-2xl text-3xl font-black tracking-tight md:text-5xl">
-                Discute en prive et partage des films en direct.
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-300 md:text-base">
-                Chaque conversation permet d&apos;envoyer du texte ou une reco film complete, sans
-                sortir de Qulte.
-              </p>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                  DM
+                </div>
+                <h1 className="truncate text-base font-black tracking-tight md:text-2xl">Messages</h1>
+              </div>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-gray-300">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-gray-500">Conversations</div>
-              <div className="mt-1 text-lg font-semibold text-white">{conversations.length}</div>
+            <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-semibold text-white md:rounded-2xl md:px-3 md:py-2 md:text-sm">
+              {conversations.length} inbox
             </div>
           </div>
         </section>

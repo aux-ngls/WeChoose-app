@@ -11,7 +11,7 @@ import {
 } from "framer-motion";
 import { Clock, Heart, ListPlus, Loader2, Share2, Sparkles, Star, X } from "lucide-react";
 import { API_URL } from "@/config";
-import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
+import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import {
   WATCH_LATER_PLAYLIST_ID,
   canAddToPlaylist,
@@ -51,8 +51,7 @@ export default function Home() {
   const isSwipingRef = useRef(false);
 
   const redirectToLogin = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
+    clearStoredSession();
     router.push("/login");
   };
 
@@ -114,8 +113,43 @@ export default function Home() {
   };
 
   useEffect(() => {
-    void fetchMovies();
-  }, []);
+    const bootstrapHome = async () => {
+      const token = getStoredToken();
+      if (!token) {
+        redirectToLogin();
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_URL}/users/me`, {
+          headers: buildAuthHeaders(token),
+        });
+
+        if (res.status === 401) {
+          redirectToLogin();
+          return;
+        }
+
+        const payload = await res.json();
+        if (!res.ok) {
+          throw new Error(payload?.detail ?? "Impossible de charger le profil utilisateur");
+        }
+
+        if (!payload?.has_completed_onboarding) {
+          router.push("/onboarding");
+          return;
+        }
+
+        void fetchMovies();
+      } catch (bootstrapError) {
+        console.error(bootstrapError);
+        setError("Impossible de charger ton profil pour le moment.");
+        setLoading(false);
+      }
+    };
+
+    void bootstrapHome();
+  }, [router]);
 
   useEffect(() => {
     if (loading || movies.length >= 4) {
@@ -372,9 +406,9 @@ export default function Home() {
   }
 
   return (
-    <main className="h-[calc(100svh-8.8rem)] overflow-hidden bg-black px-4 pb-2 text-white md:h-[calc(100svh-6.8rem)]">
-      <section className="mx-auto flex h-full w-full max-w-5xl flex-col items-center justify-between gap-4 pt-1 md:pt-3">
-        <div className="flex w-full max-w-sm flex-col gap-3 md:max-w-md">
+    <main className="h-[calc(100svh-6.3rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-hidden bg-black px-3 pb-1 text-white md:h-[calc(100svh-6.8rem)] md:px-4">
+      <section className="mx-auto flex h-full w-full max-w-5xl flex-col items-center justify-between gap-2 pt-0 md:gap-3 md:pt-3">
+        <div className="hidden w-full max-w-sm flex-col gap-3 md:flex md:max-w-md">
           <span className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-red-200">
             <Sparkles className="h-3.5 w-3.5" />
             Recommandations IA
@@ -382,7 +416,7 @@ export default function Home() {
         </div>
 
         {error && (
-          <div className="w-full max-w-sm rounded-2xl border border-red-900/60 bg-red-950/50 px-4 py-3 text-sm text-red-100 md:max-w-md">
+          <div className="w-full max-w-sm rounded-2xl border border-red-900/60 bg-red-950/50 px-4 py-2.5 text-sm text-red-100 md:max-w-md">
             {error}
           </div>
         )}
@@ -422,22 +456,22 @@ export default function Home() {
         </div>
 
         {movies.length > 0 && !selectedMovie && (
-          <div className="grid w-full max-w-sm grid-cols-2 items-center gap-3 md:max-w-md">
+          <div className="grid w-full max-w-sm grid-cols-2 items-center gap-2 md:max-w-md md:gap-3">
             <button
               onClick={() => manualSwipe("left")}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-red-500 transition hover:scale-105 hover:border-red-700"
+              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-3 text-red-500 transition hover:scale-105 hover:border-red-700 md:py-4"
               aria-label="Passer ce film"
             >
-              <X size={24} />
-              <span className="text-sm font-semibold">Passer</span>
+              <X size={22} />
+              <span className="text-xs font-semibold md:text-sm">Passer</span>
             </button>
             <button
               onClick={() => manualSwipe("right")}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-4 text-blue-400 transition hover:scale-105 hover:border-blue-700"
+              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-3 text-blue-400 transition hover:scale-105 hover:border-blue-700 md:py-4"
               aria-label="Ajouter a regarder plus tard"
             >
-              <Clock size={24} />
-              <span className="text-sm font-semibold">Plus tard</span>
+              <Clock size={22} />
+              <span className="text-xs font-semibold md:text-sm">Plus tard</span>
             </button>
           </div>
         )}
@@ -609,14 +643,14 @@ function MovieCard({
       animate={{ scale: isFront ? 1 : 0.965, opacity: 1 }}
       exit={{ x: exitDirection || (x.get() < 0 ? -1000 : 1000), opacity: 0 }}
       transition={{ type: "spring", stiffness: 340, damping: 28, mass: 0.8 }}
-      className={`absolute top-0 h-full w-[92%] overflow-hidden rounded-[2rem] border border-gray-800 bg-gray-950 shadow-2xl md:w-[88%] ${
+      className={`absolute top-0 h-full w-[95%] overflow-hidden rounded-[2rem] border border-gray-800 bg-gray-950 shadow-2xl md:w-[88%] ${
         isFront ? "" : "pointer-events-none"
       }`}
     >
       <div className="relative flex h-full flex-col">
         <button
           onClick={onInfoClick}
-          className="relative h-[76%] w-full overflow-hidden bg-black text-left"
+          className="relative h-[79%] w-full overflow-hidden bg-black text-left md:h-[76%]"
         >
           <img
             src={movie.poster_url}
@@ -624,8 +658,8 @@ function MovieCard({
             className="h-full w-full object-cover"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-transparent" />
-          <div className="absolute bottom-4 left-4 right-4">
-            <h2 className="text-[1.7rem] font-black text-white drop-shadow-lg md:text-2xl">{movie.title}</h2>
+          <div className="absolute bottom-3 left-3 right-3 md:bottom-4 md:left-4 md:right-4">
+            <h2 className="text-[1.45rem] font-black text-white drop-shadow-lg md:text-2xl">{movie.title}</h2>
             <div className="mt-1 flex items-center text-sm text-yellow-400">
               <Star className="mr-1 h-4 w-4 fill-current" />
               {movie.rating.toFixed(1)} / 10
@@ -633,9 +667,9 @@ function MovieCard({
           </div>
         </button>
 
-        <div className="flex h-[24%] flex-col justify-between px-4 py-4">
+        <div className="flex h-[21%] flex-col justify-between px-3 py-3 md:h-[24%] md:px-4 md:py-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.22em] text-gray-500">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-gray-500 md:text-[11px] md:tracking-[0.22em]">
               Deja vu ? Note-le pour affiner l&apos;IA
             </p>
           </div>
@@ -645,10 +679,10 @@ function MovieCard({
               <button
                 key={rating}
                 onClick={() => onRate(rating)}
-                className="rounded-full p-2 text-gray-600 transition hover:scale-110 hover:text-yellow-400"
+                className="rounded-full p-1.5 text-gray-600 transition hover:scale-110 hover:text-yellow-400 md:p-2"
                 aria-label={`Noter ${rating} sur 5`}
               >
-                <Star className="h-6 w-6 fill-current" />
+                <Star className="h-5 w-5 fill-current md:h-6 md:w-6" />
               </button>
             ))}
           </div>

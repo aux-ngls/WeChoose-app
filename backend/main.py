@@ -1,4 +1,5 @@
 import ast
+import json
 import os
 import sqlite3
 import datetime
@@ -152,6 +153,16 @@ def init_db():
                         id INTEGER PRIMARY KEY AUTOINCREMENT, 
                         username TEXT UNIQUE, 
                         password_hash TEXT)''')
+
+    # Table USER_PREFERENCES
+    cursor.execute('''CREATE TABLE IF NOT EXISTS user_preferences (
+                        user_id INTEGER PRIMARY KEY,
+                        favorite_genres TEXT DEFAULT '[]',
+                        favorite_people TEXT DEFAULT '[]',
+                        favorite_movie_ids TEXT DEFAULT '[]',
+                        people_seed_movie_ids TEXT DEFAULT '[]',
+                        onboarding_completed_at TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     
     # Table USER_RATINGS (PK composite)
     cursor.execute('''CREATE TABLE IF NOT EXISTS user_ratings (
@@ -297,10 +308,97 @@ class UserCreate(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    has_completed_onboarding: bool = False
+
+
+class OnboardingPreferencesPayload(BaseModel):
+    favorite_genres: list[str] = []
+    favorite_people: list[str] = []
+    favorite_movie_ids: list[int] = []
 
 
 def normalize_username(username: str) -> str:
     return username.strip()
+
+
+def normalize_preference_label(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def normalize_genre_token(value: str) -> str:
+    return normalize_preference_label(value).replace(" ", "").lower()
+
+
+def dump_json_list(values: list) -> str:
+    return json.dumps(values, ensure_ascii=False)
+
+
+def load_json_list(raw_value: Optional[str]) -> list:
+    if not raw_value:
+        return []
+
+    try:
+        parsed_value = json.loads(raw_value)
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+    return parsed_value if isinstance(parsed_value, list) else []
+
+
+def dedupe_list(values: list) -> list:
+    return list(dict.fromkeys(values))
+
+
+def has_existing_taste_signals(cursor, user_id: int) -> bool:
+    cursor.execute("SELECT COUNT(*) FROM user_ratings WHERE user_id = ?", (user_id,))
+    ratings_count = int(cursor.fetchone()[0] or 0)
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM playlist_items pi
+        JOIN playlists p ON p.id = pi.playlist_id
+        WHERE p.user_id = ? AND p.name = ?
+        """,
+        (user_id, WATCH_LATER_NAME),
+    )
+    watch_later_count = int(cursor.fetchone()[0] or 0)
+    return ratings_count >= 4 or watch_later_count >= 3
+
+
+def get_user_preferences(cursor, user_id: int) -> dict:
+    cursor.execute(
+        """
+        SELECT favorite_genres, favorite_people, favorite_movie_ids, people_seed_movie_ids, onboarding_completed_at
+        FROM user_preferences
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return {
+            "favorite_genres": [],
+            "favorite_people": [],
+            "favorite_movie_ids": [],
+            "people_seed_movie_ids": [],
+            "has_completed_onboarding": has_existing_taste_signals(cursor, user_id),
+        }
+
+    return {
+        "favorite_genres": [
+            value for value in load_json_list(row[0]) if isinstance(value, str) and value.strip()
+        ],
+        "favorite_people": [
+            value for value in load_json_list(row[1]) if isinstance(value, str) and value.strip()
+        ],
+        "favorite_movie_ids": [
+            int(value) for value in load_json_list(row[2]) if isinstance(value, int)
+        ],
+        "people_seed_movie_ids": [
+            int(value) for value in load_json_list(row[3]) if isinstance(value, int)
+        ],
+        "has_completed_onboarding": bool(row[4]) or has_existing_taste_signals(cursor, user_id),
+    }
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -326,9 +424,17 @@ def get_user_from_token(token: str) -> dict:
     cursor = conn.cursor()
     cursor.execute("SELECT id, username FROM users WHERE username = ?", (username,))
     user = cursor.fetchone()
+    if user is None:
+        conn.close()
+        raise credentials_exception
+
+    preferences = get_user_preferences(cursor, int(user[0]))
     conn.close()
-    if user is None: raise credentials_exception
-    return {"id": user[0], "username": user[1]}
+    return {
+        "id": int(user[0]),
+        "username": user[1],
+        "has_completed_onboarding": preferences["has_completed_onboarding"],
+    }
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -359,7 +465,11 @@ def signup(user: UserCreate):
     
     conn.close()
     access_token = create_access_token(data={"sub": username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "has_completed_onboarding": False,
+    }
 
 @app.post("/auth/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -374,15 +484,95 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=400, detail="Identifiants incorrects")
 
     get_or_create_watch_later_id(cursor, row[0])
+    preferences = get_user_preferences(cursor, int(row[0]))
     conn.commit()
     conn.close()
     
     access_token = create_access_token(data={"sub": username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "has_completed_onboarding": preferences["has_completed_onboarding"],
+    }
 
 @app.get("/users/me")
 def read_users_me(current_user: dict = Depends(get_current_user)):
     return current_user
+
+
+@app.get("/onboarding/preferences")
+def get_onboarding_preferences(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    preferences = get_user_preferences(cursor, current_user["id"])
+    conn.close()
+    return preferences
+
+
+@app.post("/onboarding/preferences")
+def save_onboarding_preferences(
+    payload: OnboardingPreferencesPayload,
+    current_user: dict = Depends(get_current_user),
+):
+    favorite_genres = dedupe_list(
+        [
+            normalize_preference_label(value)
+            for value in payload.favorite_genres
+            if isinstance(value, str) and normalize_preference_label(value)
+        ]
+    )[:8]
+    favorite_people = dedupe_list(
+        [
+            normalize_preference_label(value)
+            for value in payload.favorite_people
+            if isinstance(value, str) and normalize_preference_label(value)
+        ]
+    )[:6]
+    favorite_movie_ids = dedupe_list(
+        [int(value) for value in payload.favorite_movie_ids if isinstance(value, int)]
+    )[:6]
+
+    if not favorite_genres and not favorite_people and not favorite_movie_ids:
+        raise HTTPException(status_code=400, detail="Ajoute au moins quelques gouts pour lancer l'IA.")
+
+    people_seed_movie_ids: list[int] = []
+    for person_name in favorite_people:
+        people_seed_movie_ids.extend(get_tmdb_person_seed_movie_ids(person_name))
+    people_seed_movie_ids = dedupe_list(people_seed_movie_ids)[:18]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO user_preferences (
+            user_id,
+            favorite_genres,
+            favorite_people,
+            favorite_movie_ids,
+            people_seed_movie_ids,
+            onboarding_completed_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+            favorite_genres = excluded.favorite_genres,
+            favorite_people = excluded.favorite_people,
+            favorite_movie_ids = excluded.favorite_movie_ids,
+            people_seed_movie_ids = excluded.people_seed_movie_ids,
+            onboarding_completed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            current_user["id"],
+            dump_json_list(favorite_genres),
+            dump_json_list(favorite_people),
+            dump_json_list(favorite_movie_ids),
+            dump_json_list(people_seed_movie_ids),
+        ),
+    )
+    conn.commit()
+    preferences = get_user_preferences(cursor, current_user["id"])
+    conn.close()
+    return preferences
 
 # --- 5. OUTILS TMDB (Inchangé) ---
 def fetch_poster_from_tmdb(movie_id):
@@ -491,6 +681,39 @@ def get_tmdb_related_movies(movie_id: int) -> tuple[dict, ...]:
             related_movies.append(normalized_movie)
 
     return tuple(related_movies)
+
+
+@lru_cache(maxsize=128)
+def get_tmdb_person_seed_movie_ids(person_name: str) -> tuple[int, ...]:
+    normalized_name = normalize_preference_label(person_name)
+    if not normalized_name:
+        return ()
+
+    try:
+        response = requests.get(
+            "https://api.themoviedb.org/3/search/person",
+            params={
+                "api_key": TMDB_API_KEY,
+                "language": "fr-FR",
+                "query": normalized_name,
+                "include_adult": "false",
+                "page": 1,
+            },
+            timeout=2,
+        )
+        results = response.json().get("results", [])[:3]
+    except Exception:
+        results = []
+
+    seed_movie_ids: list[int] = []
+    for person in results:
+        for movie in person.get("known_for", [])[:6]:
+            normalized_movie = normalize_tmdb_movie(movie)
+            if not normalized_movie:
+                continue
+            seed_movie_ids.append(int(normalized_movie["id"]))
+
+    return tuple(dedupe_list(seed_movie_ids))
 
 
 @lru_cache(maxsize=64)
@@ -1256,6 +1479,8 @@ def get_movie_feed(
     watch_later_id = get_or_create_watch_later_id(cursor, current_user["id"])
     conn.commit()
 
+    preferences = get_user_preferences(cursor, current_user["id"])
+
     cursor.execute(
         "SELECT movie_id FROM user_ratings WHERE user_id = ?",
         (current_user["id"],),
@@ -1284,7 +1509,27 @@ def get_movie_feed(
     request_exclude_ids = parse_exclude_ids(exclude_ids)
     seen_ids = rated_ids | watch_later_ids
     blocked_ids = seen_ids | request_exclude_ids
-    positive_signal_ids = list(dict.fromkeys([*liked_ids, *recent_watch_later_ids]))[:8]
+    interaction_count = len(seen_ids)
+    cold_start_mode = interaction_count < 6
+    onboarding_movie_ids = preferences["favorite_movie_ids"]
+    people_seed_movie_ids = preferences["people_seed_movie_ids"]
+    onboarding_genre_tokens = {
+        normalize_genre_token(value)
+        for value in preferences["favorite_genres"]
+        if normalize_genre_token(value)
+    }
+    positive_signal_ids = (
+        list(
+            dict.fromkeys(
+                [
+                    *liked_ids,
+                    *recent_watch_later_ids,
+                    *(onboarding_movie_ids if cold_start_mode else []),
+                    *(people_seed_movie_ids if cold_start_mode else []),
+                ]
+            )
+        )[:12]
+    )
 
     if movies_df.empty:
         return []
@@ -1292,6 +1537,7 @@ def get_movie_feed(
     available_movie_ids = set(int(movie_id) for movie_id in movies_df["id"].tolist())
     candidate_scores: dict[int, float] = {}
     genre_profile: set[str] = set()
+    genre_profile.update(onboarding_genre_tokens)
     if positive_signal_ids:
         preferred_rows = movies_df[movies_df["id"].isin(positive_signal_ids)]
         for tokens in preferred_rows["genre_tokens"]:
@@ -1333,6 +1579,29 @@ def get_movie_feed(
                     candidate_scores[movie_id] = candidate_scores.get(movie_id, 0.0) + float(hybrid_scores[idx]) * 2.0
         except Exception as e:
             print(f"Erreur IA: {e}")
+
+    if cold_start_mode and onboarding_genre_tokens:
+        genre_overlap_scores = np.array(
+            [
+                len(set(tokens) & onboarding_genre_tokens) / max(len(onboarding_genre_tokens), 1)
+                for tokens in movies_df["genre_tokens"]
+            ]
+        )
+        max_popularity = max(float(movies_df["popularity"].max()), 1.0)
+        genre_seed_scores = (
+            (genre_overlap_scores * 0.6)
+            + ((movies_df["vote_average"].values / 10.0) * 0.25)
+            + ((movies_df["popularity"].values / max_popularity) * 0.15)
+        )
+        indices = np.argsort(genre_seed_scores)[::-1]
+        for idx in indices:
+            row = movies_df.iloc[idx]
+            movie_id = int(row["id"])
+            if movie_id in blocked_ids:
+                continue
+            if genre_overlap_scores[idx] <= 0:
+                break
+            candidate_scores[movie_id] = candidate_scores.get(movie_id, 0.0) + float(genre_seed_scores[idx]) * 1.6
 
     for seed_rank, seed_id in enumerate(positive_signal_ids[:4]):
         related_ids = get_tmdb_related_movie_ids(seed_id)

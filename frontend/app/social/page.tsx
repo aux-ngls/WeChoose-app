@@ -13,7 +13,6 @@ import {
   RefreshCcw,
   Search,
   Send,
-  Sparkles,
   Star,
   UserMinus,
   UserPlus,
@@ -632,34 +631,28 @@ export default function SocialPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.22),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.16),_transparent_26%),#000] px-4 py-6 text-white">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <section className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] shadow-[0_25px_80px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <div className="flex flex-col gap-5 p-5 md:flex-row md:items-end md:justify-between md:p-8">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-red-200">
-                <Sparkles className="h-3.5 w-3.5" />
-                Qulte Social
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.22),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.16),_transparent_26%),#000] px-4 py-3 text-white md:py-6">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 md:gap-6">
+        <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:p-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-500/12 text-red-200">
+                <Users className="h-4 w-4" />
               </div>
-              <h1 className="max-w-2xl text-3xl font-black tracking-tight md:text-5xl">
-                Publie, commente et suis les regards qui comptent.
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-300 md:text-base">
-                Qulte passe d&apos;un simple feed a un vrai cercle cine: profils publics, discussions sous
-                les critiques et notifications d&apos;activite.
-              </p>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                  Reseau
+                </div>
+                <h1 className="truncate text-base font-black tracking-tight md:text-2xl">Social</h1>
+              </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-3xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-gray-300">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-gray-500">Edition du jour</div>
-                <div className="mt-1 text-lg font-semibold text-white">{formattedNow}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-semibold text-white">
+                {formattedNow}
               </div>
-              <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-red-200/70">
-                  Notifications non lues
-                </div>
-                <div className="mt-1 text-lg font-semibold text-white">{unreadNotifications}</div>
+              <div className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-white">
+                {unreadNotifications} alertes
               </div>
             </div>
           </div>
@@ -1138,21 +1131,21 @@ export default function SocialPage() {
                       key={review.id}
                       className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]"
                     >
-                      <div className="grid gap-0 md:grid-cols-[140px_minmax(0,1fr)]">
-                        <div className="relative min-h-[210px] bg-black">
+                      <div className="grid gap-0 grid-cols-[82px_minmax(0,1fr)] md:grid-cols-[112px_minmax(0,1fr)]">
+                        <div className="relative min-h-[126px] bg-black md:min-h-[176px]">
                           <img
                             src={review.poster_url || FALLBACK_POSTER}
                             alt={review.title}
                             className="h-full w-full object-cover"
                           />
-                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-4 py-4">
-                            <div className="text-xs uppercase tracking-[0.18em] text-gray-300">Film</div>
-                            <div className="line-clamp-2 text-sm font-bold">{review.title}</div>
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2.5 py-2.5 md:px-4 md:py-4">
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-gray-300">Film</div>
+                            <div className="line-clamp-2 text-[11px] font-bold leading-4 md:text-sm">{review.title}</div>
                           </div>
                         </div>
 
-                        <div className="p-5 md:p-6">
-                          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="p-3.5 md:p-5">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div>
                               <Link
                                 href={`/social/${encodeURIComponent(review.author.username)}`}
@@ -1177,10 +1170,12 @@ export default function SocialPage() {
                             </div>
                           </div>
 
-                          <p className="mt-5 text-[15px] leading-7 text-gray-100">{review.content}</p>
+                          <p className="mt-3 text-sm leading-6 text-gray-100 md:mt-4 md:text-[15px] md:leading-7">
+                            {review.content}
+                          </p>
 
-                          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-                            <div className="text-sm text-gray-500">
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 md:mt-5">
+                            <div className="text-xs text-gray-500 md:text-sm">
                               Critique sur <span className="font-semibold text-gray-300">{review.title}</span>
                             </div>
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_URL } from "@/config";
+import { persistStoredSession } from "@/lib/auth";
 import { UserPlus, Loader2 } from "lucide-react";
 
 export default function SignupPage() {
@@ -37,11 +38,13 @@ export default function SignupPage() {
 
       if (!res.ok) throw new Error(data.detail || "Erreur d'inscription");
 
-      // Sauvegarde du token
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("username", normalizedUsername);
-      
-      router.push("/"); // Redirection vers l'accueil
+      persistStoredSession(
+        data.access_token,
+        normalizedUsername,
+        Boolean(data.has_completed_onboarding),
+      );
+
+      router.push(data.has_completed_onboarding ? "/" : "/onboarding");
     } catch (err: any) {
       setError(err.message);
     } finally {

@@ -50,7 +50,7 @@ export default function RootLayout({
         <NativeBridge />
         <PwaProvider />
         <Navbar />
-        <div className="min-h-screen pb-[calc(6.4rem+env(safe-area-inset-bottom))] pt-[calc(4.8rem+env(safe-area-inset-top))] md:pb-0 md:pt-20">
+        <div className="min-h-screen pb-[calc(5.85rem+env(safe-area-inset-bottom))] pt-[calc(0.45rem+env(safe-area-inset-top))] md:pb-0 md:pt-20">
           {children}
         </div>
       </body>

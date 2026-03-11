@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Home, Search, Film, List, LogIn, LogOut, Users, MessageCircle } from "lucide-react";
 import QulteLogo from "@/components/QulteLogo";
 import { API_URL } from "@/config";
-import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
+import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import { unregisterNativePushToken } from "@/lib/native-app";
 import { buildRealtimeWebSocketUrl } from "@/lib/realtime";
 
@@ -15,6 +15,7 @@ export default function Navbar() {
   const router = useRouter();
   const [username, setUsername] = useState<string | null>(null);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [showMobileHeader, setShowMobileHeader] = useState(true);
 
   useEffect(() => {
     const checkAuth = () => {
@@ -69,10 +70,29 @@ export default function Navbar() {
     };
   }, [pathname, username]);
 
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (pathname === "/") {
+        setShowMobileHeader(false);
+      } else if (currentScrollY <= 24 || currentScrollY < lastScrollY) {
+        setShowMobileHeader(true);
+      } else if (currentScrollY > lastScrollY) {
+        setShowMobileHeader(false);
+      }
+      lastScrollY = currentScrollY;
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [pathname]);
+
   const handleLogout = async () => {
     await unregisterNativePushToken();
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
+    clearStoredSession();
     setUsername(null);
     router.push("/login");
   };
@@ -152,48 +172,29 @@ export default function Navbar() {
         </div>
       </nav>
 
-      <div className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 md:hidden">
-        <div className="flex items-center justify-between rounded-[24px] border border-white/10 bg-zinc-950/82 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
-            <QulteLogo compact />
-            <div className="min-w-0">
-              <div className="truncate text-sm font-bold text-white">Qulte</div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-amber-300/80">
-                Mobile
-              </div>
-            </div>
+      <div
+        className={`fixed right-4 top-[calc(env(safe-area-inset-top)+0.45rem)] z-50 transition duration-200 md:hidden ${
+          pathname === "/" || !showMobileHeader
+            ? "pointer-events-none -translate-y-4 opacity-0"
+            : "translate-y-0 opacity-100"
+        }`}
+      >
+        {username ? (
+          <button
+            onClick={handleLogout}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-zinc-950/78 text-red-400 shadow-[0_12px_28px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+            aria-label="Se déconnecter"
+          >
+            <LogOut size={16} />
+          </button>
+        ) : (
+          <Link
+            href="/login"
+            className="inline-flex items-center rounded-full border border-white/10 bg-zinc-950/78 px-3 py-2 text-[11px] font-semibold text-white shadow-[0_12px_28px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+          >
+            Connexion
           </Link>
-
-          {username ? (
-            <div className="flex items-center gap-2">
-              <span className="max-w-24 truncate text-xs font-medium text-gray-400">
-                @{username}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="rounded-full border border-white/10 bg-white/[0.04] p-2 text-red-400"
-                aria-label="Se déconnecter"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Link
-                href="/login"
-                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white"
-              >
-                Connexion
-              </Link>
-              <Link
-                href="/signup"
-                className="rounded-full bg-red-600 px-3 py-2 text-xs font-semibold text-white"
-              >
-                Creer
-              </Link>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </>
   );

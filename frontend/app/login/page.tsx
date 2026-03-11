@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_URL } from "@/config";
+import { persistStoredSession } from "@/lib/auth";
 import { LogIn, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
@@ -42,10 +43,13 @@ export default function LoginPage() {
 
       if (!res.ok) throw new Error("Identifiants incorrects");
 
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("username", normalizedUsername);
-      
-      router.push("/");
+      persistStoredSession(
+        data.access_token,
+        normalizedUsername,
+        Boolean(data.has_completed_onboarding),
+      );
+
+      router.push(data.has_completed_onboarding ? "/" : "/onboarding");
     } catch (err: any) {
       setError(err.message);
     } finally {
