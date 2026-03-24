@@ -9,15 +9,13 @@ import {
   useTransform,
   type PanInfo,
 } from "framer-motion";
-import { Clock, Heart, ListPlus, Loader2, Share2, Sparkles, Star, X } from "lucide-react";
+import { Clock, Loader2, Sparkles, Star, X } from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import {
   WATCH_LATER_PLAYLIST_ID,
-  canAddToPlaylist,
-  type PlaylistSummary,
 } from "@/lib/playlists";
-import { buildMessageShareHref } from "@/lib/movie-share";
+import MovieDetailsModal from "@/components/MovieDetailsModal";
 
 interface CastMember {
   name: string;
@@ -45,8 +43,6 @@ export default function Home() {
   const [error, setError] = useState("");
   const [exitDirection, setExitDirection] = useState(0);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
-  const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
-  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const isFetchingRef = useRef(false);
   const isSwipingRef = useRef(false);
 
@@ -317,80 +313,9 @@ export default function Home() {
       const res = await fetch(`${API_URL}/movie/${id}`);
       const data = await res.json();
       setSelectedMovie(data);
-      setShowPlaylistSelector(false);
     } catch (detailError) {
       console.error(detailError);
       setError("Impossible de charger les détails de ce film.");
-    }
-  };
-
-  const openPlaylistSelector = async () => {
-    const token = getStoredToken();
-    if (!token) {
-      redirectToLogin();
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_URL}/playlists`, {
-        headers: buildAuthHeaders(token),
-      });
-
-      if (res.status === 401) {
-        redirectToLogin();
-        return;
-      }
-
-      const data = await res.json();
-      if (!Array.isArray(data)) {
-        throw new Error("Réponse invalide pour les playlists");
-      }
-
-      setPlaylists(data.filter(canAddToPlaylist));
-      setShowPlaylistSelector(true);
-    } catch (playlistError) {
-      console.error(playlistError);
-      setError("Impossible de charger les playlists.");
-    }
-  };
-
-  const addSelectedMovieToPlaylist = async (playlistId: number) => {
-    if (!selectedMovie) {
-      return;
-    }
-
-    try {
-      const added = await addToPlaylist(playlistId, selectedMovie.id);
-      if (!added) {
-        return;
-      }
-
-      setShowPlaylistSelector(false);
-      setSelectedMovie(null);
-      setError("");
-    } catch (playlistError) {
-      console.error(playlistError);
-      setError("Impossible d'ajouter ce film à la playlist.");
-    }
-  };
-
-  const rateSelectedMovieAsLiked = async () => {
-    if (!selectedMovie) {
-      return;
-    }
-
-    try {
-      const rated = await rateMovie(selectedMovie.id, 5);
-      if (!rated) {
-        return;
-      }
-
-      setSelectedMovie(null);
-      setError("");
-      void fetchMovies();
-    } catch (rateError) {
-      console.error(rateError);
-      setError("Impossible d'enregistrer cette note.");
     }
   };
 
@@ -477,122 +402,11 @@ export default function Home() {
         )}
       </section>
 
-      {selectedMovie && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg overflow-y-auto rounded-3xl border border-gray-800 bg-gray-950 shadow-2xl">
-            {!showPlaylistSelector ? (
-              <>
-                <button
-                  onClick={() => setSelectedMovie(null)}
-                  className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-1.5 transition hover:bg-red-600"
-                  aria-label="Fermer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-
-                <div className="aspect-video bg-black">
-                  {selectedMovie.trailer_url ? (
-                    <iframe
-                      src={selectedMovie.trailer_url}
-                      className="h-full w-full"
-                      allowFullScreen
-                      title={selectedMovie.title}
-                    />
-                  ) : (
-                    <img
-                      src={selectedMovie.poster_url}
-                      alt={selectedMovie.title}
-                      className="h-full w-full object-cover opacity-70"
-                    />
-                  )}
-                </div>
-
-                <div className="space-y-5 p-5">
-                  <div>
-                    <h2 className="text-2xl font-black">{selectedMovie.title}</h2>
-                    <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
-                      <span>{selectedMovie.release_date}</span>
-                      <span className="flex items-center text-yellow-400">
-                        <Star className="mr-1 h-3 w-3 fill-current" />
-                        {selectedMovie.rating.toFixed(1)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => void openPlaylistSelector()}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3 text-sm font-bold transition hover:bg-blue-500"
-                    >
-                      <ListPlus className="h-4 w-4" />
-                      Playlist
-                    </button>
-                    <button
-                      onClick={() => void rateSelectedMovieAsLiked()}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-emerald-950/60 py-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-700"
-                    >
-                      <Heart className="h-4 w-4" />
-                      J&apos;adore
-                    </button>
-                    <button
-                      onClick={() => router.push(buildMessageShareHref(selectedMovie))}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-amber-700 bg-amber-950/60 py-3 text-sm font-bold text-amber-100 transition hover:bg-amber-700"
-                    >
-                      <Share2 className="h-4 w-4" />
-                      Partager
-                    </button>
-                  </div>
-
-                  <p className="text-sm leading-relaxed text-gray-300">{selectedMovie.overview}</p>
-
-                  <div className="flex gap-3 overflow-x-auto pb-2">
-                    {selectedMovie.cast?.map((actor) => (
-                      <div key={`${actor.name}-${actor.character}`} className="w-16 flex-shrink-0 text-center">
-                        <img
-                          src={actor.photo || "https://via.placeholder.com/100"}
-                          alt={actor.name}
-                          className="mx-auto mb-2 h-12 w-12 rounded-full border border-gray-800 object-cover"
-                        />
-                        <p className="truncate text-[10px] font-medium">{actor.name}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="p-6">
-                <div className="mb-6 flex items-center gap-3">
-                  <button
-                    onClick={() => setShowPlaylistSelector(false)}
-                    className="rounded-full p-1 transition hover:bg-gray-800"
-                    aria-label="Retour"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                  <h3 className="text-lg font-bold">Ajouter a une playlist</h3>
-                </div>
-
-                <div className="space-y-2">
-                  {playlists.map((playlist) => (
-                    <button
-                      key={playlist.id}
-                      onClick={() => void addSelectedMovieToPlaylist(playlist.id)}
-                      className="flex w-full items-center justify-between rounded-2xl bg-gray-900 px-4 py-4 text-left transition hover:bg-gray-800"
-                    >
-                      <span className="font-medium">{playlist.name}</span>
-                      {playlist.system_key === "watch-later" ? (
-                        <Clock className="h-4 w-4 text-blue-400" />
-                      ) : (
-                        <ListPlus className="h-4 w-4 text-gray-500" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <MovieDetailsModal
+        movie={selectedMovie}
+        onClose={() => setSelectedMovie(null)}
+        onLikeSuccess={() => void fetchMovies()}
+      />
     </main>
   );
 }

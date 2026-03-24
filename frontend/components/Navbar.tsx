@@ -109,7 +109,7 @@ export default function Navbar() {
     { href: "/search", label: "Recherche", icon: Search },
     { href: "/playlist", label: "Listes", icon: List },
     { href: "/social", label: "Social", icon: Users },
-    { href: "/messages", label: "DM", icon: MessageCircle },
+    { href: "/messages", label: "Messages", icon: MessageCircle },
   ] as const;
 
   return (
@@ -121,32 +121,27 @@ export default function Navbar() {
           </Link>
 
           <div className="grid flex-1 grid-cols-6 gap-1 md:flex md:w-auto md:flex-none md:gap-8">
-            <Link href="/" className={`flex flex-col items-center gap-1 ${isActive("/")}`}>
+            <Link href="/" title="Accueil" aria-label="Accueil" className={`flex items-center justify-center ${isActive("/")}`}>
               <Home size={22} />
-              <span className="text-[9px] md:text-xs">Accueil</span>
             </Link>
 
-            <Link href="/news" className={`flex flex-col items-center gap-1 ${isActive("/news")}`}>
+            <Link href="/news" title="Sorties" aria-label="Sorties" className={`flex items-center justify-center ${isActive("/news")}`}>
               <Film size={22} />
-              <span className="text-[9px] md:text-xs">Sorties</span>
             </Link>
 
-            <Link href="/search" className={`flex flex-col items-center gap-1 ${isActive("/search")}`}>
+            <Link href="/search" title="Recherche" aria-label="Recherche" className={`flex items-center justify-center ${isActive("/search")}`}>
               <Search size={22} />
-              <span className="text-[9px] md:text-xs">Cherche</span>
             </Link>
 
-            <Link href="/playlist" className={`flex flex-col items-center gap-1 ${isActive("/playlist")}`}>
+            <Link href="/playlist" title="Listes" aria-label="Listes" className={`flex items-center justify-center ${isActive("/playlist")}`}>
               <List size={22} />
-              <span className="text-[9px] md:text-xs">Listes</span>
             </Link>
 
-            <Link href="/social" className={`flex flex-col items-center gap-1 ${isActive("/social")}`}>
+            <Link href="/social" title="Social" aria-label="Social" className={`flex items-center justify-center ${isActive("/social")}`}>
               <Users size={22} />
-              <span className="text-[9px] md:text-xs">Social</span>
             </Link>
 
-            <Link href="/messages" className={`flex flex-col items-center gap-1 ${isActive("/messages")}`}>
+            <Link href="/messages" title="Messages" aria-label="Messages" className={`flex items-center justify-center ${isActive("/messages")}`}>
               <span className="relative">
                 <MessageCircle size={22} />
                 {unreadMessages > 0 && (
@@ -155,7 +150,6 @@ export default function Navbar() {
                   </span>
                 )}
               </span>
-              <span className="text-[9px] md:text-xs">DM</span>
             </Link>
           </div>
 
@@ -183,7 +177,7 @@ export default function Navbar() {
 
       <nav className="fixed inset-x-3 bottom-[calc(0.7rem+env(safe-area-inset-bottom))] z-50 md:hidden">
         <div className="mx-auto max-w-md rounded-[30px] border border-white/10 bg-zinc-950/88 p-2 shadow-[0_18px_48px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {mobileNavItems.map((item) => {
               const Icon = item.icon;
               const active =
@@ -194,28 +188,21 @@ export default function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`group relative flex min-w-0 flex-1 items-center justify-center rounded-full px-2 py-2.5 transition ${
+                  title={item.label}
+                  aria-label={item.label}
+                  className={`relative flex h-11 flex-1 items-center justify-center rounded-full transition ${
                     active
                       ? "bg-white text-black shadow-[0_10px_24px_rgba(255,255,255,0.12)]"
                       : "text-gray-400 hover:bg-white/[0.04] hover:text-white"
                   }`}
                 >
-                  <span className="relative flex items-center gap-2">
-                    <span className="relative">
-                      <Icon size={18} />
-                      {item.href === "/messages" && unreadMessages > 0 && (
-                        <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                          {unreadMessages > 9 ? "9+" : unreadMessages}
-                        </span>
-                      )}
-                    </span>
-                    <span
-                      className={`overflow-hidden text-[11px] font-semibold transition-all ${
-                        active ? "max-w-20 opacity-100" : "max-w-0 opacity-0"
-                      }`}
-                    >
-                      {item.label}
-                    </span>
+                  <span className="relative">
+                    <Icon size={18} />
+                    {item.href === "/messages" && unreadMessages > 0 && (
+                      <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                        {unreadMessages > 9 ? "9+" : unreadMessages}
+                      </span>
+                    )}
                   </span>
                 </Link>
               );

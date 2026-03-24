@@ -186,8 +186,14 @@ def init_db():
                         movie_id INTEGER, 
                         title TEXT, 
                         poster_url TEXT, 
-                        rating REAL, 
+                        rating REAL,
+                        added_at TIMESTAMP,
                         UNIQUE(playlist_id, movie_id))''')
+
+    cursor.execute("PRAGMA table_info(playlist_items)")
+    playlist_item_columns = {row[1] for row in cursor.fetchall()}
+    if "added_at" not in playlist_item_columns:
+        cursor.execute("ALTER TABLE playlist_items ADD COLUMN added_at TIMESTAMP")
 
     # Table FOLLOWS
     cursor.execute('''CREATE TABLE IF NOT EXISTS follows (
@@ -714,6 +720,31 @@ def get_tmdb_person_seed_movie_ids(person_name: str) -> tuple[int, ...]:
             seed_movie_ids.append(int(normalized_movie["id"]))
 
     return tuple(dedupe_list(seed_movie_ids))
+
+
+def get_movie_primary_genre(movie_id: int) -> str:
+    if movies_df.empty:
+        return "Autres"
+
+    movie_row = movies_df[movies_df["id"] == movie_id]
+    if movie_row.empty:
+        return "Autres"
+
+    raw_genres = movie_row.iloc[0].get("genres")
+    if not isinstance(raw_genres, str) or not raw_genres:
+        return "Autres"
+
+    try:
+        parsed_genres = ast.literal_eval(raw_genres)
+    except (ValueError, SyntaxError):
+        return "Autres"
+
+    for item in parsed_genres:
+        genre_name = item.get("name") if isinstance(item, dict) else None
+        if genre_name:
+            return str(genre_name)
+
+    return "Autres"
 
 
 @lru_cache(maxsize=64)
@@ -1397,28 +1428,40 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
         real_id = get_or_create_watch_later_id(cursor, current_user["id"])
         conn.commit()
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating FROM playlist_items WHERE playlist_id = ? ORDER BY rowid DESC",
+            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, rowid DESC",
             (real_id,),
         )
     elif playlist_id == FAVORITES_SYSTEM_ID:
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating FROM user_ratings WHERE user_id = ? AND rating >= 4 ORDER BY added_at DESC",
+            "SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = ? AND rating >= 4 ORDER BY added_at DESC",
             (current_user["id"],),
         )
     elif playlist_id == HISTORY_SYSTEM_ID:
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating FROM user_ratings WHERE user_id = ? ORDER BY added_at DESC",
+            "SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = ? ORDER BY added_at DESC",
             (current_user["id"],),
         )
     else:
         target_id = get_custom_playlist_id(cursor, playlist_id, current_user["id"])
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating FROM playlist_items WHERE playlist_id = ? ORDER BY rowid DESC",
+            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, rowid DESC",
             (target_id,),
         )
     
     movies = [dict(row) for row in cursor.fetchall()]
     conn.close()
+
+    for movie in movies:
+        movie["primary_genre"] = get_movie_primary_genre(int(movie["id"]))
+
+    if playlist_id == WATCH_LATER_SYSTEM_ID:
+        movies.sort(
+            key=lambda movie: (
+                str(movie.get("primary_genre") or "Autres").lower(),
+                str(movie.get("title") or "").lower(),
+            )
+        )
+
     return movies
 
 @app.post("/playlists/{playlist_id}/add/{movie_id}")
@@ -1431,7 +1474,7 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
     if info:
         try:
             cursor.execute(
-                "INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating, added_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
                 (target_id, info["id"], info["title"], info["poster_url"], info["rating"]),
             )
             conn.commit()
@@ -1440,6 +1483,20 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
         
     conn.close()
     return {"status": "added"}
+
+@app.delete("/playlists/{playlist_id}/remove/{movie_id}")
+def remove_from_specific_playlist(playlist_id: int, movie_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
+
+    cursor.execute(
+        "DELETE FROM playlist_items WHERE playlist_id = ? AND movie_id = ?",
+        (target_id, movie_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "removed"}
 
 @app.post("/movies/rate/{movie_id}/{rating}")
 def rate_movie(movie_id: int, rating: int, current_user: dict = Depends(get_current_user)):

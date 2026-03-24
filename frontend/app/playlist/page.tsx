@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clock, Film, Folder, Plus, Star, X } from "lucide-react";
+import { ArrowLeft, Clock, Film, Folder, Plus, Star, Trash2 } from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import {
@@ -12,17 +12,22 @@ import {
   type PlaylistSummary,
 } from "@/lib/playlists";
 import MobilePageHeader from "@/components/MobilePageHeader";
+import MovieDetailsModal from "@/components/MovieDetailsModal";
 
 interface Movie {
   id: number;
   title: string;
   poster_url: string;
   rating: number;
+  primary_genre?: string;
+  added_at?: string;
   overview?: string;
   trailer_url?: string;
   cast?: { name: string; character: string; photo: string | null }[];
   release_date?: string;
 }
+
+type SortMode = "genre" | "recent" | "oldest" | "rating";
 
 export default function PlaylistsPage() {
   const router = useRouter();
@@ -32,6 +37,8 @@ export default function PlaylistsPage() {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("genre");
+  const [removingMovieId, setRemovingMovieId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -108,6 +115,7 @@ export default function PlaylistsPage() {
 
       setSelectedPlaylist(playlist);
       setMovies(data);
+      setSortMode(playlist.id === WATCH_LATER_PLAYLIST_ID ? "genre" : "recent");
       setError("");
     } catch (openError) {
       console.error(openError);
@@ -178,6 +186,85 @@ export default function PlaylistsPage() {
       return <Film className="text-gray-500" />;
     }
     return <Folder className="text-white" />;
+  };
+
+  const isWatchLaterSelected = selectedPlaylist?.id === WATCH_LATER_PLAYLIST_ID;
+  const canRemoveMovies = Boolean(selectedPlaylist && !selectedPlaylist.readonly);
+
+  const sortedMovies = [...movies].sort((left, right) => {
+    if (sortMode === "rating") {
+      return right.rating - left.rating;
+    }
+
+    if (sortMode === "oldest") {
+      return String(left.added_at || "").localeCompare(String(right.added_at || ""));
+    }
+
+    if (sortMode === "recent") {
+      return String(right.added_at || "").localeCompare(String(left.added_at || ""));
+    }
+
+    const genreCompare = String(left.primary_genre || "Autres").localeCompare(
+      String(right.primary_genre || "Autres"),
+      "fr",
+    );
+    if (genreCompare !== 0) {
+      return genreCompare;
+    }
+    return String(left.title).localeCompare(String(right.title), "fr");
+  });
+
+  const movieGroups =
+    sortMode === "genre"
+      ? sortedMovies.reduce<Array<{ genre: string; movies: Movie[] }>>((groups, movie) => {
+          const genre = movie.primary_genre || "Autres";
+          const existingGroup = groups.find((group) => group.genre === genre);
+          if (existingGroup) {
+            existingGroup.movies.push(movie);
+          } else {
+            groups.push({ genre, movies: [movie] });
+          }
+          return groups;
+        }, [])
+      : [{ genre: "", movies: sortedMovies }];
+
+  const removeMovieFromPlaylist = async (movieId: number) => {
+    if (!selectedPlaylist || selectedPlaylist.readonly) {
+      return;
+    }
+
+    const token = getTokenOrRedirect();
+    if (!token) {
+      return;
+    }
+
+    setRemovingMovieId(movieId);
+
+    try {
+      const res = await fetch(`${API_URL}/playlists/${selectedPlaylist.id}/remove/${movieId}`, {
+        method: "DELETE",
+        headers: buildAuthHeaders(token),
+      });
+
+      if (res.status === 401) {
+        redirectToLogin();
+        return;
+      }
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.detail ?? "Suppression impossible");
+      }
+
+      setMovies((current) => current.filter((movie) => movie.id !== movieId));
+      setSelectedMovie((current) => (current?.id === movieId ? null : current));
+      setError("");
+    } catch (removeError) {
+      console.error(removeError);
+      setError(removeError instanceof Error ? removeError.message : "Suppression impossible.");
+    } finally {
+      setRemovingMovieId(null);
+    }
   };
 
   return (
@@ -335,46 +422,67 @@ export default function PlaylistsPage() {
             <p className="mt-20 text-center text-gray-500">Cette liste est vide.</p>
           ) : (
             <>
-              <div className="space-y-3 md:hidden">
-                {movies.map((movie) => (
-                  <button
-                    key={movie.id}
-                    onClick={() => void openDetails(movie.id)}
-                    className="flex w-full items-center gap-3 rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-3 text-left shadow-[0_16px_34px_rgba(0,0,0,0.28)] transition active:scale-[0.99]"
-                  >
-                    <img
-                      src={movie.poster_url}
-                      alt={movie.title}
-                      className="h-24 w-16 rounded-2xl object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-base font-bold text-white">{movie.title}</div>
-                      <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-semibold text-yellow-300">
-                        <Star className="h-3.5 w-3.5 fill-current" />
-                        {movie.rating.toFixed(1)}
-                      </div>
-                      <div className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
-                        Voir la fiche
-                      </div>
-                    </div>
-                  </button>
-                ))}
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">
+                  Trier
+                </span>
+                <select
+                  value={sortMode}
+                  onChange={(event) => setSortMode(event.target.value as SortMode)}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none transition focus:border-sky-500"
+                >
+                  <option value="genre">Par genre</option>
+                  <option value="recent">Ajoutes recemment</option>
+                  <option value="oldest">Ajoutes il y a longtemps</option>
+                  <option value="rating">Mieux notes</option>
+                </select>
               </div>
 
-              <div className="hidden grid-cols-3 gap-3 md:grid md:grid-cols-4 lg:grid-cols-6">
-                {movies.map((movie) => (
-                  <button
-                    key={movie.id}
-                    onClick={() => void openDetails(movie.id)}
-                    className="group relative text-left transition-transform hover:scale-105"
-                  >
-                    <img
-                      src={movie.poster_url}
-                      alt={movie.title}
-                      className="aspect-[2/3] w-full rounded-lg object-cover"
-                    />
-                    <p className="mt-1 truncate text-[10px] text-gray-400">{movie.title}</p>
-                  </button>
+              <div className="space-y-6">
+                {movieGroups.map((group) => (
+                  <section key={group.genre || "all"} className="space-y-3">
+                    {sortMode === "genre" && (
+                      <div className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-sky-300/80">
+                        {group.genre}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-3">
+                      {group.movies.map((movie) => (
+                        <div key={movie.id} className="group relative">
+                          {canRemoveMovies && (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void removeMovieFromPlaylist(movie.id);
+                              }}
+                              disabled={removingMovieId === movie.id}
+                              className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-red-500/30 bg-black/70 text-red-200 backdrop-blur transition hover:bg-red-600 hover:text-white disabled:opacity-60"
+                              aria-label={`Retirer ${movie.title}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => void openDetails(movie.id)}
+                            className="w-full text-left transition-transform hover:scale-[1.02]"
+                          >
+                            <img
+                              src={movie.poster_url}
+                              alt={movie.title}
+                              className="aspect-[2/3] w-full rounded-xl object-cover shadow-[0_12px_28px_rgba(0,0,0,0.28)]"
+                            />
+                            <p className="mt-2 truncate text-xs font-semibold text-gray-200">{movie.title}</p>
+                            <div className="mt-1 flex items-center gap-1 text-[11px] text-yellow-300">
+                              <Star className="h-3.5 w-3.5 fill-current" />
+                              {movie.rating.toFixed(1)}
+                            </div>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             </>
@@ -382,61 +490,10 @@ export default function PlaylistsPage() {
         </>
       )}
 
-      {selectedMovie && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/90 p-0 backdrop-blur-sm md:items-center md:p-4">
-          <div className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[30px] border border-gray-800 bg-gray-900 md:max-h-[85vh] md:rounded-2xl">
-            <button
-              onClick={() => setSelectedMovie(null)}
-              className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-1.5 transition hover:bg-red-600"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <div className="aspect-video bg-black">
-              {selectedMovie.trailer_url ? (
-                <iframe
-                  src={selectedMovie.trailer_url}
-                  className="h-full w-full"
-                  allowFullScreen
-                  title={selectedMovie.title}
-                />
-              ) : (
-                <img
-                  src={selectedMovie.poster_url}
-                  alt={selectedMovie.title}
-                  className="h-full w-full object-cover opacity-60"
-                />
-              )}
-            </div>
-
-            <div className="p-5">
-              <h2 className="mb-1 text-xl font-bold">{selectedMovie.title}</h2>
-              <div className="mb-4 flex gap-2 text-xs text-gray-400">
-                <span>{selectedMovie.release_date}</span>
-                <span className="flex items-center text-yellow-400">
-                  <Star className="mr-1 h-3 w-3 fill-current" />
-                  {selectedMovie.rating}
-                </span>
-              </div>
-
-              <p className="mb-4 text-sm text-gray-300">{selectedMovie.overview}</p>
-
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {selectedMovie.cast?.map((actor) => (
-                  <div key={`${actor.name}-${actor.character}`} className="w-16 flex-shrink-0 text-center">
-                    <img
-                      src={actor.photo || ""}
-                      alt={actor.name}
-                      className="mx-auto mb-1 h-12 w-12 rounded-full bg-gray-800 object-cover"
-                    />
-                    <p className="truncate text-[10px]">{actor.name}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MovieDetailsModal
+        movie={selectedMovie}
+        onClose={() => setSelectedMovie(null)}
+      />
     </main>
   );
 }

@@ -29,6 +29,7 @@ import {
 } from "@/lib/messages";
 import { buildRealtimeWebSocketUrl } from "@/lib/realtime";
 import MobilePageHeader from "@/components/MobilePageHeader";
+import MovieDetailsModal from "@/components/MovieDetailsModal";
 
 interface MovieDetail extends SearchMovie {
   overview?: string;
@@ -1091,70 +1092,14 @@ function MessagesPageContent() {
         </div>
       </div>
 
-      {(movieDetailLoading || openedMovieDetail) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
-          {movieDetailLoading && !openedMovieDetail ? (
-            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm text-gray-300">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Chargement du film...
-            </div>
-          ) : openedMovieDetail ? (
-            <div className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
-              <button
-                onClick={() => setOpenedMovieDetail(null)}
-                className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-1.5 transition hover:bg-red-600"
-              >
-                <X className="h-5 w-5 text-white" />
-              </button>
-
-              <div className="aspect-video w-full bg-black">
-                {openedMovieDetail.trailer_url ? (
-                  <iframe
-                    src={openedMovieDetail.trailer_url}
-                    className="h-full w-full"
-                    allowFullScreen
-                    title={openedMovieDetail.title}
-                  />
-                ) : (
-                  <img
-                    src={openedMovieDetail.poster_url || FALLBACK_POSTER}
-                    alt={openedMovieDetail.title}
-                    className="h-full w-full object-cover opacity-60"
-                  />
-                )}
-              </div>
-
-              <div className="p-5">
-                <h2 className="mb-1 text-xl font-bold">{openedMovieDetail.title}</h2>
-                <div className="mb-4 flex items-center gap-2 text-xs text-gray-400">
-                  <span>{openedMovieDetail.release_date}</span>
-                  <span className="flex items-center text-yellow-400">
-                    <Star className="mr-1 h-3 w-3 fill-current" />
-                    {openedMovieDetail.rating.toFixed(1)}
-                  </span>
-                </div>
-
-                <p className="mb-6 text-sm leading-relaxed text-gray-300">
-                  {openedMovieDetail.overview}
-                </p>
-
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {openedMovieDetail.cast?.map((actor) => (
-                    <div key={`${actor.name}-${actor.character}`} className="w-16 flex-shrink-0 text-center">
-                      <img
-                        src={actor.photo || "https://via.placeholder.com/100"}
-                        alt={actor.name}
-                        className="mx-auto mb-1 h-12 w-12 rounded-full border border-gray-700 object-cover"
-                      />
-                      <p className="truncate text-[10px] font-medium">{actor.name}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      )}
+      <MovieDetailsModal
+        movie={openedMovieDetail}
+        loading={movieDetailLoading}
+        onClose={() => {
+          setMovieDetailLoading(false);
+          setOpenedMovieDetail(null);
+        }}
+      />
     </main>
   );
 }
