@@ -205,45 +205,46 @@ export default function SocialProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.20),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(239,68,68,0.18),_transparent_30%),#000] px-4 py-6 text-white">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.20),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(239,68,68,0.18),_transparent_30%),#000] px-4 py-4 text-white md:py-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2 md:gap-3">
           <Link
             href="/social"
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08] md:px-4"
           >
             <ArrowLeft className="h-4 w-4" />
-            Retour au social
+            <span className="hidden sm:inline">Retour au social</span>
+            <span className="sm:hidden">Retour</span>
           </Link>
 
           <button
             type="button"
             onClick={() => void fetchProfile()}
-            className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08] md:px-4"
           >
             Actualiser
           </button>
         </div>
 
-        <section className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_25px_80px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <div className="grid gap-6 p-6 md:grid-cols-[1.2fr_0.8fr] md:p-8">
+        <section className="overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.04] shadow-[0_25px_80px_rgba(0,0,0,0.45)] backdrop-blur-md md:rounded-[32px]">
+          <div className="grid gap-4 p-4 md:grid-cols-[1.2fr_0.8fr] md:gap-6 md:p-8">
             <div>
-              <div className="mb-3 inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-amber-200">
+              <div className="mb-3 inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-200">
                 Profil public
               </div>
-              <h1 className="text-4xl font-black tracking-tight md:text-5xl">@{profile.username}</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-300 md:text-base">
+              <h1 className="text-3xl font-black tracking-tight md:text-5xl">@{profile.username}</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-300 md:mt-3 md:text-base">
                 Toutes les critiques publiees par ce compte restent visibles ici, avec ses
                 statistiques sociales et ses reactions.
               </p>
 
               {!profile.is_self && (
-                <div className="mt-6 flex flex-wrap gap-3">
+                <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap sm:gap-3 md:mt-6">
                   <button
                     type="button"
                     onClick={() => void toggleFollow()}
                     disabled={pendingFollow}
-                    className={`inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
+                    className={`inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
                       profile.is_following
                         ? "border border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
                         : "bg-amber-500 text-black hover:bg-amber-400"
@@ -261,7 +262,7 @@ export default function SocialProfilePage() {
 
                   <Link
                     href={`/messages?userId=${profile.id}`}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/[0.08]"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/[0.08]"
                   >
                     Ecrire
                   </Link>
@@ -269,22 +270,22 @@ export default function SocialProfilePage() {
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[26px] border border-white/10 bg-black/30 p-4">
+            <div className="grid grid-cols-2 gap-2 md:gap-3">
+              <div className="rounded-[22px] border border-white/10 bg-black/30 p-3.5 md:rounded-[26px] md:p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Critiques</div>
-                <div className="mt-2 text-3xl font-black">{profile.reviews_count}</div>
+                <div className="mt-2 text-2xl font-black md:text-3xl">{profile.reviews_count}</div>
               </div>
-              <div className="rounded-[26px] border border-white/10 bg-black/30 p-4">
+              <div className="rounded-[22px] border border-white/10 bg-black/30 p-3.5 md:rounded-[26px] md:p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Favoris notes</div>
-                <div className="mt-2 text-3xl font-black">{profile.favorites_count}</div>
+                <div className="mt-2 text-2xl font-black md:text-3xl">{profile.favorites_count}</div>
               </div>
-              <div className="rounded-[26px] border border-white/10 bg-black/30 p-4">
+              <div className="rounded-[22px] border border-white/10 bg-black/30 p-3.5 md:rounded-[26px] md:p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Abonnes</div>
-                <div className="mt-2 text-3xl font-black">{profile.followers_count}</div>
+                <div className="mt-2 text-2xl font-black md:text-3xl">{profile.followers_count}</div>
               </div>
-              <div className="rounded-[26px] border border-white/10 bg-black/30 p-4">
+              <div className="rounded-[22px] border border-white/10 bg-black/30 p-3.5 md:rounded-[26px] md:p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Abonnements</div>
-                <div className="mt-2 text-3xl font-black">{profile.following_count}</div>
+                <div className="mt-2 text-2xl font-black md:text-3xl">{profile.following_count}</div>
               </div>
             </div>
           </div>
@@ -296,12 +297,14 @@ export default function SocialProfilePage() {
           </div>
         )}
 
-        <section className="rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6">
-          <div className="mb-6">
+        <section className="rounded-[24px] border border-white/10 bg-zinc-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:rounded-[32px] md:p-6">
+          <div className="mb-4 md:mb-6">
             <div className="mb-2 inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-gray-300">
               Film log
             </div>
-            <h2 className="text-2xl font-black tracking-tight">Les critiques publiees par @{profile.username}</h2>
+            <h2 className="text-xl font-black tracking-tight md:text-2xl">
+              Les critiques publiees par @{profile.username}
+            </h2>
           </div>
 
           {profile.reviews.length === 0 ? (
@@ -317,7 +320,70 @@ export default function SocialProfilePage() {
                     key={review.id}
                     className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]"
                   >
-                    <div className="grid gap-0 md:grid-cols-[160px_minmax(0,1fr)]">
+                    <div className="p-3.5 md:hidden">
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={review.poster_url || FALLBACK_POSTER}
+                          alt={review.title}
+                          className="h-24 w-16 flex-shrink-0 rounded-[18px] object-cover"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                                Film
+                              </div>
+                              <div className="line-clamp-2 text-sm font-bold leading-5 text-white">
+                                {review.title}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-shrink-0 items-center gap-1 rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-semibold text-yellow-300">
+                              {Array.from({ length: 5 }).map((_, index) => (
+                                <Star
+                                  key={index}
+                                  className={`h-3 w-3 ${
+                                    index < review.rating ? "fill-current" : "text-yellow-600/40"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="mt-3 text-sm font-semibold text-amber-200">@{profile.username}</div>
+                          <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                            {formatSocialDate(review.created_at)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="mt-4 text-sm leading-6 text-gray-100">{review.content}</p>
+
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <div className="text-xs text-gray-500">{review.comments_count} commentaires</div>
+
+                        <button
+                          type="button"
+                          onClick={() => void toggleLike(review)}
+                          disabled={isPendingLike}
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                            review.liked_by_me
+                              ? "bg-red-600 text-white hover:bg-red-500"
+                              : "border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {isPendingLike ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Heart className={`h-4 w-4 ${review.liked_by_me ? "fill-current" : ""}`} />
+                          )}
+                          {review.likes_count}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="hidden md:grid md:grid-cols-[160px_minmax(0,1fr)]">
                       <div className="relative min-h-[220px] bg-black">
                         <img
                           src={review.poster_url || FALLBACK_POSTER}
@@ -330,7 +396,7 @@ export default function SocialProfilePage() {
                         </div>
                       </div>
 
-                      <div className="p-5 md:p-6">
+                      <div className="p-6">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             <div className="text-sm font-semibold text-amber-200">@{profile.username}</div>

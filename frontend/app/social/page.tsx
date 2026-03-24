@@ -30,7 +30,6 @@ import {
   type SocialUser,
   formatSocialDate,
 } from "@/lib/social";
-import MobilePageHeader from "@/components/MobilePageHeader";
 
 interface NotificationsPayload {
   items: SocialNotification[];
@@ -584,9 +583,9 @@ export default function SocialPage() {
       return (
         <div
           key={comment.id}
-          className={`${depth > 0 ? "ml-5 border-l border-white/10 pl-4" : ""} mt-3`}
+          className={`${depth > 0 ? "ml-3 border-l border-white/10 pl-3 md:ml-5 md:pl-4" : ""} mt-3`}
         >
-          <div className="rounded-[22px] border border-white/10 bg-black/30 p-4">
+          <div className="rounded-[22px] border border-white/10 bg-black/30 p-3.5 md:p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <Link
@@ -634,17 +633,61 @@ export default function SocialPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.22),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.16),_transparent_26%),#000] px-4 py-3 text-white md:py-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 md:gap-6">
-        <MobilePageHeader
-          title="Social"
-          subtitle="Critiques, profils et alertes"
-          icon={Users}
-          accent="red"
-          trailing={
-            <div className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-[11px] font-semibold text-white">
-              {unreadNotifications}
+        <section className="md:hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-red-200/80">
+                Qulte social
+              </div>
+              <h1 className="mt-1 text-[1.35rem] font-black tracking-tight text-white">
+                Le feed de ton cercle
+              </h1>
+              <p className="mt-1 text-sm text-gray-400">
+                Moins de chrome, plus de critiques et de profils utiles.
+              </p>
             </div>
-          }
-        />
+
+            <button
+              type="button"
+              onClick={() => void fetchFeed()}
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white transition hover:bg-white/[0.1]"
+              title="Actualiser le feed"
+            >
+              <RefreshCcw className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {[
+              { key: "feed", label: "Feed", icon: Film },
+              { key: "write", label: "Ecrire", icon: PenSquare },
+              { key: "alerts", label: "Alertes", icon: Bell },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = mobileSection === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setMobileSection(tab.key as "feed" | "write" | "alerts")}
+                  className={`relative inline-flex min-w-fit items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition ${
+                    isActive
+                      ? "border-red-500/40 bg-red-600 text-white"
+                      : "border-white/10 bg-white/[0.04] text-gray-300"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                  {tab.key === "alerts" && unreadNotifications > 0 && (
+                    <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-black">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         <section className="hidden overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md md:block">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:p-5">
@@ -671,55 +714,20 @@ export default function SocialPage() {
           </div>
         </section>
 
-        <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md lg:hidden">
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { key: "feed", label: "Feed", icon: Film },
-              { key: "write", label: "Critique", icon: PenSquare },
-              { key: "alerts", label: "Alertes", icon: Bell },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = mobileSection === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setMobileSection(tab.key as "feed" | "write" | "alerts")}
-                  className={`relative rounded-[18px] px-2 py-3 text-xs font-semibold transition ${
-                    isActive
-                      ? "bg-red-600 text-white"
-                      : "border border-white/10 bg-white/[0.04] text-gray-300"
-                  }`}
-                >
-                  <div className="flex flex-col items-center gap-1">
-                    <Icon className="h-4 w-4" />
-                    <span>{tab.label}</span>
-                  </div>
-                  {tab.key === "alerts" && unreadNotifications > 0 && (
-                    <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[9px] font-bold text-black">
-                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
         <div className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
           <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
             <section
-              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+              className={`rounded-[24px] border border-white/10 bg-zinc-950/90 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:rounded-[28px] md:p-5 ${
                 mobileSection === "write" ? "block" : "hidden lg:block"
               }`}
             >
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-600/15 text-red-300">
+              <div className="mb-4 flex items-center gap-3 md:mb-5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-600/15 text-red-300 md:h-11 md:w-11">
                   <PenSquare className="h-5 w-5" />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold">Recherche et critique</h2>
-                  <p className="text-sm text-gray-400">Films et profils sont maintenant dans la meme barre.</p>
+                  <p className="text-sm text-gray-400">Films et profils dans une vue plus directe.</p>
                 </div>
               </div>
 
@@ -833,7 +841,7 @@ export default function SocialPage() {
                               key={user.id}
                               className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4"
                             >
-                              <div className="flex items-start justify-between gap-4">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                                 <div className="min-w-0">
                                   <Link
                                     href={`/social/${encodeURIComponent(user.username)}`}
@@ -854,7 +862,7 @@ export default function SocialPage() {
                                   </div>
                                 </div>
 
-                                <div className="flex flex-col items-end gap-2">
+                                <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end">
                                   <button
                                     type="button"
                                     onClick={() => void toggleFollow(user)}
@@ -974,13 +982,13 @@ export default function SocialPage() {
             </section>
 
             <section
-              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
+              className={`rounded-[24px] border border-white/10 bg-zinc-950/90 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:rounded-[28px] md:p-5 ${
                 mobileSection === "alerts" ? "block" : "hidden lg:block"
               }`}
             >
-              <div className="mb-5 flex items-center justify-between gap-3">
+              <div className="mb-4 flex items-center justify-between gap-3 md:mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white md:h-11 md:w-11">
                     <Bell className="h-5 w-5" />
                   </div>
                   <div>
@@ -1087,23 +1095,25 @@ export default function SocialPage() {
           </div>
 
           <section
-            className={`rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6 ${
+            className={`rounded-[24px] border border-white/10 bg-zinc-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:rounded-[32px] md:p-6 ${
               mobileSection === "feed" ? "block" : "hidden lg:block"
             }`}
           >
-            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="mb-4 flex items-center justify-between gap-3 md:mb-6 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-gray-300">
                   <Film className="h-3.5 w-3.5" />
                   Feed cine
                 </div>
-                <h2 className="text-2xl font-black tracking-tight">Les dernieres critiques de ton cercle</h2>
+                <h2 className="text-xl font-black tracking-tight md:text-2xl">
+                  Les dernieres critiques de ton cercle
+                </h2>
               </div>
 
               <button
                 type="button"
                 onClick={() => void fetchFeed()}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08] md:px-4"
               >
                 Actualiser
               </button>
@@ -1144,20 +1154,103 @@ export default function SocialPage() {
                       key={review.id}
                       className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]"
                     >
-                      <div className="grid gap-0 grid-cols-[82px_minmax(0,1fr)] md:grid-cols-[112px_minmax(0,1fr)]">
-                        <div className="relative min-h-[126px] bg-black md:min-h-[176px]">
+                      <div className="p-3.5 md:hidden">
+                        <div className="flex items-start gap-3">
+                          <img
+                            src={review.poster_url || FALLBACK_POSTER}
+                            alt={review.title}
+                            className="h-24 w-16 flex-shrink-0 rounded-[18px] object-cover"
+                          />
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                                  Film
+                                </div>
+                                <div className="line-clamp-2 text-sm font-bold leading-5 text-white">
+                                  {review.title}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-shrink-0 items-center gap-1 rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-semibold text-yellow-300">
+                                {Array.from({ length: 5 }).map((_, index) => (
+                                  <Star
+                                    key={index}
+                                    className={`h-3 w-3 ${
+                                      index < review.rating ? "fill-current" : "text-yellow-600/40"
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            <Link
+                              href={`/social/${encodeURIComponent(review.author.username)}`}
+                              className="mt-3 inline-flex text-sm font-semibold text-red-200 transition hover:text-red-100"
+                            >
+                              @{review.author.username}
+                            </Link>
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                              {formatSocialDate(review.created_at)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="mt-4 text-sm leading-6 text-gray-100">{review.content}</p>
+
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <div className="text-xs text-gray-500">{review.comments_count} commentaires</div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void toggleComments(review.id)}
+                              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                                isCommentsOpen(review.id)
+                                  ? "bg-amber-500 text-black hover:bg-amber-400"
+                                  : "border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                              }`}
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                              {review.comments_count}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => void toggleLike(review)}
+                              disabled={isPendingLike}
+                              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                                review.liked_by_me
+                                  ? "bg-red-600 text-white hover:bg-red-500"
+                                  : "border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                              } disabled:cursor-not-allowed disabled:opacity-60`}
+                            >
+                              {isPendingLike ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Heart className={`h-4 w-4 ${review.liked_by_me ? "fill-current" : ""}`} />
+                              )}
+                              {review.likes_count}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="hidden md:grid md:grid-cols-[112px_minmax(0,1fr)]">
+                        <div className="relative min-h-[176px] bg-black">
                           <img
                             src={review.poster_url || FALLBACK_POSTER}
                             alt={review.title}
                             className="h-full w-full object-cover"
                           />
-                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2.5 py-2.5 md:px-4 md:py-4">
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-4 py-4">
                             <div className="text-[10px] uppercase tracking-[0.18em] text-gray-300">Film</div>
-                            <div className="line-clamp-2 text-[11px] font-bold leading-4 md:text-sm">{review.title}</div>
+                            <div className="line-clamp-2 text-sm font-bold">{review.title}</div>
                           </div>
                         </div>
 
-                        <div className="p-3.5 md:p-5">
+                        <div className="p-5">
                           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div>
                               <Link
@@ -1183,12 +1276,10 @@ export default function SocialPage() {
                             </div>
                           </div>
 
-                          <p className="mt-3 text-sm leading-6 text-gray-100 md:mt-4 md:text-[15px] md:leading-7">
-                            {review.content}
-                          </p>
+                          <p className="mt-4 text-[15px] leading-7 text-gray-100">{review.content}</p>
 
-                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 md:mt-5">
-                            <div className="text-xs text-gray-500 md:text-sm">
+                          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                            <div className="text-sm text-gray-500">
                               Critique sur <span className="font-semibold text-gray-300">{review.title}</span>
                             </div>
 
@@ -1225,108 +1316,110 @@ export default function SocialPage() {
                               </button>
                             </div>
                           </div>
+                        </div>
+                      </div>
 
-                          {isCommentsOpen(review.id) && (
-                            <div className="mt-6 rounded-[26px] border border-white/10 bg-black/30 p-4 md:p-5">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-gray-200">
-                                    Discussion
-                                  </h3>
-                                  <p className="mt-1 text-sm text-gray-500">
-                                    Les reponses restent attachees a la critique.
-                                  </p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setOpenCommentReviews((current) =>
-                                      current.filter((id) => id !== review.id),
-                                    )
-                                  }
-                                  className="rounded-full border border-white/10 bg-white/[0.04] p-2 text-gray-300 transition hover:bg-white/[0.08] hover:text-white"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
+                      {isCommentsOpen(review.id) && (
+                        <div className="px-3.5 pb-3.5 md:px-5 md:pb-5">
+                          <div className="rounded-[24px] border border-white/10 bg-black/30 p-4 md:rounded-[26px] md:p-5">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-gray-200">
+                                  Discussion
+                                </h3>
+                                <p className="mt-1 text-sm text-gray-500">
+                                  Les reponses restent attachees a la critique.
+                                </p>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenCommentReviews((current) =>
+                                    current.filter((id) => id !== review.id),
+                                  )
+                                }
+                                className="rounded-full border border-white/10 bg-white/[0.04] p-2 text-gray-300 transition hover:bg-white/[0.08] hover:text-white"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
 
-                              {commentErrors[review.id] && (
-                                <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                                  {commentErrors[review.id]}
+                            {commentErrors[review.id] && (
+                              <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                                {commentErrors[review.id]}
+                              </div>
+                            )}
+
+                            <div className="mt-4">
+                              {commentsLoading ? (
+                                <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-4 py-8 text-sm text-gray-400">
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Chargement des commentaires...
+                                </div>
+                              ) : (commentsByReview[review.id] ?? []).length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
+                                  Personne n&apos;a encore reagi a cette critique.
+                                </div>
+                              ) : (
+                                <div className="space-y-1">{renderCommentTree(review.id)}</div>
+                              )}
+                            </div>
+
+                            <div className="mt-5 rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
+                              {replyTarget && (
+                                <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                                  <span>Reponse a @{replyTarget.username}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setReplyTargets((current) => ({ ...current, [review.id]: null }))
+                                    }
+                                    className="rounded-full bg-white/10 p-1 text-white transition hover:bg-white/20"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
                               )}
 
-                              <div className="mt-4">
-                                {commentsLoading ? (
-                                  <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-4 py-8 text-sm text-gray-400">
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Chargement des commentaires...
-                                  </div>
-                                ) : (commentsByReview[review.id] ?? []).length === 0 ? (
-                                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
-                                    Personne n&apos;a encore reagi a cette critique.
-                                  </div>
-                                ) : (
-                                  <div className="space-y-1">{renderCommentTree(review.id)}</div>
-                                )}
-                              </div>
+                              <textarea
+                                value={commentDraft}
+                                onChange={(event) =>
+                                  setCommentDrafts((current) => ({
+                                    ...current,
+                                    [review.id]: event.target.value,
+                                  }))
+                                }
+                                rows={3}
+                                placeholder={
+                                  replyTarget
+                                    ? `Reponds a @${replyTarget.username}`
+                                    : "Ajoute ton commentaire"
+                                }
+                                className="w-full rounded-[20px] border border-white/10 bg-black/40 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-amber-500/70"
+                              />
 
-                              <div className="mt-5 rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
-                                {replyTarget && (
-                                  <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                                    <span>Reponse a @{replyTarget.username}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setReplyTargets((current) => ({ ...current, [review.id]: null }))
-                                      }
-                                      className="rounded-full bg-white/10 p-1 text-white transition hover:bg-white/20"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-
-                                <textarea
-                                  value={commentDraft}
-                                  onChange={(event) =>
-                                    setCommentDrafts((current) => ({
-                                      ...current,
-                                      [review.id]: event.target.value,
-                                    }))
-                                  }
-                                  rows={3}
-                                  placeholder={
-                                    replyTarget
-                                      ? `Reponds a @${replyTarget.username}`
-                                      : "Ajoute ton commentaire"
-                                  }
-                                  className="w-full rounded-[20px] border border-white/10 bg-black/40 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-amber-500/70"
-                                />
-
-                                <div className="mt-3 flex items-center justify-between gap-3">
-                                  <div className="text-xs text-gray-500">
-                                    {commentDraft.trim().length} caracteres
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => void submitComment(review.id)}
-                                    disabled={commentSubmitting || commentDraft.trim().length < 2}
-                                    className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-sm font-bold text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-900/40 disabled:text-amber-100/50"
-                                  >
-                                    {commentSubmitting ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Send className="h-4 w-4" />
-                                    )}
-                                    Envoyer
-                                  </button>
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <div className="text-xs text-gray-500">
+                                  {commentDraft.trim().length} caracteres
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void submitComment(review.id)}
+                                  disabled={commentSubmitting || commentDraft.trim().length < 2}
+                                  className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-sm font-bold text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-900/40 disabled:text-amber-100/50"
+                                >
+                                  {commentSubmitting ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Send className="h-4 w-4" />
+                                  )}
+                                  Envoyer
+                                </button>
                               </div>
                             </div>
-                          )}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </article>
                   );
                 })}
