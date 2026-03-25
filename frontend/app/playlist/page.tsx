@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clock, Film, Folder, GripVertical, Plus, Star, Trash2 } from "lucide-react";
+import { ArrowLeft, Clock, Film, Folder, Plus, Star, Trash2 } from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import {
@@ -682,11 +682,6 @@ export default function PlaylistsPage() {
                             }}
                             className="w-full text-left transition-transform hover:scale-[1.02]"
                           >
-                            {canReorderMovies && (
-                              <div className="mb-1 flex items-center text-gray-500">
-                                <GripVertical className="h-3.5 w-3.5" />
-                              </div>
-                            )}
                             <img
                               src={movie.poster_url}
                               alt={movie.title}
