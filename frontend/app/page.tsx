@@ -37,6 +37,8 @@ interface Movie {
 type SwipeDirection = "left" | "right";
 
 export default function Home() {
+  const TARGET_STACK_SIZE = 12;
+  const REFILL_THRESHOLD = 7;
   const router = useRouter();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +47,7 @@ export default function Home() {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const isFetchingRef = useRef(false);
   const isSwipingRef = useRef(false);
+  const bufferedMovieIdsRef = useRef<number[]>([]);
 
   const redirectToLogin = () => {
     clearStoredSession();
@@ -65,10 +68,16 @@ export default function Home() {
     isFetchingRef.current = true;
 
     try {
-      const params = new URLSearchParams({ limit: "10" });
-      if (excludeMovieIds.length > 0) {
-        params.set("exclude_ids", excludeMovieIds.join(","));
+      const knownMovieIds = Array.from(
+        new Set([...bufferedMovieIdsRef.current, ...excludeMovieIds]),
+      );
+      const missingCount = Math.max(TARGET_STACK_SIZE - knownMovieIds.length, 6);
+      const params = new URLSearchParams({ limit: String(missingCount) });
+      if (knownMovieIds.length > 0) {
+        params.set("exclude_ids", knownMovieIds.join(","));
       }
+
+      params.set("mode", "tinder");
 
       const res = await fetch(`${API_URL}/movies/feed?${params.toString()}`, {
         headers: buildAuthHeaders(token),
@@ -91,10 +100,12 @@ export default function Home() {
           (movie: Movie) => !knownIds.has(movie.id),
         );
         addedCount = nextMovies.length;
-        return [...current, ...nextMovies];
+        const mergedMovies = [...current, ...nextMovies];
+        bufferedMovieIdsRef.current = mergedMovies.map((movie) => movie.id);
+        return mergedMovies;
       });
 
-      if (addedCount === 0 && excludeMovieIds.length > 0) {
+      if (addedCount === 0 && knownMovieIds.length > 0) {
         setError("L'IA cherche encore de nouveaux films. Réessaie dans quelques secondes.");
       } else {
         setError("");
@@ -148,12 +159,12 @@ export default function Home() {
   }, [router]);
 
   useEffect(() => {
-    if (loading || movies.length >= 4) {
+    if (loading || movies.length >= REFILL_THRESHOLD) {
       return;
     }
 
     const queuedIds = movies.map((movie) => movie.id);
-    const refillDelay = movies.length === 0 ? 500 : 150;
+    const refillDelay = movies.length === 0 ? 120 : 0;
     const refillTimer = window.setTimeout(() => {
       void fetchMovies(queuedIds);
     }, refillDelay);
@@ -167,8 +178,9 @@ export default function Home() {
 
     setMovies((current) => {
       const nextMovies = current.slice(1);
-      shouldLoadMore = nextMovies.length < 4;
+      shouldLoadMore = nextMovies.length < REFILL_THRESHOLD;
       remainingIds = nextMovies.map((movie) => movie.id);
+      bufferedMovieIdsRef.current = remainingIds;
       return nextMovies;
     });
 
@@ -234,7 +246,9 @@ export default function Home() {
       if (current.some((entry) => entry.id === movie.id)) {
         return current;
       }
-      return [movie, ...current];
+      const restoredMovies = [movie, ...current];
+      bufferedMovieIdsRef.current = restoredMovies.map((entry) => entry.id);
+      return restoredMovies;
     });
   };
 

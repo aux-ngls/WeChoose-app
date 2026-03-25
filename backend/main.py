@@ -1,4 +1,5 @@
 import ast
+from collections import defaultdict
 import json
 import os
 import sqlite3
@@ -127,6 +128,23 @@ def extract_json_ids(value) -> list[int]:
         if isinstance(item_id, int):
             parsed_ids.append(item_id)
     return parsed_ids
+
+
+def extract_primary_genre_name(value) -> str:
+    if not isinstance(value, str) or not value:
+        return "Autres"
+
+    try:
+        items = ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        return "Autres"
+
+    for item in items:
+        genre_name = item.get("name") if isinstance(item, dict) else None
+        if genre_name:
+            return str(genre_name)
+
+    return "Autres"
 
 
 def normalize_tmdb_movie(movie: dict) -> Optional[dict]:
@@ -300,13 +318,42 @@ try:
         if "genres" in movies_df.columns
         else [[] for _ in range(len(movies_df))]
     )
+    movies_df["keyword_tokens"] = (
+        movies_df["keywords"].apply(extract_json_names)
+        if "keywords" in movies_df.columns
+        else [[] for _ in range(len(movies_df))]
+    )
+    movies_df["primary_genre"] = (
+        movies_df["genres"].apply(extract_primary_genre_name)
+        if "genres" in movies_df.columns
+        else ["Autres" for _ in range(len(movies_df))]
+    )
+    max_popularity = max(float(movies_df["popularity"].max()), 1.0)
+    max_vote_count = max(float(movies_df["vote_count"].max()), 1.0)
+    movies_df["quality_score"] = (
+        ((movies_df["vote_average"] / 10.0) * 0.55)
+        + ((np.log1p(movies_df["popularity"]) / np.log1p(max_popularity)) * 0.20)
+        + ((np.log1p(movies_df["vote_count"]) / np.log1p(max_vote_count)) * 0.25)
+    )
     cv = CountVectorizer(max_features=5000, stop_words='english')
     vectors = cv.fit_transform(movies_df['soup']).toarray()
+    movie_ids_array = movies_df["id"].astype(int).to_numpy()
+    movie_index_by_id = {
+        int(movie_id): index
+        for index, movie_id in enumerate(movie_ids_array.tolist())
+    }
+    movie_primary_genre_by_id = {
+        int(row["id"]): str(row["primary_genre"] or "Autres")
+        for _, row in movies_df[["id", "primary_genre"]].iterrows()
+    }
     print("✅ IA Prête !")
 except Exception as ex:
     print(f"Erreur IA (ou démarrage sans modèle): {ex}")
     movies_df = pd.DataFrame()
     vectors = None
+    movie_ids_array = np.array([])
+    movie_index_by_id = {}
+    movie_primary_genre_by_id = {}
 
 # --- 3. OUTILS AUTHENTIFICATION ---
 class UserCreate(BaseModel):
@@ -583,6 +630,7 @@ def save_onboarding_preferences(
     return preferences
 
 # --- 5. OUTILS TMDB (Inchangé) ---
+@lru_cache(maxsize=2048)
 def fetch_poster_from_tmdb(movie_id):
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR"
@@ -725,28 +773,111 @@ def get_tmdb_person_seed_movie_ids(person_name: str) -> tuple[int, ...]:
 
 
 def get_movie_primary_genre(movie_id: int) -> str:
-    if movies_df.empty:
-        return "Autres"
+    return movie_primary_genre_by_id.get(int(movie_id), "Autres")
 
-    movie_row = movies_df[movies_df["id"] == movie_id]
-    if movie_row.empty:
-        return "Autres"
 
-    raw_genres = movie_row.iloc[0].get("genres")
-    if not isinstance(raw_genres, str) or not raw_genres:
-        return "Autres"
+def get_rating_signal_weight(rating: int) -> float:
+    return {
+        5: 1.45,
+        4: 1.05,
+        3: 0.12,
+        2: -0.70,
+        1: -1.10,
+    }.get(int(rating), 0.0)
 
-    try:
-        parsed_genres = ast.literal_eval(raw_genres)
-    except (ValueError, SyntaxError):
-        return "Autres"
 
-    for item in parsed_genres:
-        genre_name = item.get("name") if isinstance(item, dict) else None
-        if genre_name:
-            return str(genre_name)
+def squash_affinity(value: float) -> float:
+    return float(0.5 + (0.5 * np.tanh(value)))
 
-    return "Autres"
+
+def build_collaborative_candidate_scores(cursor, current_user_id: int, blocked_ids: set[int]) -> dict[int, float]:
+    cursor.execute(
+        """
+        WITH base AS (
+            SELECT movie_id, rating
+            FROM user_ratings
+            WHERE user_id = ?
+        )
+        SELECT
+            other.user_id,
+            COUNT(*) AS overlap_count,
+            SUM(
+                CASE
+                    WHEN base.rating >= 4 AND other.rating >= 4 THEN 1.45 + ((other.rating - 4) * 0.15)
+                    WHEN base.rating <= 2 AND other.rating <= 2 THEN 0.90
+                    WHEN ABS(base.rating - other.rating) <= 1 THEN 0.30
+                    WHEN (base.rating >= 4 AND other.rating <= 2)
+                      OR (base.rating <= 2 AND other.rating >= 4) THEN -1.70
+                    ELSE -0.15
+                END
+            ) AS similarity_score
+        FROM base
+        JOIN user_ratings other
+          ON other.movie_id = base.movie_id
+         AND other.user_id != ?
+        GROUP BY other.user_id
+        HAVING overlap_count >= 2 AND similarity_score > 0
+        ORDER BY similarity_score DESC, overlap_count DESC
+        LIMIT 10
+        """,
+        (current_user_id, current_user_id),
+    )
+    neighbors = cursor.fetchall()
+    collaborative_scores: dict[int, float] = {}
+
+    for neighbor_id, overlap_count, similarity_score in neighbors:
+        if not overlap_count or not similarity_score:
+            continue
+
+        affinity_weight = min(1.9, max(0.25, float(similarity_score) / max(int(overlap_count), 1)))
+        cursor.execute(
+            """
+            SELECT movie_id, rating
+            FROM user_ratings
+            WHERE user_id = ? AND rating >= 4
+            ORDER BY added_at DESC
+            LIMIT 24
+            """,
+            (neighbor_id,),
+        )
+        for rank, (movie_id, rating) in enumerate(cursor.fetchall()):
+            movie_id = int(movie_id)
+            if movie_id in blocked_ids:
+                continue
+            freshness_weight = max(0.35, 1.0 - (rank * 0.05))
+            rating_weight = 1.0 + ((int(rating) - 4) * 0.22)
+            collaborative_scores[movie_id] = collaborative_scores.get(movie_id, 0.0) + (
+                affinity_weight * freshness_weight * rating_weight
+            )
+
+    return collaborative_scores
+
+
+def pick_diverse_movie_ids(ranked_ids: list[int], limit: int, per_genre_cap: int) -> list[int]:
+    if limit <= 0:
+        return []
+
+    selected_ids: list[int] = []
+    deferred_ids: list[int] = []
+    genre_counts: dict[str, int] = {}
+
+    for movie_id in ranked_ids:
+        genre_name = get_movie_primary_genre(movie_id)
+        current_count = genre_counts.get(genre_name, 0)
+        if current_count < per_genre_cap or len(selected_ids) < max(2, limit // 2):
+            selected_ids.append(movie_id)
+            genre_counts[genre_name] = current_count + 1
+        else:
+            deferred_ids.append(movie_id)
+        if len(selected_ids) >= limit:
+            return selected_ids[:limit]
+
+    for movie_id in deferred_ids:
+        if len(selected_ids) >= limit:
+            break
+        selected_ids.append(movie_id)
+
+    return selected_ids[:limit]
 
 
 @lru_cache(maxsize=64)
@@ -1570,6 +1701,13 @@ def compute_recommendation_feed(
     exclude_ids: Optional[str] = None,
     mode: str = "core",
 ):
+    normalized_mode = mode.strip().lower() if isinstance(mode, str) else "core"
+    if normalized_mode == "core":
+        normalized_mode = "spotlight"
+    is_tinder_mode = normalized_mode == "tinder"
+    is_spotlight_mode = normalized_mode == "spotlight"
+    is_explore_mode = normalized_mode == "explore"
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -1579,28 +1717,30 @@ def compute_recommendation_feed(
     preferences = get_user_preferences(cursor, current_user_id)
 
     cursor.execute(
-        "SELECT movie_id FROM user_ratings WHERE user_id = ?",
+        "SELECT movie_id, rating FROM user_ratings WHERE user_id = ? ORDER BY added_at DESC",
         (current_user_id,),
     )
-    rated_ids = {row[0] for row in cursor.fetchall()}
-
-    cursor.execute(
-        "SELECT movie_id FROM user_ratings WHERE user_id = ? AND rating >= 4 ORDER BY added_at DESC LIMIT 8",
-        (current_user_id,),
-    )
-    liked_ids = [row[0] for row in cursor.fetchall()]
+    rating_rows = [(int(row[0]), int(row[1])) for row in cursor.fetchall()]
+    rated_ids = {movie_id for movie_id, _ in rating_rows}
+    disliked_ids = [movie_id for movie_id, rating in rating_rows if rating <= 2][:12]
 
     cursor.execute(
         "SELECT movie_id FROM playlist_items WHERE playlist_id = ?",
         (watch_later_id,),
     )
-    watch_later_ids = {row[0] for row in cursor.fetchall()}
+    watch_later_ids = {int(row[0]) for row in cursor.fetchall()}
 
     cursor.execute(
-        "SELECT movie_id FROM playlist_items WHERE playlist_id = ? ORDER BY rowid DESC LIMIT 8",
+        "SELECT movie_id FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 999999), added_at DESC LIMIT 12",
         (watch_later_id,),
     )
-    recent_watch_later_ids = [row[0] for row in cursor.fetchall()]
+    recent_watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
+
+    collaborative_scores = build_collaborative_candidate_scores(
+        cursor,
+        current_user_id,
+        rated_ids | watch_later_ids,
+    ) if not is_tinder_mode else {}
     conn.close()
 
     request_exclude_ids = parse_exclude_ids(exclude_ids)
@@ -1615,98 +1755,209 @@ def compute_recommendation_feed(
         for value in preferences["favorite_genres"]
         if normalize_genre_token(value)
     }
-    positive_signal_ids = (
-        list(
-            dict.fromkeys(
-                [
-                    *liked_ids,
-                    *recent_watch_later_ids,
-                    *(onboarding_movie_ids if cold_start_mode else []),
-                    *(people_seed_movie_ids if cold_start_mode else []),
-                ]
-            )
-        )[:12]
-    )
 
     if movies_df.empty:
         return []
 
-    available_movie_ids = set(int(movie_id) for movie_id in movies_df["id"].tolist())
-    candidate_scores: dict[int, float] = {}
-    genre_profile: set[str] = set()
-    genre_profile.update(onboarding_genre_tokens)
-    if positive_signal_ids:
-        preferred_rows = movies_df[movies_df["id"].isin(positive_signal_ids)]
-        for tokens in preferred_rows["genre_tokens"]:
-            genre_profile.update(tokens)
+    positive_signal_weights: dict[int, float] = {}
+    negative_signal_weights: dict[int, float] = {}
 
-    if positive_signal_ids and vectors is not None and not movies_df.empty:
+    for index, (movie_id, rating) in enumerate(rating_rows):
+        recency_multiplier = max(0.58, 1.0 - (index * 0.025))
+        signal_weight = get_rating_signal_weight(rating) * recency_multiplier
+        if signal_weight > 0:
+            positive_signal_weights[movie_id] = max(
+                positive_signal_weights.get(movie_id, 0.0),
+                signal_weight,
+            )
+        elif signal_weight < 0:
+            negative_signal_weights[movie_id] = min(
+                negative_signal_weights.get(movie_id, 0.0),
+                signal_weight,
+            )
+
+    for index, movie_id in enumerate(recent_watch_later_ids):
+        watch_weight = max(0.42, 0.92 - (index * 0.07))
+        positive_signal_weights[movie_id] = max(
+            positive_signal_weights.get(movie_id, 0.0),
+            watch_weight,
+        )
+
+    onboarding_movie_weight = 1.15 if cold_start_mode else 0.55
+    people_seed_weight = 0.82 if cold_start_mode else 0.35
+    for movie_id in onboarding_movie_ids:
+        positive_signal_weights[movie_id] = max(
+            positive_signal_weights.get(movie_id, 0.0),
+            onboarding_movie_weight,
+        )
+    for movie_id in people_seed_movie_ids:
+        positive_signal_weights[movie_id] = max(
+            positive_signal_weights.get(movie_id, 0.0),
+            people_seed_weight,
+        )
+
+    positive_signal_ids = list(positive_signal_weights.keys())[:18]
+    candidate_scores: dict[int, float] = {}
+    available_movie_ids = set(int(movie_id) for movie_id in movie_ids_array.tolist())
+    genre_profile: set[str] = set(onboarding_genre_tokens)
+    genre_affinity_map: dict[str, float] = defaultdict(float)
+    keyword_affinity_map: dict[str, float] = defaultdict(float)
+
+    positive_indices: list[int] = []
+    positive_vector_weights: list[float] = []
+    negative_indices: list[int] = []
+    negative_vector_weights: list[float] = []
+
+    for movie_id, weight in positive_signal_weights.items():
+        movie_index = movie_index_by_id.get(int(movie_id))
+        if movie_index is None:
+            continue
+        row = movies_df.iloc[movie_index]
+        positive_indices.append(movie_index)
+        positive_vector_weights.append(float(weight))
+        for token in row["genre_tokens"]:
+            genre_profile.add(token)
+            genre_affinity_map[token] += float(weight) * 1.15
+        for token in row["keyword_tokens"][:10]:
+            keyword_affinity_map[token] += float(weight) * 0.85
+
+    for movie_id, weight in negative_signal_weights.items():
+        movie_index = movie_index_by_id.get(int(movie_id))
+        if movie_index is None:
+            continue
+        row = movies_df.iloc[movie_index]
+        negative_indices.append(movie_index)
+        negative_vector_weights.append(abs(float(weight)))
+        for token in row["genre_tokens"]:
+            genre_affinity_map[token] += float(weight) * 0.95
+        for token in row["keyword_tokens"][:10]:
+            keyword_affinity_map[token] += float(weight) * 0.75
+
+    onboarding_bias = 0.95 if cold_start_mode else 0.60
+    for token in onboarding_genre_tokens:
+        genre_affinity_map[token] += onboarding_bias
+
+    positive_similarity_scores = np.zeros(len(movies_df))
+    negative_similarity_scores = np.zeros(len(movies_df))
+
+    if vectors is not None and positive_indices:
         try:
-            liked_indices = movies_df[movies_df["id"].isin(positive_signal_ids)].index
-            if len(liked_indices) > 0:
-                liked_vectors = vectors[liked_indices]
-                sim_matrix = cosine_similarity(vectors, liked_vectors)
-                best_similarity_scores = np.max(sim_matrix, axis=1)
-                mean_similarity_scores = np.mean(sim_matrix, axis=1)
-                raw_ratings = movies_df["vote_average"].values
-                normalized_ratings = raw_ratings / 10.0
-                max_popularity = max(float(movies_df["popularity"].max()), 1.0)
-                normalized_popularity = movies_df["popularity"].values / max_popularity
-                genre_overlap_scores = np.array(
-                    [
-                        (len(set(tokens) & genre_profile) / max(len(genre_profile), 1))
-                        if genre_profile
-                        else 0.0
-                        for tokens in movies_df["genre_tokens"]
-                    ]
+            positive_sim_matrix = cosine_similarity(vectors, vectors[positive_indices])
+            positive_similarity_scores = (
+                (np.max(positive_sim_matrix, axis=1) * 0.45)
+                + (
+                    np.average(
+                        positive_sim_matrix,
+                        axis=1,
+                        weights=np.array(positive_vector_weights),
+                    )
+                    * 0.55
                 )
-                hybrid_scores = (
-                    (best_similarity_scores * 0.45)
-                    + (mean_similarity_scores * 0.15)
-                    + (genre_overlap_scores * 0.15)
-                    + (normalized_ratings * 0.15)
-                    + (normalized_popularity * 0.10)
-                )
-                indices = np.argsort(hybrid_scores)[::-1]
-                for idx in indices:
-                    row = movies_df.iloc[idx]
-                    movie_id = int(row["id"])
-                    if movie_id in blocked_ids:
-                        continue
-                    candidate_scores[movie_id] = candidate_scores.get(movie_id, 0.0) + float(hybrid_scores[idx]) * 2.0
+            )
         except Exception as e:
-            print(f"Erreur IA: {e}")
+            print(f"Erreur IA (profil positif): {e}")
+
+    if vectors is not None and negative_indices:
+        try:
+            negative_sim_matrix = cosine_similarity(vectors, vectors[negative_indices])
+            negative_similarity_scores = (
+                (np.max(negative_sim_matrix, axis=1) * 0.45)
+                + (
+                    np.average(
+                        negative_sim_matrix,
+                        axis=1,
+                        weights=np.array(negative_vector_weights),
+                    )
+                    * 0.55
+                )
+            )
+        except Exception as e:
+            print(f"Erreur IA (profil negatif): {e}")
+
+    def compute_token_affinity_scores(column_name: str, affinity_map: dict[str, float]) -> np.ndarray:
+        if not affinity_map:
+            return np.zeros(len(movies_df))
+
+        raw_scores = []
+        for tokens in movies_df[column_name]:
+            if not tokens:
+                raw_scores.append(0.0)
+                continue
+            token_score = sum(affinity_map.get(token, 0.0) for token in tokens) / max(len(tokens), 1)
+            raw_scores.append(squash_affinity(token_score))
+        return np.array(raw_scores)
+
+    genre_affinity_scores = compute_token_affinity_scores("genre_tokens", genre_affinity_map)
+    keyword_affinity_scores = compute_token_affinity_scores("keyword_tokens", keyword_affinity_map)
+    quality_scores = movies_df["quality_score"].to_numpy()
+
+    social_scores = np.array(
+        [
+            min(
+                1.0,
+                np.tanh(
+                    collaborative_scores.get(int(movie_id), 0.0) * 0.22
+                ),
+            )
+            for movie_id in movie_ids_array
+        ]
+    )
+
+    positive_similarity_weight = 0.38 if is_tinder_mode else 0.34
+    negative_similarity_weight = 0.28 if is_tinder_mode else 0.22
+    genre_affinity_weight = 0.19 if is_tinder_mode else 0.15
+    keyword_affinity_weight = 0.20 if is_tinder_mode else 0.16
+    quality_weight = 0.07 if is_tinder_mode else 0.11
+    social_weight = 0.0 if is_tinder_mode else (0.02 if interaction_count >= 8 else 0.04)
+
+    hybrid_scores = (
+        (positive_similarity_scores * positive_similarity_weight)
+        - (negative_similarity_scores * negative_similarity_weight)
+        + (genre_affinity_scores * genre_affinity_weight)
+        + (keyword_affinity_scores * keyword_affinity_weight)
+        + (quality_scores * quality_weight)
+        + (social_scores * social_weight)
+    )
 
     if cold_start_mode and onboarding_genre_tokens:
-        genre_overlap_scores = np.array(
+        cold_start_overlap_scores = np.array(
             [
                 len(set(tokens) & onboarding_genre_tokens) / max(len(onboarding_genre_tokens), 1)
                 for tokens in movies_df["genre_tokens"]
             ]
         )
-        max_popularity = max(float(movies_df["popularity"].max()), 1.0)
-        genre_seed_scores = (
-            (genre_overlap_scores * 0.6)
-            + ((movies_df["vote_average"].values / 10.0) * 0.25)
-            + ((movies_df["popularity"].values / max_popularity) * 0.15)
+        hybrid_scores = hybrid_scores + (
+            (cold_start_overlap_scores * 0.24)
+            + (quality_scores * 0.08)
         )
-        indices = np.argsort(genre_seed_scores)[::-1]
-        for idx in indices:
-            row = movies_df.iloc[idx]
-            movie_id = int(row["id"])
-            if movie_id in blocked_ids:
-                continue
-            if genre_overlap_scores[idx] <= 0:
-                break
-            candidate_scores[movie_id] = candidate_scores.get(movie_id, 0.0) + float(genre_seed_scores[idx]) * 1.6
+
+    for idx, movie_id in enumerate(movie_ids_array):
+        movie_id = int(movie_id)
+        if movie_id in blocked_ids:
+            continue
+        candidate_scores[movie_id] = float(hybrid_scores[idx])
 
     for seed_rank, seed_id in enumerate(positive_signal_ids[:4]):
         related_ids = get_tmdb_related_movie_ids(seed_id)
         for rank, related_id in enumerate(related_ids):
             if related_id in blocked_ids or related_id not in available_movie_ids:
                 continue
-            score = 2.8 - (rank * 0.08) - (seed_rank * 0.15)
+            base_seed_score = 3.35 if is_tinder_mode else 2.95
+            score = base_seed_score - (rank * 0.08) - (seed_rank * 0.18)
             candidate_scores[related_id] = candidate_scores.get(related_id, 0.0) + max(score, 0.2)
+
+    for seed_rank, seed_id in enumerate(disliked_ids[:4]):
+        related_ids = get_tmdb_related_movie_ids(seed_id)
+        for rank, related_id in enumerate(related_ids):
+            if related_id in blocked_ids or related_id not in available_movie_ids:
+                continue
+            penalty = 1.15 - (rank * 0.05) - (seed_rank * 0.12)
+            candidate_scores[related_id] = candidate_scores.get(related_id, 0.0) - max(penalty, 0.10)
+
+    for movie_id, score in collaborative_scores.items():
+        if movie_id in blocked_ids or movie_id not in available_movie_ids:
+            continue
+        candidate_scores[movie_id] = candidate_scores.get(movie_id, 0.0) + min(score, 0.85 if is_spotlight_mode else 0.35)
 
     ranked_candidate_ids = [
         movie_id
@@ -1714,12 +1965,15 @@ def compute_recommendation_feed(
         if movie_id not in blocked_ids
     ]
 
-    if mode == "explore":
+    if is_explore_mode:
         exploration_pool = movies_df[~movies_df["id"].isin(blocked_ids)].copy()
         if exploration_pool.empty:
             return []
 
-        max_popularity = max(float(exploration_pool["popularity"].max()), 1.0)
+        ranked_bonus = {
+            movie_id: max(0.0, 1.0 - (rank / 120.0))
+            for rank, movie_id in enumerate(ranked_candidate_ids[:120])
+        }
         genre_distance_scores = np.array(
             [
                 1.0 - (len(set(tokens) & genre_profile) / max(len(genre_profile), 1))
@@ -1728,16 +1982,28 @@ def compute_recommendation_feed(
                 for tokens in exploration_pool["genre_tokens"]
             ]
         )
-        ranked_bonus = {movie_id: max(0.0, 1.0 - (rank / 150.0)) for rank, movie_id in enumerate(ranked_candidate_ids[:150])}
         exploration_pool["exploration_score"] = [
-            ((float(row["vote_average"]) / 10.0) * 0.42)
-            + ((float(row["popularity"]) / max_popularity) * 0.16)
-            + (genre_distance_scores[idx] * 0.32)
-            + (ranked_bonus.get(int(row["id"]), 0.0) * 0.10)
+            (ranked_bonus.get(int(row["id"]), 0.0) * 0.32)
+            + (genre_distance_scores[idx] * 0.26)
+            + (float(row["quality_score"]) * 0.24)
+            + (collaborative_scores.get(int(row["id"]), 0.0) * 0.03)
+            + (
+                positive_similarity_scores[movie_index_by_id[int(row["id"])]]
+                * (0.08 if positive_signal_ids else 0.0)
+            )
             for idx, (_, row) in enumerate(exploration_pool.iterrows())
         ]
         exploration_pool = exploration_pool.sort_values("exploration_score", ascending=False)
-        selected_rows = exploration_pool.head(limit).copy()
+        shortlisted_ids = [
+            int(row["id"])
+            for _, row in exploration_pool.head(max(limit * 8, 40)).iterrows()
+        ]
+        selected_ids = pick_diverse_movie_ids(shortlisted_ids, limit, per_genre_cap=2)
+        selected_rows = movies_df[movies_df["id"].isin(selected_ids)].copy()
+        selected_rows["selection_rank"] = selected_rows["id"].apply(
+            lambda movie_id: selected_ids.index(int(movie_id))
+        )
+        selected_rows = selected_rows.sort_values("selection_rank")
         return [
             {
                 "id": int(row["id"]),
@@ -1748,14 +2014,14 @@ def compute_recommendation_feed(
             for _, row in selected_rows.iterrows()
         ]
 
-    exploration_slots = max(1, limit // 5) if positive_signal_ids else 0
+    exploration_slots = 0 if is_tinder_mode else (max(1, limit // 5) if positive_signal_ids else 0)
     main_slots = max(limit - exploration_slots, 0)
-    selected_ids = ranked_candidate_ids[:main_slots]
+    selected_ids = pick_diverse_movie_ids(ranked_candidate_ids, main_slots, per_genre_cap=3)
     used_ids = blocked_ids | set(selected_ids)
 
     if len(selected_ids) < main_slots:
         filler_pool = movies_df[~movies_df["id"].isin(used_ids)]
-        filler_pool = filler_pool.sort_values(["vote_average", "popularity"], ascending=False)
+        filler_pool = filler_pool.sort_values("quality_score", ascending=False)
         selected_ids.extend([int(row["id"]) for _, row in filler_pool.head(main_slots - len(selected_ids)).iterrows()])
         used_ids = blocked_ids | set(selected_ids)
 
@@ -1789,7 +2055,7 @@ def compute_recommendation_feed(
 
     if len(selected_ids) < limit:
         fallback_pool = movies_df[~movies_df["id"].isin(used_ids)]
-        fallback_pool = fallback_pool.sort_values(["vote_average", "popularity"], ascending=False)
+        fallback_pool = fallback_pool.sort_values("quality_score", ascending=False)
         selected_ids.extend([int(row["id"]) for _, row in fallback_pool.head(limit - len(selected_ids)).iterrows()])
 
     selected_rows = movies_df[movies_df["id"].isin(selected_ids)].copy()
@@ -1877,7 +2143,7 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
         current_user_id=current_user["id"],
         limit=18,
         exclude_ids=",".join(str(movie_id) for movie_id in popular_ids),
-        mode="core",
+        mode="spotlight",
     )
     tailored_ids = {movie["id"] for movie in tailored}
 
