@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clock, Film, Folder, Plus, Star, Trash2 } from "lucide-react";
+import { ArrowLeft, Clock, Film, Folder, GripVertical, Plus, Star, Trash2 } from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import {
@@ -21,13 +21,14 @@ interface Movie {
   rating: number;
   primary_genre?: string;
   added_at?: string;
+  sort_index?: number;
   overview?: string;
   trailer_url?: string;
   cast?: { name: string; character: string; photo: string | null }[];
   release_date?: string;
 }
 
-type SortMode = "genre" | "recent" | "oldest" | "rating";
+type SortMode = "genre" | "recent" | "oldest" | "rating" | "manual";
 
 export default function PlaylistsPage() {
   const router = useRouter();
@@ -38,9 +39,19 @@ export default function PlaylistsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("genre");
+  const [filterQuery, setFilterQuery] = useState("");
   const [removingMovieId, setRemovingMovieId] = useState<number | null>(null);
+  const [draggedMovieId, setDraggedMovieId] = useState<number | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const touchDragStateRef = useRef<{
+    movieId: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressNextTapRef = useRef(false);
 
   const redirectToLogin = () => {
     clearStoredSession();
@@ -115,7 +126,8 @@ export default function PlaylistsPage() {
 
       setSelectedPlaylist(playlist);
       setMovies(data);
-      setSortMode(playlist.id === WATCH_LATER_PLAYLIST_ID ? "genre" : "recent");
+      setSortMode(playlist.type === "custom" ? "manual" : playlist.id === WATCH_LATER_PLAYLIST_ID ? "genre" : "recent");
+      setFilterQuery("");
       setError("");
     } catch (openError) {
       console.error(openError);
@@ -190,8 +202,13 @@ export default function PlaylistsPage() {
 
   const isWatchLaterSelected = selectedPlaylist?.id === WATCH_LATER_PLAYLIST_ID;
   const canRemoveMovies = Boolean(selectedPlaylist && !selectedPlaylist.readonly);
+  const canReorderMovies = selectedPlaylist?.type === "custom" && sortMode === "manual";
 
   const sortedMovies = [...movies].sort((left, right) => {
+    if (sortMode === "manual") {
+      return Number(left.sort_index ?? Number.MAX_SAFE_INTEGER) - Number(right.sort_index ?? Number.MAX_SAFE_INTEGER);
+    }
+
     if (sortMode === "rating") {
       return right.rating - left.rating;
     }
@@ -214,9 +231,13 @@ export default function PlaylistsPage() {
     return String(left.title).localeCompare(String(right.title), "fr");
   });
 
+  const filteredMovies = sortedMovies.filter((movie) =>
+    movie.title.toLowerCase().includes(filterQuery.trim().toLowerCase()),
+  );
+
   const movieGroups =
     sortMode === "genre"
-      ? sortedMovies.reduce<Array<{ genre: string; movies: Movie[] }>>((groups, movie) => {
+      ? filteredMovies.reduce<Array<{ genre: string; movies: Movie[] }>>((groups, movie) => {
           const genre = movie.primary_genre || "Autres";
           const existingGroup = groups.find((group) => group.genre === genre);
           if (existingGroup) {
@@ -226,10 +247,14 @@ export default function PlaylistsPage() {
           }
           return groups;
         }, [])
-      : [{ genre: "", movies: sortedMovies }];
+      : [{ genre: "", movies: filteredMovies }];
 
   const removeMovieFromPlaylist = async (movieId: number) => {
     if (!selectedPlaylist || selectedPlaylist.readonly) {
+      return;
+    }
+
+    if (!window.confirm("Retirer ce film de la playlist ?")) {
       return;
     }
 
@@ -265,6 +290,126 @@ export default function PlaylistsPage() {
     } finally {
       setRemovingMovieId(null);
     }
+  };
+
+  const persistManualOrder = async (nextMovies: Movie[]) => {
+    if (!selectedPlaylist || selectedPlaylist.type !== "custom") {
+      return;
+    }
+
+    const token = getTokenOrRedirect();
+    if (!token) {
+      return;
+    }
+
+    setSavingOrder(true);
+
+    try {
+      const res = await fetch(`${API_URL}/playlists/${selectedPlaylist.id}/reorder`, {
+        method: "POST",
+        headers: new Headers({
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        }),
+        body: JSON.stringify({ movie_ids: nextMovies.map((movie) => movie.id) }),
+      });
+
+      if (res.status === 401) {
+        redirectToLogin();
+        return;
+      }
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.detail ?? "Reorganisation impossible");
+      }
+
+      setError("");
+    } catch (reorderError) {
+      console.error(reorderError);
+      setError(reorderError instanceof Error ? reorderError.message : "Reorganisation impossible.");
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const moveMovieBefore = (targetMovieId: number) => {
+    if (!canReorderMovies || draggedMovieId === null || draggedMovieId === targetMovieId) {
+      return;
+    }
+
+    const currentIndex = movies.findIndex((movie) => movie.id === draggedMovieId);
+    const targetIndex = movies.findIndex((movie) => movie.id === targetMovieId);
+    if (currentIndex < 0 || targetIndex < 0) {
+      return;
+    }
+
+    const nextMovies = [...movies];
+    const [draggedMovie] = nextMovies.splice(currentIndex, 1);
+    nextMovies.splice(targetIndex, 0, draggedMovie);
+    const normalizedMovies = nextMovies.map((movie, index) => ({ ...movie, sort_index: index + 1 }));
+    setMovies(normalizedMovies);
+    void persistManualOrder(normalizedMovies);
+  };
+
+  const startTouchDrag = (movieId: number, clientX: number, clientY: number) => {
+    if (!canReorderMovies) {
+      return;
+    }
+
+    touchDragStateRef.current = {
+      movieId,
+      startX: clientX,
+      startY: clientY,
+      moved: false,
+    };
+    setDraggedMovieId(movieId);
+  };
+
+  const updateTouchDrag = (clientX: number, clientY: number) => {
+    const state = touchDragStateRef.current;
+    if (!state) {
+      return false;
+    }
+
+    const deltaX = clientX - state.startX;
+    const deltaY = clientY - state.startY;
+    if (!state.moved && Math.hypot(deltaX, deltaY) > 10) {
+      state.moved = true;
+    }
+
+    return state.moved;
+  };
+
+  const finishTouchDrag = (clientX: number, clientY: number) => {
+    const state = touchDragStateRef.current;
+    touchDragStateRef.current = null;
+
+    if (!state) {
+      setDraggedMovieId(null);
+      return false;
+    }
+
+    if (!state.moved) {
+      setDraggedMovieId(null);
+      return false;
+    }
+
+    const targetElement = document.elementFromPoint(clientX, clientY);
+    const dropTarget = targetElement?.closest("[data-playlist-movie-id]");
+    const rawTargetMovieId = dropTarget?.getAttribute("data-playlist-movie-id");
+    const targetMovieId = rawTargetMovieId ? Number(rawTargetMovieId) : NaN;
+
+    setDraggedMovieId(state.movieId);
+    if (Number.isFinite(targetMovieId) && targetMovieId !== state.movieId) {
+      moveMovieBefore(targetMovieId);
+    }
+    suppressNextTapRef.current = true;
+    window.setTimeout(() => {
+      suppressNextTapRef.current = false;
+    }, 250);
+    setDraggedMovieId(null);
+    return true;
   };
 
   return (
@@ -422,20 +567,36 @@ export default function PlaylistsPage() {
             <p className="mt-20 text-center text-gray-500">Cette liste est vide.</p>
           ) : (
             <>
-              <div className="mb-5 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">
-                  Trier
-                </span>
-                <select
-                  value={sortMode}
-                  onChange={(event) => setSortMode(event.target.value as SortMode)}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none transition focus:border-sky-500"
-                >
-                  <option value="genre">Par genre</option>
-                  <option value="recent">Ajoutes recemment</option>
-                  <option value="oldest">Ajoutes il y a longtemps</option>
-                  <option value="rating">Mieux notes</option>
-                </select>
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">
+                    Trier
+                  </span>
+                  <select
+                    value={sortMode}
+                    onChange={(event) => setSortMode(event.target.value as SortMode)}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none transition focus:border-sky-500"
+                  >
+                    {selectedPlaylist.type === "custom" && <option value="manual">Ordre manuel</option>}
+                    <option value="genre">Par genre</option>
+                    <option value="recent">Ajoutes recemment</option>
+                    <option value="oldest">Ajoutes il y a longtemps</option>
+                    <option value="rating">Mieux notes</option>
+                  </select>
+                  {canReorderMovies && (
+                    <span className="text-xs text-gray-500">
+                      {savingOrder ? "Sauvegarde..." : "Glisse les films pour changer l'ordre"}
+                    </span>
+                  )}
+                </div>
+
+                <input
+                  type="text"
+                  value={filterQuery}
+                  onChange={(event) => setFilterQuery(event.target.value)}
+                  placeholder="Filtrer par nom"
+                  className="w-full rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none transition focus:border-sky-500 md:max-w-xs"
+                />
               </div>
 
               <div className="space-y-6">
@@ -446,9 +607,13 @@ export default function PlaylistsPage() {
                         {group.genre}
                       </div>
                     )}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-3 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
                       {group.movies.map((movie) => (
-                        <div key={movie.id} className="group relative">
+                        <div
+                          key={movie.id}
+                          className="group relative"
+                          data-playlist-movie-id={movie.id}
+                        >
                           {canRemoveMovies && (
                             <button
                               type="button"
@@ -465,13 +630,69 @@ export default function PlaylistsPage() {
                           )}
 
                           <button
-                            onClick={() => void openDetails(movie.id)}
+                            type="button"
+                            onClick={() => {
+                              if (suppressNextTapRef.current) {
+                                return;
+                              }
+                              void openDetails(movie.id);
+                            }}
+                            draggable={canReorderMovies}
+                            onDragStart={() => setDraggedMovieId(movie.id)}
+                            onDragOver={(event) => {
+                              if (canReorderMovies) {
+                                event.preventDefault();
+                              }
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              moveMovieBefore(movie.id);
+                            }}
+                            onDragEnd={() => setDraggedMovieId(null)}
+                            onTouchStart={(event) => {
+                              const touch = event.touches[0];
+                              if (!touch) {
+                                return;
+                              }
+                              startTouchDrag(movie.id, touch.clientX, touch.clientY);
+                            }}
+                            onTouchMove={(event) => {
+                              const touch = event.touches[0];
+                              if (!touch) {
+                                return;
+                              }
+                              const moved = updateTouchDrag(touch.clientX, touch.clientY);
+                              if (moved) {
+                                event.preventDefault();
+                              }
+                            }}
+                            onTouchEnd={(event) => {
+                              const touch = event.changedTouches[0];
+                              if (!touch) {
+                                return;
+                              }
+                              const moved = finishTouchDrag(touch.clientX, touch.clientY);
+                              if (!moved) {
+                                void openDetails(movie.id);
+                              }
+                            }}
+                            onTouchCancel={() => {
+                              touchDragStateRef.current = null;
+                              setDraggedMovieId(null);
+                            }}
                             className="w-full text-left transition-transform hover:scale-[1.02]"
                           >
+                            {canReorderMovies && (
+                              <div className="mb-1 flex items-center text-gray-500">
+                                <GripVertical className="h-3.5 w-3.5" />
+                              </div>
+                            )}
                             <img
                               src={movie.poster_url}
                               alt={movie.title}
-                              className="aspect-[2/3] w-full rounded-xl object-cover shadow-[0_12px_28px_rgba(0,0,0,0.28)]"
+                              className={`aspect-[2/3] w-full rounded-xl object-cover shadow-[0_12px_28px_rgba(0,0,0,0.28)] ${
+                                draggedMovieId === movie.id ? "opacity-50" : ""
+                              }`}
                             />
                             <p className="mt-2 truncate text-xs font-semibold text-gray-200">{movie.title}</p>
                             <div className="mt-1 flex items-center gap-1 text-[11px] text-yellow-300">

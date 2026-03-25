@@ -194,6 +194,8 @@ def init_db():
     playlist_item_columns = {row[1] for row in cursor.fetchall()}
     if "added_at" not in playlist_item_columns:
         cursor.execute("ALTER TABLE playlist_items ADD COLUMN added_at TIMESTAMP")
+    if "sort_index" not in playlist_item_columns:
+        cursor.execute("ALTER TABLE playlist_items ADD COLUMN sort_index INTEGER")
 
     # Table FOLLOWS
     cursor.execute('''CREATE TABLE IF NOT EXISTS follows (
@@ -1444,7 +1446,7 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
     else:
         target_id = get_custom_playlist_id(cursor, playlist_id, current_user["id"])
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, rowid DESC",
+            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, rowid DESC",
             (target_id,),
         )
     
@@ -1474,8 +1476,13 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
     if info:
         try:
             cursor.execute(
-                "INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating, added_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                (target_id, info["id"], info["title"], info["poster_url"], info["rating"]),
+                "SELECT COALESCE(MAX(sort_index), 0) + 1 FROM playlist_items WHERE playlist_id = ?",
+                (target_id,),
+            )
+            next_sort_index = int(cursor.fetchone()[0] or 1)
+            cursor.execute(
+                "INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating, added_at, sort_index) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)",
+                (target_id, info["id"], info["title"], info["poster_url"], info["rating"], next_sort_index),
             )
             conn.commit()
         except sqlite3.IntegrityError:
@@ -1497,6 +1504,39 @@ def remove_from_specific_playlist(playlist_id: int, movie_id: int, current_user:
     conn.commit()
     conn.close()
     return {"status": "removed"}
+
+@app.post("/playlists/{playlist_id}/reorder")
+def reorder_playlist(
+    playlist_id: int,
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    ordered_movie_ids = payload.get("movie_ids")
+    if not isinstance(ordered_movie_ids, list) or not all(isinstance(movie_id, int) for movie_id in ordered_movie_ids):
+        raise HTTPException(status_code=400, detail="Liste de films invalide")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
+
+    cursor.execute(
+        "SELECT movie_id FROM playlist_items WHERE playlist_id = ?",
+        (target_id,),
+    )
+    existing_movie_ids = {int(row[0]) for row in cursor.fetchall()}
+    if existing_movie_ids != set(ordered_movie_ids):
+        conn.close()
+        raise HTTPException(status_code=400, detail="La liste des films ne correspond pas à la playlist")
+
+    for index, movie_id in enumerate(ordered_movie_ids, start=1):
+        cursor.execute(
+            "UPDATE playlist_items SET sort_index = ? WHERE playlist_id = ? AND movie_id = ?",
+            (index, target_id, movie_id),
+        )
+
+    conn.commit()
+    conn.close()
+    return {"status": "reordered"}
 
 @app.post("/movies/rate/{movie_id}/{rating}")
 def rate_movie(movie_id: int, rating: int, current_user: dict = Depends(get_current_user)):
