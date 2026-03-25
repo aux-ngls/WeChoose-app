@@ -1564,29 +1564,29 @@ def rate_movie(movie_id: int, rating: int, current_user: dict = Depends(get_curr
     return {"status": "rated"}
 
 # --- 7. RECOMMANDATIONS ---
-@app.get("/movies/feed")
-def get_movie_feed(
+def compute_recommendation_feed(
+    current_user_id: int,
     limit: int = 10,
     exclude_ids: Optional[str] = None,
-    current_user: dict = Depends(get_current_user),
+    mode: str = "core",
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    watch_later_id = get_or_create_watch_later_id(cursor, current_user["id"])
+    watch_later_id = get_or_create_watch_later_id(cursor, current_user_id)
     conn.commit()
 
-    preferences = get_user_preferences(cursor, current_user["id"])
+    preferences = get_user_preferences(cursor, current_user_id)
 
     cursor.execute(
         "SELECT movie_id FROM user_ratings WHERE user_id = ?",
-        (current_user["id"],),
+        (current_user_id,),
     )
     rated_ids = {row[0] for row in cursor.fetchall()}
 
     cursor.execute(
         "SELECT movie_id FROM user_ratings WHERE user_id = ? AND rating >= 4 ORDER BY added_at DESC LIMIT 8",
-        (current_user["id"],),
+        (current_user_id,),
     )
     liked_ids = [row[0] for row in cursor.fetchall()]
 
@@ -1714,6 +1714,40 @@ def get_movie_feed(
         if movie_id not in blocked_ids
     ]
 
+    if mode == "explore":
+        exploration_pool = movies_df[~movies_df["id"].isin(blocked_ids)].copy()
+        if exploration_pool.empty:
+            return []
+
+        max_popularity = max(float(exploration_pool["popularity"].max()), 1.0)
+        genre_distance_scores = np.array(
+            [
+                1.0 - (len(set(tokens) & genre_profile) / max(len(genre_profile), 1))
+                if genre_profile
+                else 1.0
+                for tokens in exploration_pool["genre_tokens"]
+            ]
+        )
+        ranked_bonus = {movie_id: max(0.0, 1.0 - (rank / 150.0)) for rank, movie_id in enumerate(ranked_candidate_ids[:150])}
+        exploration_pool["exploration_score"] = [
+            ((float(row["vote_average"]) / 10.0) * 0.42)
+            + ((float(row["popularity"]) / max_popularity) * 0.16)
+            + (genre_distance_scores[idx] * 0.32)
+            + (ranked_bonus.get(int(row["id"]), 0.0) * 0.10)
+            for idx, (_, row) in enumerate(exploration_pool.iterrows())
+        ]
+        exploration_pool = exploration_pool.sort_values("exploration_score", ascending=False)
+        selected_rows = exploration_pool.head(limit).copy()
+        return [
+            {
+                "id": int(row["id"]),
+                "title": str(row["title"]),
+                "poster_url": fetch_poster_from_tmdb(int(row["id"])),
+                "rating": float(row["vote_average"]),
+            }
+            for _, row in selected_rows.iterrows()
+        ]
+
     exploration_slots = max(1, limit // 5) if positive_signal_ids else 0
     main_slots = max(limit - exploration_slots, 0)
     selected_ids = ranked_candidate_ids[:main_slots]
@@ -1773,6 +1807,95 @@ def get_movie_feed(
         }
         for _, row in selected_rows.head(limit).iterrows()
     ]
+
+@app.get("/movies/feed")
+def get_movie_feed(
+    limit: int = 10,
+    exclude_ids: Optional[str] = None,
+    mode: str = "core",
+    current_user: dict = Depends(get_current_user),
+):
+    return compute_recommendation_feed(
+        current_user_id=current_user["id"],
+        limit=limit,
+        exclude_ids=exclude_ids,
+        mode=mode,
+    )
+
+
+def fetch_now_playing_movies(limit: int = 18) -> list[dict]:
+    try:
+        url = f"https://api.themoviedb.org/3/movie/now_playing?api_key={TMDB_API_KEY}&language=fr-FR&page=1"
+        results = requests.get(url, timeout=3).json().get("results", [])[:limit]
+    except Exception:
+        results = []
+
+    return [
+        {
+            "id": int(movie["id"]),
+            "title": str(movie.get("title") or ""),
+            "poster_url": f"https://image.tmdb.org/t/p/w500{movie.get('poster_path', '')}" if movie.get("poster_path") else "",
+            "rating": float(movie.get("vote_average") or 0),
+            "overview": str(movie.get("overview") or ""),
+        }
+        for movie in results
+    ]
+
+
+def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dict]:
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            ur.movie_id AS id,
+            ur.title,
+            ur.poster_url,
+            ur.rating,
+            ur.added_at,
+            u.username
+        FROM user_ratings ur
+        JOIN follows f ON f.followed_id = ur.user_id
+        JOIN users u ON u.id = ur.user_id
+        WHERE f.follower_id = ?
+        ORDER BY ur.added_at DESC
+        LIMIT ?
+        """,
+        (current_user_id, limit),
+    )
+    movies = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return movies
+
+
+@app.get("/movies/news/highlights")
+def movie_news_highlights(current_user: dict = Depends(get_current_user)):
+    popular_now = fetch_now_playing_movies(limit=18)
+    popular_ids = {movie["id"] for movie in popular_now}
+
+    tailored = compute_recommendation_feed(
+        current_user_id=current_user["id"],
+        limit=18,
+        exclude_ids=",".join(str(movie_id) for movie_id in popular_ids),
+        mode="core",
+    )
+    tailored_ids = {movie["id"] for movie in tailored}
+
+    discovery = compute_recommendation_feed(
+        current_user_id=current_user["id"],
+        limit=18,
+        exclude_ids=",".join(str(movie_id) for movie_id in (popular_ids | tailored_ids)),
+        mode="explore",
+    )
+
+    friend_rated = fetch_friend_rated_movies(current_user["id"], limit=18)
+
+    return {
+        "popular_now": popular_now,
+        "tailored_for_you": tailored,
+        "discovery_for_you": discovery,
+        "friends_recent_ratings": friend_rated,
+    }
 
 # --- 8. ROUTES SOCIALES ---
 @app.get("/social/users")

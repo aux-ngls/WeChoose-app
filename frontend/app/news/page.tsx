@@ -1,33 +1,135 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock, Star } from "lucide-react";
+import { ArrowRight, Clock3, Flame, Sparkles, Star, Users } from "lucide-react";
 import { API_URL } from "@/config";
-import { clearStoredSession } from "@/lib/auth";
+import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import MobilePageHeader from "@/components/MobilePageHeader";
 import MovieDetailsModal from "@/components/MovieDetailsModal";
 
-interface Movie {
+interface MovieCardData {
   id: number;
   title: string;
   poster_url: string;
   rating: number;
   overview?: string;
+  username?: string;
+  added_at?: string;
 }
 
-interface MovieDetail extends Movie {
+interface MovieDetail extends MovieCardData {
   trailer_url?: string;
   cast?: { name: string; character: string; photo: string | null }[];
   release_date?: string;
 }
 
+interface HighlightsPayload {
+  popular_now: MovieCardData[];
+  tailored_for_you: MovieCardData[];
+  discovery_for_you: MovieCardData[];
+  friends_recent_ratings: MovieCardData[];
+}
+
+interface MovieRailProps {
+  title: string;
+  subtitle: string;
+  icon: typeof Flame;
+  movies: MovieCardData[];
+  onOpenMovie: (movieId: number) => void;
+  emptyLabel: string;
+  accentClass: string;
+  metaRenderer?: (movie: MovieCardData) => string | null;
+}
+
+function formatFriendMeta(movie: MovieCardData): string | null {
+  if (!movie.username) {
+    return null;
+  }
+  return `Note par @${movie.username}`;
+}
+
+function MovieRail({
+  title,
+  subtitle,
+  icon: Icon,
+  movies,
+  onOpenMovie,
+  emptyLabel,
+  accentClass,
+  metaRenderer,
+}: MovieRailProps) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em] ${accentClass}`}>
+            <Icon className="h-3.5 w-3.5" />
+            {title}
+          </div>
+          <p className="mt-2 text-sm text-gray-400">{subtitle}</p>
+        </div>
+        <ArrowRight className="hidden h-4 w-4 text-gray-600 md:block" />
+      </div>
+
+      {movies.length === 0 ? (
+        <div className="rounded-[24px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-sm text-gray-500">
+          {emptyLabel}
+        </div>
+      ) : (
+        <div className="-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-max gap-3">
+            {movies.map((movie) => {
+              const meta = metaRenderer?.(movie);
+              return (
+                <button
+                  key={`${title}-${movie.id}-${movie.username ?? ""}-${movie.added_at ?? ""}`}
+                  onClick={() => onOpenMovie(movie.id)}
+                  className="w-32 flex-shrink-0 text-left transition-transform hover:scale-[1.02] md:w-40"
+                >
+                  <div className="relative overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.03] shadow-[0_14px_32px_rgba(0,0,0,0.28)]">
+                    <img
+                      src={movie.poster_url}
+                      alt={movie.title}
+                      className="aspect-[2/3] w-full object-cover"
+                    />
+                    <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-yellow-300 backdrop-blur">
+                      <Star className="h-3 w-3 fill-current" />
+                      {movie.rating.toFixed(1)}
+                    </div>
+                  </div>
+                  <div className="mt-2 px-1">
+                    <div className="line-clamp-2 text-sm font-bold text-white">{movie.title}</div>
+                    {meta ? <div className="mt-1 text-xs text-gray-400">{meta}</div> : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function NewsPage() {
   const router = useRouter();
-  const [movies, setMovies] = useState<Movie[]>([]);
+  const [payload, setPayload] = useState<HighlightsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedMovie, setSelectedMovie] = useState<MovieDetail | null>(null);
   const [error, setError] = useState("");
+
+  const totalMovies = useMemo(() => {
+    if (!payload) {
+      return 0;
+    }
+    return (
+      payload.popular_now.length
+      + payload.tailored_for_you.length
+      + payload.discovery_for_you.length
+      + payload.friends_recent_ratings.length
+    );
+  }, [payload]);
 
   const redirectToLogin = () => {
     clearStoredSession();
@@ -35,21 +137,40 @@ export default function NewsPage() {
   };
 
   useEffect(() => {
-    const fetchNews = async () => {
+    const fetchHighlights = async () => {
+      const token = getStoredToken();
+      if (!token) {
+        redirectToLogin();
+        return;
+      }
+
       try {
-        const res = await fetch(`${API_URL}/movies/news`);
+        const res = await fetch(`${API_URL}/movies/news/highlights`, {
+          headers: buildAuthHeaders(token),
+        });
+
+        if (res.status === 401) {
+          redirectToLogin();
+          return;
+        }
+
         const data = await res.json();
-        setMovies(Array.isArray(data) ? data : []);
+        if (!res.ok) {
+          throw new Error(data?.detail ?? "Impossible de charger les collections de films");
+        }
+
+        setPayload(data);
+        setError("");
       } catch (fetchError) {
         console.error(fetchError);
-        setError("Impossible de charger les sorties du moment.");
+        setError("Impossible de charger les selections du moment.");
       } finally {
         setLoading(false);
       }
     };
 
-    void fetchNews();
-  }, []);
+    void fetchHighlights();
+  }, [router]);
 
   const openDetails = async (id: number) => {
     try {
@@ -67,13 +188,13 @@ export default function NewsPage() {
     <main className="min-h-screen bg-black px-4 pb-24 pt-3 text-white md:p-4 md:pb-24">
       <MobilePageHeader
         title="A l'affiche"
-        subtitle="Les sorties a surveiller en ce moment"
-        icon={Clock}
+        subtitle="Des rails penses pour tes envies, ta curiosite et tes amis"
+        icon={Clock3}
         accent="amber"
         trailing={
-          movies.length > 0 ? (
+          totalMovies > 0 ? (
             <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white">
-              {movies.length}
+              {totalMovies}
             </div>
           ) : null
         }
@@ -82,66 +203,56 @@ export default function NewsPage() {
       <h1 className="mb-6 hidden text-2xl font-bold tracking-tighter text-red-600 md:block">A l&apos;affiche</h1>
 
       {error && (
-        <div className="mx-auto mb-4 max-w-lg rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-100">
+        <div className="mx-auto mb-4 max-w-3xl rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-100">
           {error}
         </div>
       )}
 
-      {loading ? (
-        <p className="mt-10 text-center text-gray-500">Chargement des sorties...</p>
+      {loading || !payload ? (
+        <p className="mt-10 text-center text-gray-500">Chargement des collections...</p>
       ) : (
-        <>
-          <div className="space-y-3 md:hidden">
-            {movies.map((movie) => (
-              <button
-                key={movie.id}
-                onClick={() => void openDetails(movie.id)}
-                className="flex w-full items-center gap-3 rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-3 text-left shadow-[0_16px_34px_rgba(0,0,0,0.28)] transition active:scale-[0.99]"
-              >
-                <img
-                  src={movie.poster_url}
-                  alt={movie.title}
-                  className="h-24 w-16 rounded-2xl object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-base font-bold text-white">{movie.title}</div>
-                  <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-semibold text-yellow-300">
-                    <Star className="h-3.5 w-3.5 fill-current" />
-                    {movie.rating.toFixed(1)}
-                  </div>
-                  <div className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
-                    Voir la fiche
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
+        <div className="space-y-8 md:space-y-10">
+          <MovieRail
+            title="Nouvelles Sorties"
+            subtitle="Les sorties les plus populaires du moment"
+            icon={Flame}
+            movies={payload.popular_now}
+            onOpenMovie={(movieId) => void openDetails(movieId)}
+            emptyLabel="Aucune sortie populaire disponible pour le moment."
+            accentClass="border-amber-500/20 bg-amber-500/10 text-amber-200"
+          />
 
-          <div className="hidden grid-cols-2 gap-4 md:grid md:grid-cols-4 lg:grid-cols-5">
-            {movies.map((movie) => (
-              <button
-                key={movie.id}
-                onClick={() => void openDetails(movie.id)}
-                className="group cursor-pointer text-left"
-              >
-                <div className="relative mb-2 aspect-[2/3] overflow-hidden rounded-xl border border-gray-800">
-                  <img
-                    src={movie.poster_url}
-                    alt={movie.title}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-                  />
-                  <div className="absolute right-2 top-2 flex items-center rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-yellow-400 backdrop-blur-sm">
-                    <Star className="mr-1 h-3 w-3 fill-current" />
-                    {movie.rating.toFixed(1)}
-                  </div>
-                </div>
-                <h3 className="text-sm font-bold leading-tight text-gray-200 transition-colors group-hover:text-white">
-                  {movie.title}
-                </h3>
-              </button>
-            ))}
-          </div>
-        </>
+          <MovieRail
+            title="Pour Toi"
+            subtitle="Une selection IA qui colle a ce que tu aimes deja"
+            icon={Sparkles}
+            movies={payload.tailored_for_you}
+            onOpenMovie={(movieId) => void openDetails(movieId)}
+            emptyLabel="L'IA n'a pas encore assez de signaux pour personnaliser cette ligne."
+            accentClass="border-red-500/20 bg-red-500/10 text-red-200"
+          />
+
+          <MovieRail
+            title="Decouverte"
+            subtitle="Des films plus inattendus que tu pourrais quand meme aimer"
+            icon={Sparkles}
+            movies={payload.discovery_for_you}
+            onOpenMovie={(movieId) => void openDetails(movieId)}
+            emptyLabel="La ligne decouverte est vide pour l'instant."
+            accentClass="border-sky-500/20 bg-sky-500/10 text-sky-200"
+          />
+
+          <MovieRail
+            title="Notes Par Tes Amis"
+            subtitle="Les derniers films notes par les personnes que tu suis"
+            icon={Users}
+            movies={payload.friends_recent_ratings}
+            onOpenMovie={(movieId) => void openDetails(movieId)}
+            emptyLabel="Aucun ami suivi n'a encore note de film recemment."
+            accentClass="border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+            metaRenderer={formatFriendMeta}
+          />
+        </div>
       )}
 
       <MovieDetailsModal
