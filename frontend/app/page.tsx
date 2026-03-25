@@ -28,6 +28,7 @@ interface Movie {
   title: string;
   poster_url: string;
   rating: number;
+  recommendation_reason?: string;
   overview?: string;
   trailer_url?: string;
   cast?: CastMember[];
@@ -324,9 +325,10 @@ export default function Home() {
     }
 
     try {
+      const movieSummary = movies.find((movie) => movie.id === id) ?? null;
       const res = await fetch(`${API_URL}/movie/${id}`);
       const data = await res.json();
-      setSelectedMovie(data);
+      setSelectedMovie(movieSummary ? { ...data, recommendation_reason: movieSummary.recommendation_reason } : data);
     } catch (detailError) {
       console.error(detailError);
       setError("Impossible de charger les détails de ce film.");
@@ -487,6 +489,11 @@ function MovieCard({
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-transparent" />
           <div className="absolute bottom-3 left-3 right-3 md:bottom-4 md:left-4 md:right-4">
+            {movie.recommendation_reason ? (
+              <div className="mb-2 inline-flex max-w-full rounded-full border border-white/15 bg-black/55 px-3 py-1 text-[10px] font-semibold text-white/90 backdrop-blur md:text-[11px]">
+                <span className="truncate">{movie.recommendation_reason}</span>
+              </div>
+            ) : null}
             <h2 className="text-[1.45rem] font-black text-white drop-shadow-lg md:text-2xl">{movie.title}</h2>
             <div className="mt-1 flex items-center text-sm text-yellow-400">
               <Star className="mr-1 h-4 w-4 fill-current" />

@@ -19,6 +19,7 @@ interface MovieDetails {
   title: string;
   poster_url: string;
   rating: number;
+  recommendation_reason?: string;
   overview?: string;
   trailer_url?: string;
   cast?: CastMember[];
@@ -225,6 +226,11 @@ export default function MovieDetailsModal({
                       {movie.rating.toFixed(1)}
                     </span>
                   </div>
+                  {movie.recommendation_reason ? (
+                    <div className="mt-3 inline-flex max-w-full rounded-full border border-emerald-900/50 bg-emerald-950/40 px-3 py-1 text-[11px] font-semibold text-emerald-100">
+                      <span className="truncate">{movie.recommendation_reason}</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {error && (

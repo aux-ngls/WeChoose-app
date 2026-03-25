@@ -880,6 +880,63 @@ def pick_diverse_movie_ids(ranked_ids: list[int], limit: int, per_genre_cap: int
     return selected_ids[:limit]
 
 
+def build_recommendation_reason(
+    *,
+    movie_id: int,
+    positive_indices: list[int],
+    positive_signal_weights: dict[int, float],
+    positive_similarity_scores: np.ndarray,
+    onboarding_genre_tokens: set[str],
+    genre_profile: set[str],
+    mode: str,
+) -> str:
+    movie_index = movie_index_by_id.get(int(movie_id))
+    if movie_index is None:
+        return "Choisi pour coller à tes goûts du moment"
+
+    row = movies_df.iloc[movie_index]
+    primary_genre = str(row.get("primary_genre") or "ce registre")
+    primary_genre_token = normalize_genre_token(primary_genre)
+
+    closest_reference_title = ""
+    closest_similarity = 0.0
+    if vectors is not None and positive_indices:
+        best_reference_index = positive_indices[0]
+        best_reference_score = -1.0
+        for reference_index in positive_indices[:8]:
+            similarity_score = float(cosine_similarity(
+                vectors[movie_index].reshape(1, -1),
+                vectors[reference_index].reshape(1, -1),
+            )[0][0])
+            weighted_score = similarity_score * positive_signal_weights.get(int(movie_ids_array[reference_index]), 1.0)
+            if weighted_score > best_reference_score:
+                best_reference_score = weighted_score
+                best_reference_index = reference_index
+                closest_similarity = similarity_score
+
+        reference_row = movies_df.iloc[best_reference_index]
+        closest_reference_title = str(reference_row.get("title") or "")
+
+    if mode == "explore":
+        if closest_reference_title and closest_similarity >= 0.32:
+            return f"Découverte : un pas de côté à partir de {closest_reference_title}"
+        return f"Découverte : une piste plus neuve dans le registre {primary_genre}"
+
+    if closest_reference_title and primary_genre_token in genre_profile and closest_similarity >= 0.38:
+        return f"Parce que tu as aimé {closest_reference_title} et le registre {primary_genre}"
+
+    if closest_reference_title and closest_similarity >= 0.46:
+        return f"Dans la lignée de {closest_reference_title}"
+
+    if primary_genre_token in onboarding_genre_tokens:
+        return f"Parce que tu as choisi le genre {primary_genre}"
+
+    if primary_genre_token in genre_profile:
+        return f"Parce que tu aimes souvent le genre {primary_genre}"
+
+    return "Choisi pour coller à tes goûts du moment"
+
+
 @lru_cache(maxsize=64)
 def get_tmdb_discover_movies(page: int, genre_ids_key: str) -> tuple[dict, ...]:
     params = [
@@ -1763,8 +1820,12 @@ def compute_recommendation_feed(
     negative_signal_weights: dict[int, float] = {}
 
     for index, (movie_id, rating) in enumerate(rating_rows):
-        recency_multiplier = max(0.58, 1.0 - (index * 0.025))
+        recency_multiplier = max(0.35, 1.34 - (index * 0.08))
         signal_weight = get_rating_signal_weight(rating) * recency_multiplier
+        if index < 4:
+            signal_weight *= 1.28
+        elif index < 8:
+            signal_weight *= 1.12
         if signal_weight > 0:
             positive_signal_weights[movie_id] = max(
                 positive_signal_weights.get(movie_id, 0.0),
@@ -1777,7 +1838,9 @@ def compute_recommendation_feed(
             )
 
     for index, movie_id in enumerate(recent_watch_later_ids):
-        watch_weight = max(0.42, 0.92 - (index * 0.07))
+        watch_weight = max(0.38, 1.18 - (index * 0.10))
+        if index < 4:
+            watch_weight *= 1.18
         positive_signal_weights[movie_id] = max(
             positive_signal_weights.get(movie_id, 0.0),
             watch_weight,
@@ -2010,6 +2073,15 @@ def compute_recommendation_feed(
                 "title": str(row["title"]),
                 "poster_url": fetch_poster_from_tmdb(int(row["id"])),
                 "rating": float(row["vote_average"]),
+                "recommendation_reason": build_recommendation_reason(
+                    movie_id=int(row["id"]),
+                    positive_indices=positive_indices,
+                    positive_signal_weights=positive_signal_weights,
+                    positive_similarity_scores=positive_similarity_scores,
+                    onboarding_genre_tokens=onboarding_genre_tokens,
+                    genre_profile=genre_profile,
+                    mode="explore",
+                ),
             }
             for _, row in selected_rows.iterrows()
         ]
@@ -2070,6 +2142,15 @@ def compute_recommendation_feed(
             "title": str(row["title"]),
             "poster_url": fetch_poster_from_tmdb(int(row["id"])),
             "rating": float(row["vote_average"]),
+            "recommendation_reason": build_recommendation_reason(
+                movie_id=int(row["id"]),
+                positive_indices=positive_indices,
+                positive_signal_weights=positive_signal_weights,
+                positive_similarity_scores=positive_similarity_scores,
+                onboarding_genre_tokens=onboarding_genre_tokens,
+                genre_profile=genre_profile,
+                mode="tinder" if is_tinder_mode else "spotlight",
+            ),
         }
         for _, row in selected_rows.head(limit).iterrows()
     ]
