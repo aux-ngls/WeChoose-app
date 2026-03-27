@@ -60,8 +60,8 @@ function MessagesPageContent() {
   const [showMoviePicker, setShowMoviePicker] = useState(false);
   const [handledTargetUserId, setHandledTargetUserId] = useState<number | null>(null);
   const [handledSharedMovieKey, setHandledSharedMovieKey] = useState<string | null>(null);
-  const [mobileSidebarTab, setMobileSidebarTab] = useState<"inbox" | "discover">("inbox");
   const [mobileView, setMobileView] = useState<"sidebar" | "chat">("sidebar");
+  const [conversationQuery, setConversationQuery] = useState("");
   const [openedMovieDetail, setOpenedMovieDetail] = useState<MovieDetail | null>(null);
   const [movieDetailLoading, setMovieDetailLoading] = useState(false);
   const [conversationsLoading, setConversationsLoading] = useState(true);
@@ -152,6 +152,29 @@ function MessagesPageContent() {
     conversations.find((conversation) => conversation.id === activeConversationId)?.participant
       .username ??
     "Conversation";
+
+  const filteredConversations = useMemo(() => {
+    const trimmedQuery = conversationQuery.trim().toLowerCase();
+    if (!trimmedQuery) {
+      return conversations;
+    }
+
+    return conversations.filter((conversation) => {
+      const username = conversation.participant.username.toLowerCase();
+      const preview = conversation.last_message?.preview?.toLowerCase() ?? "";
+      return username.includes(trimmedQuery) || preview.includes(trimmedQuery);
+    });
+  }, [conversationQuery, conversations]);
+
+  const unreadConversations = useMemo(
+    () => filteredConversations.filter((conversation) => conversation.unread_count > 0),
+    [filteredConversations],
+  );
+
+  const recentConversations = useMemo(
+    () => filteredConversations.filter((conversation) => conversation.unread_count === 0),
+    [filteredConversations],
+  );
 
   const fetchConversations = async (options?: { silent?: boolean }) => {
     const token = getTokenOrRedirect();
@@ -306,7 +329,6 @@ function MessagesPageContent() {
       const conversationId = Number(payload.id);
       await fetchConversations();
       setActiveConversationId(conversationId);
-      setMobileSidebarTab("inbox");
       setMobileView("chat");
       setHandledTargetUserId(user.id);
       setUserQuery("");
@@ -536,7 +558,6 @@ function MessagesPageContent() {
 
     setActiveConversationId(requestedConversationId);
     setMobileView("chat");
-    setMobileSidebarTab("inbox");
   }, [activeConversationId, requestedConversationId]);
 
   useEffect(() => {
@@ -675,29 +696,16 @@ function MessagesPageContent() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setMobileSidebarTab("inbox")}
-                className={`rounded-[18px] px-4 py-3 text-sm font-semibold transition ${
-                  mobileSidebarTab === "inbox"
-                    ? "bg-sky-500 text-black"
-                    : "border border-white/10 bg-white/[0.04] text-white"
-                }`}
-              >
-                Inbox
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileSidebarTab("discover")}
-                className={`rounded-[18px] px-4 py-3 text-sm font-semibold transition ${
-                  mobileSidebarTab === "discover"
-                    ? "bg-sky-500 text-black"
-                    : "border border-white/10 bg-white/[0.04] text-white"
-                }`}
-              >
-                Nouveau DM
-              </button>
+            <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Inbox</div>
+                <div className="text-sm font-bold text-white">
+                  {conversations.length} conversation{conversations.length > 1 ? "s" : ""}
+                </div>
+              </div>
+              <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white">
+                {unreadConversations.length} non lus
+              </div>
             </div>
           )}
         </section>
@@ -708,23 +716,33 @@ function MessagesPageContent() {
               mobileView === "chat" ? "hidden lg:block" : ""
             }`}
           >
-            <section
-              className={`relative rounded-[24px] border border-white/10 bg-zinc-950/90 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.4)] ${
-                mobileSidebarTab === "discover" ? "block" : "hidden lg:block"
-              }`}
-            >
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-500" />
-                <input
-                  value={userQuery}
-                  onChange={(event) => setUserQuery(event.target.value)}
-                  placeholder="Nouveau message: chercher un utilisateur"
-                  className="w-full rounded-2xl border border-white/10 bg-black/40 px-10 py-3 text-sm text-white outline-none transition focus:border-sky-500/70"
-                />
+            <section className="relative rounded-[24px] border border-white/10 bg-zinc-950/90 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                      Nouveau DM
+                    </div>
+                    <div className="text-sm font-semibold text-white">Chercher quelqu&apos;un</div>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-semibold text-gray-300">
+                    direct
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-500" />
+                  <input
+                    value={userQuery}
+                    onChange={(event) => setUserQuery(event.target.value)}
+                    placeholder="Chercher un utilisateur"
+                    className="w-full rounded-2xl border border-white/10 bg-black/40 px-10 py-3 text-sm text-white outline-none transition focus:border-sky-500/70"
+                  />
+                </div>
               </div>
 
               {(userQuery.trim().length >= 2 || usersLoading) && (
-                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-[22px] border border-white/10 bg-black/85 p-2 lg:absolute lg:left-3 lg:right-3 lg:top-[4.7rem] lg:z-20 lg:mt-0 lg:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-[22px] border border-white/10 bg-black/85 p-2 lg:absolute lg:left-3 lg:right-3 lg:top-[7.1rem] lg:z-20 lg:mt-0 lg:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
                   {usersLoading ? (
                     <div className="flex items-center justify-center rounded-2xl bg-black/30 px-4 py-8 text-sm text-gray-400">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -771,69 +789,160 @@ function MessagesPageContent() {
               )}
             </section>
 
-            <section
-              className={`rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col ${
-                mobileSidebarTab === "inbox" ? "block" : "hidden lg:block"
-              }`}
-            >
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
-                  <MessageCircle className="h-5 w-5" />
+            <section className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+              <div className="mb-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
+                    <MessageCircle className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold">Inbox</h2>
+                    <p className="text-sm text-gray-400">Conversations actives et non lues.</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold">Inbox</h2>
-                  <p className="text-sm text-gray-400">Tes conversations privees recentes.</p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-[18px] border border-white/10 bg-black/20 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">Total</div>
+                    <div className="mt-1 text-lg font-black text-white">{conversations.length}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-white/10 bg-black/20 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">Non lus</div>
+                    <div className="mt-1 text-lg font-black text-white">{unreadConversations.length}</div>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-500" />
+                  <input
+                    value={conversationQuery}
+                    onChange={(event) => setConversationQuery(event.target.value)}
+                    placeholder="Filtrer les conversations"
+                    className="w-full rounded-2xl border border-white/10 bg-black/40 px-10 py-3 text-sm text-white outline-none transition focus:border-sky-500/70"
+                  />
                 </div>
               </div>
 
-              <div className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+              <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
                 {conversationsLoading ? (
                   <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-black/30 px-4 py-8 text-sm text-gray-400">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Chargement des conversations...
                   </div>
-                ) : conversations.length === 0 ? (
+                ) : filteredConversations.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
-                    Aucune conversation pour le moment.
+                    {conversationQuery.trim()
+                      ? "Aucune conversation ne correspond a cette recherche."
+                      : "Aucune conversation pour le moment."}
                   </div>
                 ) : (
-                  conversations.map((conversation) => (
-                    <button
-                      key={conversation.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveConversationId(conversation.id);
-                        setMobileView("chat");
-                        setMobileSidebarTab("inbox");
-                      }}
-                      className={`w-full rounded-[22px] border p-4 text-left transition ${
-                        activeConversationId === conversation.id
-                          ? "border-sky-500/40 bg-sky-500/10"
-                          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-base font-semibold">
-                            @{conversation.participant.username}
+                  <>
+                    {unreadConversations.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                            Non lus
                           </div>
-                          <div className="mt-2 line-clamp-2 text-sm text-gray-400">
-                            {conversation.last_message?.preview ?? "Commencer la discussion"}
+                          <div className="rounded-full bg-red-500/15 px-2.5 py-1 text-[11px] font-semibold text-red-200">
+                            {unreadConversations.length}
                           </div>
                         </div>
-
-                        {conversation.unread_count > 0 && (
-                          <span className="rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
-                            {conversation.unread_count}
-                          </span>
-                        )}
+                        {unreadConversations.map((conversation) => (
+                          <button
+                            key={conversation.id}
+                            type="button"
+                            onClick={() => {
+                              setActiveConversationId(conversation.id);
+                              setMobileView("chat");
+                            }}
+                            className={`w-full rounded-[22px] border p-4 text-left transition ${
+                              activeConversationId === conversation.id
+                                ? "border-sky-500/40 bg-sky-500/10"
+                                : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sm font-black uppercase text-white">
+                                {conversation.participant.username.slice(0, 2)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="truncate text-base font-semibold">
+                                    @{conversation.participant.username}
+                                  </div>
+                                  <div className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
+                                    {formatSocialDate(conversation.updated_at)}
+                                  </div>
+                                </div>
+                                <div className="mt-2 line-clamp-2 text-sm text-gray-300">
+                                  {conversation.last_message?.preview ?? "Commencer la discussion"}
+                                </div>
+                                <div className="mt-3 flex items-center justify-between gap-3">
+                                  {conversation.last_message?.movie ? (
+                                    <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200">
+                                      Film partage
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                      Conversation active
+                                    </span>
+                                  )}
+                                  <span className="rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
+                                    {conversation.unread_count}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
+                    ) : null}
 
-                      <div className="mt-3 text-xs uppercase tracking-[0.14em] text-gray-500">
-                        {formatSocialDate(conversation.updated_at)}
+                    {recentConversations.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                          Recent
+                        </div>
+                        {recentConversations.map((conversation) => (
+                          <button
+                            key={conversation.id}
+                            type="button"
+                            onClick={() => {
+                              setActiveConversationId(conversation.id);
+                              setMobileView("chat");
+                            }}
+                            className={`w-full rounded-[22px] border p-4 text-left transition ${
+                              activeConversationId === conversation.id
+                                ? "border-sky-500/40 bg-sky-500/10"
+                                : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sm font-black uppercase text-white">
+                                {conversation.participant.username.slice(0, 2)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="truncate text-base font-semibold">
+                                    @{conversation.participant.username}
+                                  </div>
+                                  <div className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
+                                    {formatSocialDate(conversation.updated_at)}
+                                  </div>
+                                </div>
+                                <div className="mt-2 line-clamp-2 text-sm text-gray-400">
+                                  {conversation.last_message?.preview ?? "Commencer la discussion"}
+                                </div>
+                                <div className="mt-3 text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                                  {conversation.last_message?.movie ? "Film partage" : "Discussion"}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
-                    </button>
-                  ))
+                    ) : null}
+                  </>
                 )}
               </div>
             </section>
