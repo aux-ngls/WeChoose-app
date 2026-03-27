@@ -51,7 +51,25 @@ export default function PlaylistsPage() {
     startY: number;
     moved: boolean;
   } | null>(null);
+  const touchTapStateRef = useRef<{
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
   const suppressNextTapRef = useRef(false);
+  const [requestedPlaylistId, setRequestedPlaylistId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const updateRequestedPlaylistId = () => {
+      const params = new URLSearchParams(window.location.search);
+      const rawPlaylistId = Number(params.get("playlistId") || "");
+      setRequestedPlaylistId(Number.isFinite(rawPlaylistId) && rawPlaylistId !== 0 ? rawPlaylistId : null);
+    };
+
+    updateRequestedPlaylistId();
+    window.addEventListener("popstate", updateRequestedPlaylistId);
+    return () => window.removeEventListener("popstate", updateRequestedPlaylistId);
+  }, []);
 
   const redirectToLogin = () => {
     clearStoredSession();
@@ -129,11 +147,27 @@ export default function PlaylistsPage() {
       setSortMode(playlist.type === "custom" ? "manual" : playlist.id === WATCH_LATER_PLAYLIST_ID ? "genre" : "recent");
       setFilterQuery("");
       setError("");
+      setRequestedPlaylistId(playlist.id);
+      router.replace(`/playlist?playlistId=${playlist.id}`, { scroll: false });
     } catch (openError) {
       console.error(openError);
       setError("Impossible d'ouvrir cette playlist.");
     }
   };
+
+  useEffect(() => {
+    if (!requestedPlaylistId) {
+      return;
+    }
+    if (!playlists.length || selectedPlaylist?.id === requestedPlaylistId) {
+      return;
+    }
+
+    const matchingPlaylist = playlists.find((playlist) => playlist.id === requestedPlaylistId);
+    if (matchingPlaylist) {
+      void openPlaylist(matchingPlaylist);
+    }
+  }, [playlists, requestedPlaylistId, selectedPlaylist]);
 
   const createPlaylist = async () => {
     const playlistName = newPlaylistName.trim();
@@ -435,6 +469,8 @@ export default function PlaylistsPage() {
               onClick={() => {
                 setSelectedPlaylist(null);
                 setMovies([]);
+                setRequestedPlaylistId(null);
+                router.replace("/playlist", { scroll: false });
               }}
               className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white"
               aria-label="Retour aux listes"
@@ -549,6 +585,8 @@ export default function PlaylistsPage() {
               onClick={() => {
                 setSelectedPlaylist(null);
                 setMovies([]);
+                setRequestedPlaylistId(null);
+                router.replace("/playlist", { scroll: false });
               }}
               className="rounded-full bg-gray-800 p-2"
             >
@@ -654,12 +692,26 @@ export default function PlaylistsPage() {
                               if (!touch) {
                                 return;
                               }
+                              touchTapStateRef.current = {
+                                startX: touch.clientX,
+                                startY: touch.clientY,
+                                moved: false,
+                              };
                               startTouchDrag(movie.id, touch.clientX, touch.clientY);
                             }}
                             onTouchMove={(event) => {
                               const touch = event.touches[0];
                               if (!touch) {
                                 return;
+                              }
+                              const tapState = touchTapStateRef.current;
+                              if (tapState) {
+                                if (
+                                  Math.abs(touch.clientX - tapState.startX) > 8 ||
+                                  Math.abs(touch.clientY - tapState.startY) > 8
+                                ) {
+                                  tapState.moved = true;
+                                }
                               }
                               const moved = updateTouchDrag(touch.clientX, touch.clientY);
                               if (moved) {
@@ -672,12 +724,15 @@ export default function PlaylistsPage() {
                                 return;
                               }
                               const moved = finishTouchDrag(touch.clientX, touch.clientY);
-                              if (!moved) {
+                              const tapMoved = touchTapStateRef.current?.moved ?? false;
+                              touchTapStateRef.current = null;
+                              if (!moved && !tapMoved) {
                                 void openDetails(movie.id);
                               }
                             }}
                             onTouchCancel={() => {
                               touchDragStateRef.current = null;
+                              touchTapStateRef.current = null;
                               setDraggedMovieId(null);
                             }}
                             className="w-full text-left transition-transform hover:scale-[1.02]"

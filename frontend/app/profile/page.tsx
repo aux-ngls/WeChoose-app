@@ -10,7 +10,7 @@ import {
   Heart,
   Loader2,
   LogOut,
-  MessageCircle,
+  Bookmark,
   Star,
   Users,
 } from "lucide-react";
@@ -63,6 +63,10 @@ function getPlaylistTone(playlist: PlaylistSummary): string {
   if (playlist.id === FAVORITES_PLAYLIST_ID) return "from-amber-500/18 to-amber-500/4 border-amber-500/20";
   if (playlist.id === HISTORY_PLAYLIST_ID) return "from-zinc-400/14 to-white/4 border-white/10";
   return "from-fuchsia-500/14 to-white/4 border-white/10";
+}
+
+function buildPlaylistHref(playlistId: number): string {
+  return `/playlist?playlistId=${playlistId}`;
 }
 
 export default function ProfilePage() {
@@ -167,6 +171,24 @@ export default function ProfilePage() {
     () => playlists.reduce((sum, playlist) => sum + playlist.count, 0),
     [playlists],
   );
+  const watchLaterPlaylist = useMemo(
+    () => playlists.find((playlist) => playlist.id === WATCH_LATER_PLAYLIST_ID) ?? null,
+    [playlists],
+  );
+  const favoritesPlaylist = useMemo(
+    () => playlists.find((playlist) => playlist.id === FAVORITES_PLAYLIST_ID) ?? null,
+    [playlists],
+  );
+  const historyPlaylist = useMemo(
+    () => playlists.find((playlist) => playlist.id === HISTORY_PLAYLIST_ID) ?? null,
+    [playlists],
+  );
+  const nextWatchMovie = watchLaterPlaylist?.preview_movies[0] ?? null;
+  const recentFavoriteMovie = favoritesPlaylist?.preview_movies[0] ?? null;
+  const customPlaylistsCount = useMemo(
+    () => playlists.filter((playlist) => playlist.type === "custom").length,
+    [playlists],
+  );
 
   if (loading) {
     return (
@@ -218,7 +240,7 @@ export default function ProfilePage() {
                 <div className="min-w-0">
                   <h1 className="truncate text-3xl font-black tracking-tight md:text-5xl">@{username}</h1>
                   <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-300 md:text-base">
-                    Tes listes, tes critiques et tes raccourcis principaux sont regroupés ici.
+                    Tes espaces secondaires vivent ici : listes, apercus personnels et points de reprise.
                   </p>
                 </div>
               </div>
@@ -226,32 +248,18 @@ export default function ProfilePage() {
 
             <div className="grid grid-cols-2 gap-2 md:min-w-[300px]">
               <Link
-                href="/messages"
-                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
-              >
-                <MessageCircle className="h-4 w-4 text-sky-300" />
-                Messages
-              </Link>
-              <Link
-                href="/social"
-                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
-              >
-                <Users className="h-4 w-4 text-emerald-300" />
-                Social
-              </Link>
-              <Link
-                href="/search"
-                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
-              >
-                <Film className="h-4 w-4 text-red-300" />
-                Rechercher
-              </Link>
-              <Link
                 href="/playlist"
                 className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
               >
-                <ArrowRight className="h-4 w-4 text-amber-300" />
-                Toutes les listes
+                <Bookmark className="h-4 w-4 text-sky-300" />
+                Mes listes
+              </Link>
+              <Link
+                href="/news"
+                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+              >
+                <Star className="h-4 w-4 text-emerald-300" />
+                A l'affiche
               </Link>
             </div>
           </div>
@@ -283,9 +291,9 @@ export default function ProfilePage() {
             {playlists.map((playlist) => (
               <Link
                 key={playlist.id}
-                href="/playlist"
-                className={`overflow-hidden rounded-[28px] border bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)] transition active:scale-[0.99] md:hover:-translate-y-0.5 ${getPlaylistTone(playlist)}`}
-              >
+              href={buildPlaylistHref(playlist.id)}
+              className={`overflow-hidden rounded-[28px] border bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)] transition active:scale-[0.99] md:hover:-translate-y-0.5 ${getPlaylistTone(playlist)}`}
+            >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-lg font-black text-white">{playlist.name}</div>
@@ -327,9 +335,6 @@ export default function ProfilePage() {
                 <h2 className="text-lg font-black text-white md:text-xl">Dernieres critiques</h2>
                 <p className="mt-1 text-sm text-gray-400">Tes avis recents visibles depuis le social.</p>
               </div>
-              <Link href="/social" className="text-sm font-semibold text-emerald-300">
-                Ouvrir
-              </Link>
             </div>
 
             {profile?.reviews?.length ? (
@@ -365,15 +370,43 @@ export default function ProfilePage() {
 
           <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
             <div className="mb-4">
-              <h2 className="text-lg font-black text-white md:text-xl">Raccourcis utiles</h2>
-              <p className="mt-1 text-sm text-gray-400">Les chemins les plus utiles quand tu es sur mobile.</p>
+              <h2 className="text-lg font-black text-white md:text-xl">En ce moment</h2>
+              <p className="mt-1 text-sm text-gray-400">Une vue rapide sur ce que tu as envie de regarder et sur ton rythme d'usage.</p>
             </div>
 
             <div className="grid gap-3">
-              <QuickLink href="/" title="Retour au Tinder" subtitle="Continuer les swipes IA" icon={Film} />
-              <QuickLink href="/news" title="A l'affiche" subtitle="Rails personnalises et decouverte" icon={Star} />
-              <QuickLink href="/messages" title="Messages prives" subtitle="Reprendre une conversation" icon={MessageCircle} />
-              <QuickLink href="/social" title="Réseau social" subtitle="Voir les critiques et notifications" icon={Users} />
+              <ContextCard
+                title={nextWatchMovie ? "Ta prochaine séance" : "Ta watchlist t'attend"}
+                description={
+                  nextWatchMovie
+                    ? `${nextWatchMovie.title} ouvre la file, avec ${watchLaterPlaylist?.count ?? 0} film${(watchLaterPlaylist?.count ?? 0) > 1 ? "s" : ""} en attente.`
+                    : "Ajoute quelques films à regarder plus tard pour te créer une vraie file d'envies."
+                }
+                meta={watchLaterPlaylist ? `${watchLaterPlaylist.count} en attente` : "0 en attente"}
+                href={watchLaterPlaylist ? buildPlaylistHref(watchLaterPlaylist.id) : "/playlist"}
+                posterUrl={nextWatchMovie?.poster_url}
+              />
+              <ContextCard
+                title={recentFavoriteMovie ? "Ton humeur du moment" : "Tes coups de coeur"}
+                description={
+                  recentFavoriteMovie
+                    ? `${recentFavoriteMovie.title} donne le ton de tes favoris recents.`
+                    : "Quand tu notes des films 4 ou 5, on les retrouve ici pour construire ton profil cine."
+                }
+                meta={favoritesPlaylist ? `${favoritesPlaylist.count} favoris` : "0 favoris"}
+                href={favoritesPlaylist ? buildPlaylistHref(favoritesPlaylist.id) : "/playlist"}
+                posterUrl={recentFavoriteMovie?.poster_url}
+              />
+              <MiniInsight
+                label="Historique"
+                value={String(historyPlaylist?.count ?? 0)}
+                caption="films deja notes ou passes"
+              />
+              <MiniInsight
+                label="Listes perso"
+                value={String(customPlaylistsCount)}
+                caption="collections que tu as creees"
+              />
             </div>
           </div>
         </section>
@@ -402,30 +435,57 @@ function StatCard({
   );
 }
 
-function QuickLink({
+function ContextCard({
   href,
   title,
-  subtitle,
-  icon: Icon,
+  description,
+  meta,
+  posterUrl,
 }: {
   href: string;
   title: string;
-  subtitle: string;
-  icon: typeof Film;
+  description: string;
+  meta: string;
+  posterUrl?: string;
 }) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 rounded-[22px] border border-white/10 bg-black/16 px-4 py-3 transition hover:bg-white/[0.06]"
+      className="flex items-center gap-3 rounded-[22px] border border-white/10 bg-black/16 p-3 transition hover:bg-white/[0.06]"
     >
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.06] text-white">
-        <Icon className="h-5 w-5" />
+      <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+        {posterUrl ? (
+          <img src={posterUrl} alt={title} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-gray-500">
+            <Film className="h-4 w-4" />
+          </div>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-bold text-white">{title}</div>
-        <div className="mt-0.5 text-xs text-gray-400">{subtitle}</div>
+        <div className="mt-1 text-xs text-gray-400">{description}</div>
+        <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-300/85">{meta}</div>
       </div>
       <ArrowRight className="h-4 w-4 text-gray-500" />
     </Link>
+  );
+}
+
+function MiniInsight({
+  label,
+  value,
+  caption,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+}) {
+  return (
+    <div className="rounded-[22px] border border-white/10 bg-black/16 px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">{label}</div>
+      <div className="mt-2 text-2xl font-black text-white">{value}</div>
+      <div className="mt-1 text-xs text-gray-400">{caption}</div>
+    </div>
   );
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Search, Film, List, LogOut, Users, MessageCircle, UserCircle2 } from "lucide-react";
+import { Home, Search, LogOut, Users, MessageCircle, UserCircle2 } from "lucide-react";
 import QulteLogo from "@/components/QulteLogo";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
@@ -105,9 +105,7 @@ export default function Navbar() {
 
   const mobileNavItems = [
     { href: "/", label: "Accueil", icon: Home },
-    { href: "/news", label: "Sorties", icon: Film },
     { href: "/search", label: "Recherche", icon: Search },
-    { href: "/playlist", label: "Listes", icon: List },
     { href: "/social", label: "Social", icon: Users },
     { href: "/messages", label: "Messages", icon: MessageCircle },
     ...(username ? [{ href: "/profile", label: "Profil", icon: UserCircle2 }] : []),
@@ -121,21 +119,13 @@ export default function Navbar() {
             <QulteLogo />
           </Link>
 
-          <div className="grid flex-1 grid-cols-7 gap-1 md:flex md:w-auto md:flex-none md:gap-8">
+          <div className="grid flex-1 grid-cols-5 gap-1 md:flex md:w-auto md:flex-none md:gap-8">
             <Link href="/" title="Accueil" aria-label="Accueil" className={`flex items-center justify-center ${isActive("/")}`}>
               <Home size={22} />
             </Link>
 
-            <Link href="/news" title="Sorties" aria-label="Sorties" className={`flex items-center justify-center ${isActive("/news")}`}>
-              <Film size={22} />
-            </Link>
-
             <Link href="/search" title="Recherche" aria-label="Recherche" className={`flex items-center justify-center ${isActive("/search")}`}>
               <Search size={22} />
-            </Link>
-
-            <Link href="/playlist" title="Listes" aria-label="Listes" className={`flex items-center justify-center ${isActive("/playlist")}`}>
-              <List size={22} />
             </Link>
 
             <Link href="/social" title="Social" aria-label="Social" className={`flex items-center justify-center ${isActive("/social")}`}>

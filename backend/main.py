@@ -638,13 +638,83 @@ def fetch_poster_from_tmdb(movie_id):
         return "https://image.tmdb.org/t/p/w500" + data.get('poster_path') if data.get('poster_path') else "https://via.placeholder.com/500"
     except: return "https://via.placeholder.com/500"
 
+@lru_cache(maxsize=512)
+def get_tmdb_watch_providers(movie_id: int) -> dict:
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers?api_key={TMDB_API_KEY}"
+        data = requests.get(url, timeout=2).json()
+        results = data.get("results", {}) if isinstance(data, dict) else {}
+        preferred_regions = ("FR", "US")
+        region_code = next((region for region in preferred_regions if region in results), None)
+        if not region_code and results:
+            region_code = next(iter(results.keys()), None)
+        region_data = results.get(region_code, {}) if region_code else {}
+
+        def serialize_provider_list(items) -> list[dict]:
+            serialized = []
+            seen_provider_ids: set[int] = set()
+            for item in items or []:
+                provider_id = item.get("provider_id")
+                if not isinstance(provider_id, int) or provider_id in seen_provider_ids:
+                    continue
+                seen_provider_ids.add(provider_id)
+                serialized.append(
+                    {
+                        "id": provider_id,
+                        "name": str(item.get("provider_name") or ""),
+                        "logo_url": f"https://image.tmdb.org/t/p/w154{item.get('logo_path')}" if item.get("logo_path") else None,
+                    }
+                )
+            return serialized
+
+        return {
+            "region": region_code or "",
+            "link": str(region_data.get("link") or ""),
+            "subscription": serialize_provider_list(region_data.get("flatrate")),
+            "rent": serialize_provider_list(region_data.get("rent")),
+            "buy": serialize_provider_list(region_data.get("buy")),
+        }
+    except Exception:
+        return {
+            "region": "",
+            "link": "",
+            "subscription": [],
+            "rent": [],
+            "buy": [],
+        }
+
 def get_tmdb_details(movie_id):
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR&append_to_response=videos,credits"
-        data = requests.get(url).json()
+        data = requests.get(url, timeout=3).json()
         trailer = next((f"https://www.youtube.com/embed/{v['key']}" for v in data.get('videos', {}).get('results', []) if v['site']=='YouTube' and v['type']=='Trailer'), None)
         cast = [{"name": a['name'], "character": a['character'], "photo": f"https://image.tmdb.org/t/p/w200{a['profile_path']}" if a.get('profile_path') else None} for a in data.get('credits', {}).get('cast', [])[:5]]
-        return {"id": data['id'], "title": data['title'], "overview": data['overview'], "rating": data['vote_average'], "poster_url": "https://image.tmdb.org/t/p/w500"+data.get('poster_path','') if data.get('poster_path') else "", "trailer_url": trailer, "cast": cast, "release_date": data.get('release_date', '').split('-')[0]}
+        directors = [
+            crew_member.get("name")
+            for crew_member in data.get("credits", {}).get("crew", [])
+            if crew_member.get("job") == "Director" and crew_member.get("name")
+        ][:2]
+        genres = [
+            genre.get("name")
+            for genre in data.get("genres", [])
+            if isinstance(genre, dict) and genre.get("name")
+        ]
+        watch_providers = get_tmdb_watch_providers(movie_id)
+        return {
+            "id": data['id'],
+            "title": data['title'],
+            "overview": data['overview'],
+            "rating": data['vote_average'],
+            "poster_url": "https://image.tmdb.org/t/p/w500"+data.get('poster_path','') if data.get('poster_path') else "",
+            "trailer_url": trailer,
+            "cast": cast,
+            "release_date": data.get('release_date', '').split('-')[0],
+            "runtime": int(data.get("runtime") or 0),
+            "tagline": str(data.get("tagline") or ""),
+            "genres": genres[:4],
+            "directors": [str(name) for name in directors],
+            "watch_providers": watch_providers,
+        }
     except: return None
 
 # --- Helpers Playlists ---

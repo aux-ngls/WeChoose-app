@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock, Heart, ListPlus, Loader2, Share2, Star, X } from "lucide-react";
+import {
+  Clock,
+  Heart,
+  ListPlus,
+  Loader2,
+  PlaySquare,
+  Share2,
+  Star,
+  Tv2,
+  X,
+} from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import { buildMessageShareHref } from "@/lib/movie-share";
@@ -24,6 +34,23 @@ interface MovieDetails {
   trailer_url?: string;
   cast?: CastMember[];
   release_date?: string;
+  runtime?: number;
+  tagline?: string;
+  genres?: string[];
+  directors?: string[];
+  watch_providers?: {
+    region?: string;
+    link?: string;
+    subscription?: Provider[];
+    rent?: Provider[];
+    buy?: Provider[];
+  };
+}
+
+interface Provider {
+  id: number;
+  name: string;
+  logo_url: string | null;
 }
 
 interface MovieDetailsModalProps {
@@ -34,6 +61,67 @@ interface MovieDetailsModalProps {
 }
 
 const FALLBACK_POSTER = "https://via.placeholder.com/500x750?text=No+Image";
+
+function formatRuntime(runtime?: number) {
+  if (!runtime || runtime <= 0) {
+    return null;
+  }
+
+  const hours = Math.floor(runtime / 60);
+  const minutes = runtime % 60;
+  if (hours <= 0) {
+    return `${minutes} min`;
+  }
+
+  return `${hours}h${String(minutes).padStart(2, "0")}`;
+}
+
+function formatReleaseYear(releaseDate?: string) {
+  if (!releaseDate) {
+    return null;
+  }
+
+  return releaseDate.slice(0, 4);
+}
+
+function ProviderRow({
+  title,
+  providers,
+}: {
+  title: string;
+  providers?: Provider[];
+}) {
+  if (!providers?.length) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500">{title}</p>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {providers.map((provider) => (
+          <div
+            key={`${title}-${provider.id}`}
+            className="flex min-w-[96px] flex-shrink-0 items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-2.5 py-2"
+          >
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-gray-900">
+              {provider.logo_url ? (
+                <img
+                  src={provider.logo_url}
+                  alt={provider.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <Tv2 className="h-4 w-4 text-gray-500" />
+              )}
+            </div>
+            <span className="line-clamp-2 text-xs font-medium text-gray-100">{provider.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function MovieDetailsModal({
   movie,
@@ -180,6 +268,13 @@ export default function MovieDetailsModal({
     return null;
   }
 
+  const releaseYear = formatReleaseYear(movie?.release_date);
+  const runtimeLabel = formatRuntime(movie?.runtime);
+  const hasProviders =
+    !!movie?.watch_providers?.subscription?.length ||
+    !!movie?.watch_providers?.rent?.length ||
+    !!movie?.watch_providers?.buy?.length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/90 p-0 backdrop-blur-sm md:items-center md:p-4">
       {loading && !movie ? (
@@ -217,18 +312,37 @@ export default function MovieDetailsModal({
               </div>
 
               <div className="space-y-5 p-5">
-                <div>
+                <div className="space-y-3">
                   <h2 className="text-2xl font-black">{movie.title}</h2>
-                  <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
-                    <span>{movie.release_date}</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-400">
+                    {releaseYear ? <span>{releaseYear}</span> : null}
+                    {runtimeLabel ? <span>{runtimeLabel}</span> : null}
                     <span className="flex items-center text-yellow-400">
                       <Star className="mr-1 h-3 w-3 fill-current" />
                       {movie.rating.toFixed(1)}
                     </span>
+                    {movie.directors?.length ? (
+                      <span className="text-gray-300">De {movie.directors.join(", ")}</span>
+                    ) : null}
                   </div>
+                  {movie.tagline ? (
+                    <p className="text-sm italic leading-relaxed text-gray-300/80">{movie.tagline}</p>
+                  ) : null}
+                  {movie.genres?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {movie.genres.map((genre) => (
+                        <span
+                          key={genre}
+                          className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-[11px] font-semibold text-gray-200"
+                        >
+                          {genre}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {movie.recommendation_reason ? (
-                    <div className="mt-3 inline-flex max-w-full rounded-full border border-emerald-900/50 bg-emerald-950/40 px-3 py-1 text-[11px] font-semibold text-emerald-100">
-                      <span className="truncate">{movie.recommendation_reason}</span>
+                    <div className="inline-flex max-w-full rounded-full border border-emerald-900/50 bg-emerald-950/40 px-3 py-1 text-[11px] font-semibold text-emerald-100">
+                      <span className="truncate">Pourquoi ce film : {movie.recommendation_reason}</span>
                     </div>
                   ) : null}
                 </div>
@@ -266,6 +380,42 @@ export default function MovieDetailsModal({
                 </div>
 
                 <p className="text-sm leading-relaxed text-gray-300">{movie.overview}</p>
+
+                <div className="space-y-3 rounded-[26px] border border-white/8 bg-white/[0.03] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Ou le regarder</p>
+                      <p className="text-xs text-gray-400">
+                        {movie.watch_providers?.region
+                          ? `Disponibilites TMDB pour ${movie.watch_providers.region}`
+                          : "Disponibilites en cours de recuperation"}
+                      </p>
+                    </div>
+                    {movie.watch_providers?.link ? (
+                      <a
+                        href={movie.watch_providers.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-gray-200 transition hover:bg-white/10"
+                      >
+                        <PlaySquare className="h-3.5 w-3.5" />
+                        Voir
+                      </a>
+                    ) : null}
+                  </div>
+
+                  {hasProviders ? (
+                    <div className="space-y-4">
+                      <ProviderRow title="Abonnement" providers={movie.watch_providers?.subscription} />
+                      <ProviderRow title="Location" providers={movie.watch_providers?.rent} />
+                      <ProviderRow title="Achat" providers={movie.watch_providers?.buy} />
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-relaxed text-gray-400">
+                      Aucune plateforme n&apos;est disponible pour le moment sur TMDB pour ce film.
+                    </p>
+                  )}
+                </div>
 
                 <div className="flex gap-3 overflow-x-auto pb-2">
                   {movie.cast?.map((actor) => (
