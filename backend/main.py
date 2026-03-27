@@ -2219,11 +2219,18 @@ def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dic
 def movie_news_highlights(current_user: dict = Depends(get_current_user)):
     popular_now = fetch_now_playing_movies(limit=18)
     popular_ids = {movie["id"] for movie in popular_now}
+    tinder_preview = compute_recommendation_feed(
+        current_user_id=current_user["id"],
+        limit=24,
+        exclude_ids=",".join(str(movie_id) for movie_id in popular_ids),
+        mode="tinder",
+    )
+    tinder_preview_ids = {movie["id"] for movie in tinder_preview}
 
     tailored = compute_recommendation_feed(
         current_user_id=current_user["id"],
         limit=18,
-        exclude_ids=",".join(str(movie_id) for movie_id in popular_ids),
+        exclude_ids=",".join(str(movie_id) for movie_id in (popular_ids | tinder_preview_ids)),
         mode="spotlight",
     )
     tailored_ids = {movie["id"] for movie in tailored}
@@ -2231,7 +2238,7 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
     discovery = compute_recommendation_feed(
         current_user_id=current_user["id"],
         limit=18,
-        exclude_ids=",".join(str(movie_id) for movie_id in (popular_ids | tailored_ids)),
+        exclude_ids=",".join(str(movie_id) for movie_id in (popular_ids | tinder_preview_ids | tailored_ids)),
         mode="explore",
     )
 
