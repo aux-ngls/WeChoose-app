@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Search, Film, List, LogIn, LogOut, Users, MessageCircle } from "lucide-react";
+import { Home, Search, Film, List, LogOut, Users, MessageCircle, UserCircle2 } from "lucide-react";
 import QulteLogo from "@/components/QulteLogo";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
@@ -110,6 +110,7 @@ export default function Navbar() {
     { href: "/playlist", label: "Listes", icon: List },
     { href: "/social", label: "Social", icon: Users },
     { href: "/messages", label: "Messages", icon: MessageCircle },
+    ...(username ? [{ href: "/profile", label: "Profil", icon: UserCircle2 }] : []),
   ] as const;
 
   return (
@@ -120,7 +121,7 @@ export default function Navbar() {
             <QulteLogo />
           </Link>
 
-          <div className="grid flex-1 grid-cols-6 gap-1 md:flex md:w-auto md:flex-none md:gap-8">
+          <div className="grid flex-1 grid-cols-7 gap-1 md:flex md:w-auto md:flex-none md:gap-8">
             <Link href="/" title="Accueil" aria-label="Accueil" className={`flex items-center justify-center ${isActive("/")}`}>
               <Home size={22} />
             </Link>
@@ -151,12 +152,28 @@ export default function Navbar() {
                 )}
               </span>
             </Link>
+
+            {username ? (
+              <Link href="/profile" title="Profil" aria-label="Profil" className={`flex items-center justify-center ${isActive("/profile")}`}>
+                <UserCircle2 size={22} />
+              </Link>
+            ) : (
+              <span className="hidden md:block" />
+            )}
           </div>
 
           <div className="hidden md:flex items-center gap-4">
             {username ? (
               <>
-                <span className="text-sm font-bold text-white">@{username}</span>
+                <Link
+                  href="/profile"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-white/[0.08]"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-black text-black">
+                    {username.charAt(0).toUpperCase()}
+                  </span>
+                  <span>@{username}</span>
+                </Link>
                 <button onClick={handleLogout} title="Déconnexion">
                   <LogOut size={20} />
                 </button>
@@ -176,7 +193,7 @@ export default function Navbar() {
       </nav>
 
       <nav className="fixed inset-x-3 bottom-[calc(0.7rem+env(safe-area-inset-bottom))] z-50 md:hidden">
-        <div className="mx-auto max-w-md rounded-[30px] border border-white/10 bg-zinc-950/88 p-2 shadow-[0_18px_48px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
+        <div className="mx-auto max-w-lg rounded-[30px] border border-white/10 bg-zinc-950/88 p-1.5 shadow-[0_18px_48px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
           <div className="flex items-center gap-1">
             {mobileNavItems.map((item) => {
               const Icon = item.icon;
@@ -190,14 +207,14 @@ export default function Navbar() {
                   href={item.href}
                   title={item.label}
                   aria-label={item.label}
-                  className={`relative flex h-11 flex-1 items-center justify-center rounded-full transition ${
+                  className={`relative flex h-10 flex-1 items-center justify-center rounded-full transition ${
                     active
                       ? "bg-white text-black shadow-[0_10px_24px_rgba(255,255,255,0.12)]"
                       : "text-gray-400 hover:bg-white/[0.04] hover:text-white"
                   }`}
                 >
                   <span className="relative">
-                    <Icon size={18} />
+                    <Icon size={17} />
                     {item.href === "/messages" && unreadMessages > 0 && (
                       <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
                         {unreadMessages > 9 ? "9+" : unreadMessages}
@@ -211,30 +228,22 @@ export default function Navbar() {
         </div>
       </nav>
 
-      <div
-        className={`fixed right-4 top-[calc(env(safe-area-inset-top)+0.45rem)] z-50 transition duration-200 md:hidden ${
-          pathname === "/" || !showMobileHeader
-            ? "pointer-events-none -translate-y-4 opacity-0"
-            : "translate-y-0 opacity-100"
-        }`}
-      >
-        {username ? (
-          <button
-            onClick={handleLogout}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-zinc-950/78 text-red-400 shadow-[0_12px_28px_rgba(0,0,0,0.28)] backdrop-blur-xl"
-            aria-label="Se déconnecter"
-          >
-            <LogOut size={16} />
-          </button>
-        ) : (
+      {!username ? (
+        <div
+          className={`fixed right-4 top-[calc(env(safe-area-inset-top)+0.45rem)] z-50 transition duration-200 md:hidden ${
+            pathname === "/" || !showMobileHeader
+              ? "pointer-events-none -translate-y-4 opacity-0"
+              : "translate-y-0 opacity-100"
+          }`}
+        >
           <Link
             href="/login"
             className="inline-flex items-center rounded-full border border-white/10 bg-zinc-950/78 px-3 py-2 text-[11px] font-semibold text-white shadow-[0_12px_28px_rgba(0,0,0,0.28)] backdrop-blur-xl"
           >
             Connexion
           </Link>
-        )}
-      </div>
+        </div>
+      ) : null}
     </>
   );
 }
