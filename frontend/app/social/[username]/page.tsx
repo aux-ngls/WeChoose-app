@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Heart, Loader2, Star, UserMinus, UserPlus } from "lucide-react";
+import { ArrowLeft, Heart, Loader2, Sparkles, Star, UserMinus, UserPlus, Users } from "lucide-react";
 import { API_URL } from "@/config";
 import { buildAuthHeaders, getStoredToken } from "@/lib/auth";
+import SoundtrackPreviewCard from "@/components/SoundtrackPreviewCard";
 import {
   FALLBACK_POSTER,
   type SocialProfile,
@@ -290,6 +291,108 @@ export default function SocialProfilePage() {
             </div>
           </div>
         </section>
+
+        {(profile.profile_movies.length > 0 ||
+          profile.profile_people.length > 0 ||
+          profile.profile_genres.length > 0 ||
+          profile.profile_soundtrack) && (
+          <section className="rounded-[24px] border border-white/10 bg-zinc-950/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:rounded-[32px] md:p-6">
+            <div className="mb-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200">
+                <Sparkles className="h-3.5 w-3.5" />
+                Vitrine cine
+              </div>
+              <h2 className="mt-3 text-xl font-black tracking-tight md:text-2xl">
+                Ce qui definit @{profile.username}
+              </h2>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                  Films totems
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5">
+                  {profile.profile_movies.map((movie) => (
+                    <div key={movie.id} className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04]">
+                      <img
+                        src={movie.poster_url || FALLBACK_POSTER}
+                        alt={movie.title}
+                        className="aspect-[2/3] w-full object-cover"
+                      />
+                      <div className="px-2 py-2 text-xs font-semibold text-white line-clamp-2">
+                        {movie.title}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                    Personnes clefs
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-2">
+                    {profile.profile_people.map((person) => (
+                      <div
+                        key={`${person.id ?? person.name}-${person.name}`}
+                        className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] p-2.5 sm:flex sm:items-center sm:gap-3 sm:px-3 sm:py-3"
+                      >
+                        <div className="aspect-[2/3] w-full overflow-hidden rounded-[16px] border border-white/10 bg-white/[0.04] sm:h-12 sm:w-12 sm:rounded-2xl">
+                          {person.photo_url ? (
+                            <img
+                              src={person.photo_url}
+                              alt={person.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-gray-500">
+                              <Users className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-2 min-w-0 flex-1 sm:mt-0">
+                          <div className="truncate text-sm font-semibold text-white">
+                            {person.name}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-400">
+                            {person.known_for_department || "Cinema"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {profile.profile_soundtrack ? (
+                  <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                      Musique favorite
+                    </div>
+                    <SoundtrackPreviewCard soundtrack={profile.profile_soundtrack} />
+                  </div>
+                ) : null}
+
+                <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                    Genres
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {profile.profile_genres.map((genre) => (
+                      <span
+                        key={genre}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white"
+                      >
+                        {genre}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {error && (
           <div className="rounded-[24px] border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-100">
