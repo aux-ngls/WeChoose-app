@@ -185,6 +185,14 @@ export async function searchSocialUsers(token: string, query: string): Promise<S
   return request<SocialUser[]>(`/social/users?query=${encodeURIComponent(query)}&limit=10`, undefined, token);
 }
 
+export async function followUser(token: string, targetUserId: number): Promise<void> {
+  await request<null>(`/social/follow/${targetUserId}`, { method: 'POST' }, token);
+}
+
+export async function unfollowUser(token: string, targetUserId: number): Promise<void> {
+  await request<null>(`/social/follow/${targetUserId}`, { method: 'DELETE' }, token);
+}
+
 export async function startConversation(token: string, targetUserId: number): Promise<{ id: number }> {
   return request<{ id: number }>(`/messages/conversations/start/${targetUserId}`, { method: 'POST' }, token);
 }
@@ -218,6 +226,37 @@ export async function sendMessage(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export async function registerMobileDevice(
+  token: string,
+  payload: { device_token: string; platform: 'ios' | 'android'; app_version?: string },
+): Promise<void> {
+  await request<null>(
+    '/mobile/devices/register',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: payload.device_token,
+        platform: payload.platform,
+        app_version: payload.app_version,
+      }),
+    },
+    token,
+  );
+}
+
+export async function unregisterMobileDevice(token: string, deviceToken: string): Promise<void> {
+  await request<null>(
+    '/mobile/devices/unregister',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: deviceToken }),
     },
     token,
   );

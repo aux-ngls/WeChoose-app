@@ -1,5 +1,7 @@
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as Notifications from 'expo-notifications';
+import { useEffect } from 'react';
 import AppLoader from '../components/AppLoader';
 import { useAuth } from '../auth/AuthContext';
 import AuthScreen from '../screens/AuthScreen';
@@ -9,7 +11,9 @@ import MovieDetailsScreen from '../screens/MovieDetailsScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import PlaylistDetailsScreen from '../screens/PlaylistDetailsScreen';
 import ShareMovieScreen from '../screens/ShareMovieScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
 import MainTabs from './MainTabs';
+import { flushPendingNotificationNavigation, navigateFromNotificationData, navigationRef } from './rootNavigation';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -29,12 +33,26 @@ const navigationTheme = {
 export default function AppNavigator() {
   const { isBootstrapping, session } = useAuth();
 
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      navigateFromNotificationData(response.notification.request.content.data);
+    });
+
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        navigateFromNotificationData(response.notification.request.content.data);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   if (isBootstrapping) {
     return <AppLoader label="Ouverture de Qulte..." />;
   }
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme} onReady={flushPendingNotificationNavigation}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         {!session ? (
           <Stack.Screen name="Auth" component={AuthScreen} />
@@ -46,6 +64,7 @@ export default function AppNavigator() {
             <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} />
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} />
             <Stack.Screen name="ShareMovie" component={ShareMovieScreen} />
+            <Stack.Screen name="UserProfile" component={UserProfileScreen} />
             <Stack.Screen name="CreateReview" component={CreateReviewScreen} />
             <Stack.Screen name="Conversation" component={ConversationScreen} />
           </>

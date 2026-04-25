@@ -20,6 +20,9 @@ export type RootStackParamList = {
     posterUrl: string;
     rating: number;
   };
+  UserProfile: {
+    username: string;
+  };
   CreateReview: {
     movieId?: number;
     title?: string;
