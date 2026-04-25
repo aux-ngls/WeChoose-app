@@ -106,6 +106,7 @@ export interface SocialProfile {
   favorites_count: number;
   is_following: boolean;
   is_self: boolean;
+  profile_description: string;
   profile_genres: string[];
   profile_people: ProfileShowcasePerson[];
   profile_movie_ids: number[];
@@ -216,6 +217,7 @@ export interface DirectConversationDetails {
 }
 
 export interface ProfilePreferencesPayload {
+  profile_description: string;
   profile_genres: string[];
   profile_people: ProfileShowcasePerson[];
   profile_movie_ids: number[];

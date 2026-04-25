@@ -77,6 +77,7 @@ export default function ProfileScreen() {
   const [activeSoundtrackUrl, setActiveSoundtrackUrl] = useState<string | null>(null);
   const [isEditingShowcase, setIsEditingShowcase] = useState(false);
   const [savingShowcase, setSavingShowcase] = useState(false);
+  const [draftDescription, setDraftDescription] = useState('');
   const [draftGenresText, setDraftGenresText] = useState('');
   const [draftMovies, setDraftMovies] = useState<ProfileShowcaseMovie[]>([]);
   const [draftPeople, setDraftPeople] = useState<ProfileShowcasePerson[]>([]);
@@ -226,6 +227,7 @@ export default function ProfileScreen() {
     }
 
     setDraftGenresText(profile.profile_genres.join(', '));
+    setDraftDescription(profile.profile_description ?? '');
     setDraftMovies(profile.profile_movies.slice(0, 6));
     setDraftPeople(profile.profile_people.slice(0, 6));
     setDraftSoundtrack(profile.profile_soundtrack);
@@ -320,6 +322,7 @@ export default function ProfileScreen() {
     setSavingShowcase(true);
     try {
       await saveProfilePreferences(session.token, {
+        profile_description: draftDescription.trim(),
         profile_genres: profileGenres,
         profile_people: draftPeople.slice(0, 6),
         profile_movie_ids: draftMovies.slice(0, 6).map((movie) => movie.id),
@@ -405,6 +408,7 @@ export default function ProfileScreen() {
   const visiblePlaylists = showAllPlaylists ? playlists : playlists.slice(0, 2);
   const profileReviews = profile?.reviews ?? [];
   const visibleReviews = showAllReviews ? profileReviews : profileReviews.slice(0, 2);
+  const profileDescription = profile?.profile_description?.trim() ?? '';
 
   return (
     <AppScreen>
@@ -462,21 +466,12 @@ export default function ProfileScreen() {
 
               <View style={styles.profileHeroBody}>
                 <Text style={styles.profileHeroName} numberOfLines={1}>@{profile.username}</Text>
-                <Text style={styles.profileHeroSubtitle} numberOfLines={1}>
-                  {profile.profile_movies.length} films totems · {profile.profile_people.length} personnes clefs
+                <Text
+                  style={[styles.profileHeroDescription, !profileDescription && styles.profileHeroDescriptionEmpty]}
+                  numberOfLines={4}
+                >
+                  {profileDescription || 'Ajoute une courte description pour raconter ton univers cine.'}
                 </Text>
-                <View style={styles.profileMiniStats}>
-                  {[
-                    ['Critiques', profile.reviews_count],
-                    ['Favoris', profile.favorites_count],
-                    ['Abonnes', profile.followers_count],
-                  ].map(([label, value]) => (
-                    <View key={label} style={styles.profileMiniStat}>
-                      <Text style={styles.profileMiniStatValue}>{value}</Text>
-                      <Text style={styles.profileMiniStatLabel}>{label}</Text>
-                    </View>
-                  ))}
-                </View>
               </View>
             </View>
 
@@ -496,6 +491,20 @@ export default function ProfileScreen() {
                   <Pressable onPress={() => setIsEditingShowcase(false)}>
                     <Ionicons name="close" size={20} color="#ffffff" />
                   </Pressable>
+                </View>
+
+                <View style={styles.editorBlock}>
+                  <Text style={styles.editorLabel}>Description</Text>
+                  <TextInput
+                    value={draftDescription}
+                    onChangeText={(value) => setDraftDescription(value.slice(0, 180))}
+                    placeholder="Ex: romance tragique, thrillers nerveux et BO qui restent en tete..."
+                    placeholderTextColor="#64748b"
+                    multiline
+                    maxLength={180}
+                    style={[styles.editorInput, styles.editorTextarea]}
+                  />
+                  <Text style={styles.editorCounter}>{draftDescription.trim().length}/180</Text>
                 </View>
 
                 <View style={styles.editorBlock}>
@@ -955,38 +964,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -0.6,
   },
-  profileHeroSubtitle: {
-    color: '#fbcfe8',
-    fontSize: 12,
+  profileHeroDescription: {
+    color: '#fce7f3',
+    fontSize: 13,
     fontWeight: '700',
+    lineHeight: 19,
   },
-  profileMiniStats: {
-    flexDirection: 'row',
-    gap: 7,
-    marginTop: 4,
-  },
-  profileMiniStat: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.09)',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    paddingHorizontal: 8,
-    paddingVertical: 9,
-  },
-  profileMiniStatValue: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  profileMiniStatLabel: {
-    marginTop: 2,
-    color: '#cbd5e1',
-    fontSize: 9,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  profileHeroDescriptionEmpty: {
+    color: '#f9a8d4',
+    opacity: 0.78,
   },
   changePhotoButton: {
     alignSelf: 'flex-start',
@@ -1060,6 +1046,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 11,
     fontSize: 14,
+  },
+  editorTextarea: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+  },
+  editorCounter: {
+    alignSelf: 'flex-end',
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '800',
   },
   searchRow: {
     flexDirection: 'row',
