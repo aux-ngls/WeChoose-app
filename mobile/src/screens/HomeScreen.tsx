@@ -1,0 +1,544 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  DeviceEventEmitter,
+  Image,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import AppScreen from '../components/AppScreen';
+import EmptyStateCard from '../components/EmptyStateCard';
+import InlineBanner from '../components/InlineBanner';
+import StarRatingInput from '../components/StarRatingInput';
+import {
+  addToWatchLater,
+  ApiError,
+  fetchMovieFeed,
+  rateMovie,
+  removeMovieFromPlaylist,
+  removeMovieRating,
+} from '../api/client';
+import { useAuth } from '../auth/AuthContext';
+import type { RootStackParamList } from '../navigation/types';
+import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
+
+const TARGET_STACK_SIZE = 8;
+const REFILL_THRESHOLD = 4;
+const SWIPE_THRESHOLD = 110;
+const SWIPE_VELOCITY_THRESHOLD = 0.35;
+const OFFSCREEN_DISTANCE = 420;
+const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
+
+type SwipeDirection = 'left' | 'right';
+
+interface UndoableAction {
+  type: 'swipe-left' | 'swipe-right' | 'rating';
+  movie: SearchMovie;
+  rating?: number;
+}
+
+export default function HomeScreen() {
+  const { session, signOut } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [movies, setMovies] = useState<SearchMovie[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
+  const isFetchingRef = useRef(false);
+  const pan = useRef(new Animated.ValueXY()).current;
+
+  const currentMovie = useMemo(() => movies[0] ?? null, [movies]);
+  const secondMovie = useMemo(() => movies[1] ?? null, [movies]);
+
+  useEffect(() => {
+    pan.setValue({ x: 0, y: 0 });
+    setSelectedRating(0);
+  }, [currentMovie?.id, pan]);
+
+  const loadFeed = useCallback(async (excludeIds: number[] = [], options?: { reset?: boolean }) => {
+    if (!session || isFetchingRef.current) {
+      return;
+    }
+
+    isFetchingRef.current = true;
+    try {
+      const payload = await fetchMovieFeed(session.token, {
+        excludeIds,
+        limit: Math.max(TARGET_STACK_SIZE - excludeIds.length, 6),
+        mode: 'tinder',
+      });
+
+      setMovies((current) => {
+        const base = options?.reset ? [] : current;
+        const existingIds = new Set(base.map((movie) => movie.id));
+        const next = payload.filter((movie) => !existingIds.has(movie.id));
+        return [...base, ...next];
+      });
+      setError('');
+    } catch (fetchError) {
+      if (fetchError instanceof ApiError && fetchError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de charger les recommandations.');
+    } finally {
+      isFetchingRef.current = false;
+      setLoading(false);
+    }
+  }, [session, signOut]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) {
+        return;
+      }
+      if (movies.length === 0) {
+        setLoading(true);
+        void loadFeed([], { reset: true });
+      }
+    }, [loadFeed, movies.length, session]),
+  );
+
+  const refillIfNeeded = useCallback((nextMovies: SearchMovie[]) => {
+    if (nextMovies.length < REFILL_THRESHOLD) {
+      void loadFeed(nextMovies.map((movie) => movie.id));
+    }
+  }, [loadFeed]);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      TINDER_MOVIE_ACTION_EVENT,
+      (event: { type: 'rated' | 'watch-later'; movieId: number; rating?: number }) => {
+        setMovies((current) => {
+          const activeMovie = current[0];
+          if (!activeMovie || activeMovie.id !== event.movieId) {
+            return current;
+          }
+
+          if (event.type === 'rated') {
+            setSelectedRating(event.rating ?? 0);
+            return current;
+          }
+
+          const next = current.slice(1);
+          refillIfNeeded(next);
+          setLastUndoableAction({ type: 'swipe-right', movie: activeMovie });
+          return next;
+        });
+      },
+    );
+
+    return () => subscription.remove();
+  }, [refillIfNeeded]);
+
+  const consumeMovie = useCallback(() => {
+    setMovies((current) => {
+      const next = current.slice(1);
+      refillIfNeeded(next);
+      return next;
+    });
+  }, [refillIfNeeded]);
+
+  const restoreMovieToFront = useCallback((movie: SearchMovie) => {
+    setMovies((current) => {
+      if (current.some((entry) => entry.id === movie.id)) {
+        return current;
+      }
+      return [movie, ...current];
+    });
+  }, []);
+
+  const animateCardBack = useCallback(() => {
+    Animated.spring(pan, {
+      toValue: { x: 0, y: 0 },
+      useNativeDriver: true,
+      friction: 8,
+      tension: 90,
+    }).start();
+  }, [pan]);
+
+  const animateCardOut = useCallback((direction: SwipeDirection, onFinished?: () => void) => {
+    Animated.timing(pan, {
+      toValue: { x: direction === 'right' ? OFFSCREEN_DISTANCE : -OFFSCREEN_DISTANCE, y: 0 },
+      duration: 160,
+      useNativeDriver: true,
+    }).start(() => {
+      pan.setValue({ x: 0, y: 0 });
+      onFinished?.();
+    });
+  }, [pan]);
+
+  const persistSwipeAction = useCallback(async (direction: SwipeDirection, movie: SearchMovie) => {
+    if (!session) {
+      return;
+    }
+    if (direction === 'right') {
+      await addToWatchLater(session.token, movie.id);
+      return;
+    }
+    await rateMovie(session.token, movie.id, 1);
+  }, [session]);
+
+  const undoSwipeAction = useCallback(async (action: UndoableAction) => {
+    if (!session) {
+      return;
+    }
+
+    if (action.type === 'swipe-right') {
+      await removeMovieFromPlaylist(session.token, WATCH_LATER_PLAYLIST_ID, action.movie.id);
+      return;
+    }
+
+    await removeMovieRating(session.token, action.movie.id);
+  }, [session]);
+
+  const triggerSwipe = useCallback(async (direction: SwipeDirection, movie: SearchMovie) => {
+    if (!session || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    animateCardOut(direction, () => consumeMovie());
+
+    try {
+      await persistSwipeAction(direction, movie);
+      setLastUndoableAction({
+        type: direction === 'right' ? 'swipe-right' : 'swipe-left',
+        movie,
+      });
+    } catch (submitError) {
+      if (submitError instanceof ApiError && submitError.status === 401) {
+        await signOut();
+        return;
+      }
+      restoreMovieToFront(movie);
+      setError("Impossible d'enregistrer cette action.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [animateCardOut, consumeMovie, persistSwipeAction, restoreMovieToFront, session, signOut, submitting]);
+
+  const handleRate = useCallback(async (rating: number, movie: SearchMovie) => {
+    if (!session || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    setSelectedRating(rating);
+    setTimeout(() => {
+      animateCardOut(rating >= 4 ? 'right' : 'left', () => consumeMovie());
+    }, 140);
+
+    try {
+      await rateMovie(session.token, movie.id, rating);
+      setLastUndoableAction({ type: 'rating', movie, rating });
+    } catch (submitError) {
+      if (submitError instanceof ApiError && submitError.status === 401) {
+        await signOut();
+        return;
+      }
+      restoreMovieToFront(movie);
+      setError("Impossible d'enregistrer cette note.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [animateCardOut, consumeMovie, restoreMovieToFront, session, signOut, submitting]);
+
+  const handleUndo = useCallback(async () => {
+    if (!lastUndoableAction || !session || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await undoSwipeAction(lastUndoableAction);
+      restoreMovieToFront(lastUndoableAction.movie);
+      setLastUndoableAction(null);
+      setError('');
+    } catch (undoError) {
+      if (undoError instanceof ApiError && undoError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError("Impossible d'annuler cette action.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [lastUndoableAction, restoreMovieToFront, session, signOut, submitting, undoSwipeAction]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          !submitting && Math.abs(gestureState.dx) > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+        onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
+          useNativeDriver: false,
+        }),
+        onPanResponderRelease: (_, gestureState) => {
+          if (!currentMovie) {
+            animateCardBack();
+            return;
+          }
+
+          if (gestureState.dx > SWIPE_THRESHOLD || gestureState.vx > SWIPE_VELOCITY_THRESHOLD) {
+            void triggerSwipe('right', currentMovie);
+            return;
+          }
+
+          if (gestureState.dx < -SWIPE_THRESHOLD || gestureState.vx < -SWIPE_VELOCITY_THRESHOLD) {
+            void triggerSwipe('left', currentMovie);
+            return;
+          }
+
+          animateCardBack();
+        },
+      }),
+    [animateCardBack, currentMovie, pan.x, pan.y, submitting, triggerSwipe],
+  );
+
+  const cardStyle = useMemo(
+    () => ({
+      transform: [
+        { translateX: pan.x },
+        { translateY: pan.y },
+        {
+          rotate: pan.x.interpolate({
+            inputRange: [-240, 0, 240],
+            outputRange: ['-12deg', '0deg', '12deg'],
+          }),
+        },
+      ],
+    }),
+    [pan.x, pan.y],
+  );
+
+  return (
+    <AppScreen scroll={false} contentStyle={styles.screen}>
+      {error ? <InlineBanner message={error} tone="error" /> : null}
+
+      <View style={styles.stackArea}>
+        {loading && movies.length === 0 ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color="#ffffff" />
+            <Text style={styles.loadingText}>Chargement de tes recos...</Text>
+          </View>
+        ) : currentMovie ? (
+          <View style={styles.cardFrame}>
+            {secondMovie ? (
+              <View style={styles.backCard}>
+                <Image source={{ uri: secondMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+                <View style={styles.backOverlay} />
+              </View>
+            ) : null}
+
+            <Animated.View style={[styles.frontCard, cardStyle]} {...panResponder.panHandlers}>
+              <Pressable
+                style={styles.pressableFill}
+                onPress={() => navigation.navigate('MovieDetails', { movieId: currentMovie.id, title: currentMovie.title, source: 'tinder' })}
+                disabled={submitting}
+              >
+                <Image source={{ uri: currentMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+                <View style={styles.heroGradient} />
+                <View style={styles.heroBody}>
+                  <View style={styles.pillsRow}>
+                    <View style={styles.ratingPill}>
+                      <Ionicons name="star" size={12} color="#fde68a" />
+                      <Text style={styles.ratingPillLabel}>{currentMovie.rating.toFixed(1)}</Text>
+                    </View>
+                    {currentMovie.release_date ? (
+                      <View style={styles.metaPill}>
+                        <Text style={styles.metaPillLabel}>{currentMovie.release_date}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.title}>{currentMovie.title}</Text>
+                </View>
+              </Pressable>
+            </Animated.View>
+          </View>
+        ) : (
+          <EmptyStateCard title="Plus de films pour le moment" subtitle="Le feed se recharge automatiquement." />
+        )}
+      </View>
+
+      <View style={styles.bottomArea}>
+        {lastUndoableAction ? (
+          <Pressable style={styles.undoButton} onPress={() => void handleUndo()} disabled={submitting}>
+            <Ionicons name="arrow-undo" size={16} color="#ffffff" />
+            <Text style={styles.undoLabel}>Annuler</Text>
+          </Pressable>
+        ) : <View style={styles.undoSpacer} />}
+
+        <View style={styles.card}>
+          <StarRatingInput
+            value={selectedRating}
+            onChange={(rating) => currentMovie && void handleRate(rating, currentMovie)}
+            size={34}
+            disabled={submitting || !currentMovie}
+          />
+        </View>
+      </View>
+    </AppScreen>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  stackArea: {
+    flex: 1,
+    minHeight: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardFrame: {
+    width: '100%',
+    maxWidth: 390,
+    aspectRatio: 2 / 3,
+    justifyContent: 'center',
+  },
+  loadingCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingVertical: 34,
+    width: '100%',
+  },
+  loadingText: {
+    color: '#cbd5e1',
+    fontSize: 14,
+  },
+  backCard: {
+    position: 'absolute',
+    top: 16,
+    left: 12,
+    right: 12,
+    bottom: -8,
+    overflow: 'hidden',
+    borderRadius: 32,
+    opacity: 0.28,
+    transform: [{ scale: 0.96 }],
+  },
+  backOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2,6,23,0.56)',
+  },
+  frontCard: {
+    flex: 1,
+    overflow: 'hidden',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  pressableFill: {
+    flex: 1,
+  },
+  heroPoster: {
+    width: '100%',
+    height: '100%',
+  },
+  heroGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '42%',
+    backgroundColor: 'rgba(2,6,23,0.76)',
+  },
+  heroBody: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    gap: 6,
+    padding: 18,
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ratingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: 'rgba(251,191,36,0.14)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  ratingPillLabel: {
+    color: '#fde68a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  metaPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  metaPillLabel: {
+    color: '#e5e7eb',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+  },
+  bottomArea: {
+    gap: 10,
+  },
+  undoButton: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  undoSpacer: {
+    height: 38,
+  },
+  undoLabel: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  card: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
