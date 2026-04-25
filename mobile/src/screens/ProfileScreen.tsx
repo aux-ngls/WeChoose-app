@@ -34,6 +34,7 @@ import {
   type SearchMovie,
   type SocialProfile,
 } from '../types';
+import { formatDate } from '../utils/format';
 
 interface PlaylistWithPreview extends PlaylistSummary {
   count: number;
@@ -90,6 +91,8 @@ export default function ProfileScreen() {
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [savingPlaylist, setSavingPlaylist] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const [showAllPlaylists, setShowAllPlaylists] = useState(false);
+  const [showAllReviews, setShowAllReviews] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
@@ -399,6 +402,9 @@ export default function ProfileScreen() {
 
   const profileAvatarUrl = resolveMediaUrl(profile?.avatar_url);
   const profileInitial = (profile?.username ?? session?.username ?? '?').trim().slice(0, 1).toUpperCase() || '?';
+  const visiblePlaylists = showAllPlaylists ? playlists : playlists.slice(0, 2);
+  const profileReviews = profile?.reviews ?? [];
+  const visibleReviews = showAllReviews ? profileReviews : profileReviews.slice(0, 2);
 
   return (
     <AppScreen>
@@ -483,10 +489,6 @@ export default function ProfileScreen() {
           </LinearGradient>
 
           <View style={styles.sectionCard}>
-            <View style={styles.showcaseHeader}>
-              <Text style={styles.sectionTitle}>Ce qui te definit</Text>
-            </View>
-
             {isEditingShowcase ? (
               <View style={styles.editorPanel}>
                 <View style={styles.editorHeader}>
@@ -635,16 +637,6 @@ export default function ProfileScreen() {
               </View>
             ) : null}
 
-            {profile.profile_genres.length > 0 ? (
-              <View style={styles.chipsRow}>
-                {profile.profile_genres.map((genre) => (
-                  <View key={genre} style={styles.genreChip}>
-                    <Text style={styles.genreChipLabel}>{genre}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
             {profile.profile_movies.length > 0 ? (
               <View style={styles.subsection}>
                 <Text style={styles.subsectionTitle}>Films totems</Text>
@@ -736,7 +728,7 @@ export default function ProfileScreen() {
             ) : null}
 
             <View style={styles.playlistList}>
-              {playlists.map((playlist) => (
+              {visiblePlaylists.map((playlist) => (
                 <Pressable
                   key={playlist.id}
                   style={styles.playlistCard}
@@ -759,6 +751,67 @@ export default function ProfileScreen() {
                 </Pressable>
               ))}
             </View>
+            {playlists.length > 2 ? (
+              <Pressable
+                style={styles.showMoreButton}
+                onPress={() => setShowAllPlaylists((current) => !current)}
+              >
+                <Text style={styles.showMoreButtonLabel}>
+                  {showAllPlaylists ? 'Afficher moins' : `Afficher toutes les playlists (${playlists.length})`}
+                </Text>
+                <Ionicons name={showAllPlaylists ? 'chevron-up' : 'chevron-down'} size={16} color="#7dd3fc" />
+              </Pressable>
+            ) : null}
+          </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.playlistsHeader}>
+              <Text style={styles.sectionTitle}>Critiques</Text>
+              <Pressable
+                style={styles.addPlaylistButton}
+                onPress={() => navigation.navigate('CreateReview')}
+              >
+                <Ionicons name="create-outline" size={18} color="#08111f" />
+              </Pressable>
+            </View>
+
+            {visibleReviews.length > 0 ? (
+              <View style={styles.profileReviewsList}>
+                {visibleReviews.map((review) => (
+                  <Pressable
+                    key={review.id}
+                    style={styles.profileReviewCard}
+                    onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}
+                  >
+                    <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
+                    <View style={styles.reviewBody}>
+                      <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
+                      <View style={styles.reviewMetaRow}>
+                        <View style={styles.reviewRatingPill}>
+                          <Text style={styles.reviewRatingLabel}>{review.rating.toFixed(1)} / 5</Text>
+                        </View>
+                        <Text style={styles.reviewDate}>{formatDate(review.created_at)}</Text>
+                      </View>
+                      <Text style={styles.reviewContent} numberOfLines={3}>{review.content}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <EmptyStateCard title="Aucune critique" subtitle="Tes avis publies apparaitront ici." />
+            )}
+
+            {profileReviews.length > 2 ? (
+              <Pressable
+                style={styles.showMoreButton}
+                onPress={() => setShowAllReviews((current) => !current)}
+              >
+                <Text style={styles.showMoreButtonLabel}>
+                  {showAllReviews ? 'Afficher moins' : `Afficher toutes les critiques (${profileReviews.length})`}
+                </Text>
+                <Ionicons name={showAllReviews ? 'chevron-up' : 'chevron-down'} size={16} color="#7dd3fc" />
+              </Pressable>
+            ) : null}
           </View>
 
           <View style={styles.statsGrid}>
@@ -964,31 +1017,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
     padding: 18,
   },
-  showcaseHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
   sectionTitle: {
     color: '#ffffff',
     fontSize: 18,
-    fontWeight: '800',
-  },
-  editChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(249,168,212,0.22)',
-    backgroundColor: 'rgba(249,168,212,0.10)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  editChipLabel: {
-    color: '#f9a8d4',
-    fontSize: 12,
     fontWeight: '800',
   },
   editorPanel: {
@@ -1154,22 +1185,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  genreChip: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  genreChipLabel: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   subsection: {
     gap: 12,
   },
@@ -1190,10 +1205,10 @@ const styles = StyleSheet.create({
     width: '31.2%',
   },
   personCard: {
-    width: 108,
+    width: 92,
     aspectRatio: 2 / 3,
     overflow: 'hidden',
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -1208,13 +1223,13 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.74)',
-    padding: 10,
+    padding: 8,
   },
   personName: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
-    lineHeight: 16,
+    lineHeight: 15,
   },
   soundtrackCard: {
     flexDirection: 'row',
@@ -1316,6 +1331,78 @@ const styles = StyleSheet.create({
     width: 48,
     height: 72,
     borderRadius: 14,
+  },
+  showMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(125,211,252,0.22)',
+    backgroundColor: 'rgba(14,165,233,0.10)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  showMoreButtonLabel: {
+    color: '#7dd3fc',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  profileReviewsList: {
+    gap: 12,
+  },
+  profileReviewCard: {
+    flexDirection: 'row',
+    gap: 12,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    padding: 12,
+  },
+  reviewPoster: {
+    width: 54,
+    height: 78,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  reviewBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  reviewTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  reviewMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reviewRatingPill: {
+    borderRadius: 999,
+    backgroundColor: 'rgba(251,191,36,0.14)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  reviewRatingLabel: {
+    color: '#fde68a',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reviewDate: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  reviewContent: {
+    color: '#e5e7eb',
+    fontSize: 13,
+    lineHeight: 19,
   },
   statsGrid: {
     flexDirection: 'row',
