@@ -26,6 +26,11 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import {
+  getPushNotificationStatus,
+  registerForPushNotifications,
+  type PushNotificationStatus,
+} from '../notifications/push';
+import {
   FALLBACK_POSTER,
   type PlaylistSummary,
   type ProfileShowcaseMovie,
@@ -39,6 +44,42 @@ import { formatDate } from '../utils/format';
 interface PlaylistWithPreview extends PlaylistSummary {
   count: number;
   preview_movies: SearchMovie[];
+}
+
+function getPushStatusCopy(status: PushNotificationStatus | null): { title: string; subtitle: string; icon: keyof typeof Ionicons.glyphMap } {
+  if (status === 'granted') {
+    return {
+      title: 'Notifications activees',
+      subtitle: 'Tu recevras les messages et activites meme app fermee.',
+      icon: 'notifications',
+    };
+  }
+  if (status === 'denied') {
+    return {
+      title: 'Notifications bloquees',
+      subtitle: 'Active-les dans Reglages iPhone > Notifications > Qulte.',
+      icon: 'alert-circle-outline',
+    };
+  }
+  if (status === 'unavailable') {
+    return {
+      title: 'Notifications indisponibles',
+      subtitle: "Disponible uniquement dans l'app native sur iPhone reel.",
+      icon: 'phone-portrait-outline',
+    };
+  }
+  if (status === 'missing-project') {
+    return {
+      title: 'Build a reconstruire',
+      subtitle: 'La configuration Expo push manque dans cette version.',
+      icon: 'build-outline',
+    };
+  }
+  return {
+    title: 'Activer les notifications',
+    subtitle: "Recois les messages meme quand Qulte n'est pas ouverte.",
+    icon: 'notifications-outline',
+  };
 }
 
 function resolveMediaUrl(url: string | null | undefined): string | null {
@@ -94,6 +135,8 @@ export default function ProfileScreen() {
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [showAllPlaylists, setShowAllPlaylists] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [pushStatus, setPushStatus] = useState<PushNotificationStatus | null>(null);
+  const [pushLoading, setPushLoading] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
@@ -159,11 +202,21 @@ export default function ProfileScreen() {
     }
   }, [session, signOut]);
 
+  const refreshPushStatus = useCallback(async () => {
+    try {
+      const status = await getPushNotificationStatus();
+      setPushStatus(status);
+    } catch {
+      setPushStatus(null);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       void loadProfile();
-    }, [loadProfile]),
+      void refreshPushStatus();
+    }, [loadProfile, refreshPushStatus]),
   );
 
   const handlePlaybackStatus = useCallback((status: AVPlaybackStatus) => {
@@ -403,12 +456,46 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleEnablePushNotifications = async () => {
+    if (!session || pushLoading || pushStatus === 'granted') {
+      return;
+    }
+
+    setPushLoading(true);
+    try {
+      const deviceToken = await registerForPushNotifications(session.token);
+      const nextStatus = await getPushNotificationStatus();
+      setPushStatus(nextStatus);
+
+      if (!deviceToken) {
+        if (nextStatus === 'denied') {
+          setError('Les notifications sont refusees par iOS. Active-les dans Reglages > Notifications > Qulte.');
+        } else if (nextStatus === 'unavailable') {
+          setError("Les notifications ne sont disponibles que dans l'app native sur un iPhone reel.");
+        } else if (nextStatus === 'missing-project') {
+          setError('Cette build ne contient pas la configuration Expo push. Fais une nouvelle build TestFlight.');
+        } else {
+          setError("La demande de notifications n'a pas pu etre lancee.");
+        }
+        return;
+      }
+
+      setError('');
+    } catch {
+      setError('Impossible d activer les notifications sur cette build.');
+      await refreshPushStatus();
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   const profileAvatarUrl = resolveMediaUrl(profile?.avatar_url);
   const profileInitial = (profile?.username ?? session?.username ?? '?').trim().slice(0, 1).toUpperCase() || '?';
   const visiblePlaylists = showAllPlaylists ? playlists : playlists.slice(0, 2);
   const profileReviews = profile?.reviews ?? [];
   const visibleReviews = showAllReviews ? profileReviews : profileReviews.slice(0, 2);
   const profileDescription = profile?.profile_description?.trim() ?? '';
+  const pushStatusCopy = getPushStatusCopy(pushStatus);
 
   return (
     <AppScreen>
@@ -481,6 +568,23 @@ export default function ProfileScreen() {
                 <Text style={styles.changePhotoLabel}>{savingAvatar ? 'Envoi...' : 'Changer la photo'}</Text>
               </Pressable>
             ) : null}
+
+            <Pressable
+              style={[styles.notificationPrompt, pushStatus === 'granted' && styles.notificationPromptActive]}
+              onPress={() => void handleEnablePushNotifications()}
+              disabled={pushLoading || pushStatus === 'granted'}
+            >
+              <View style={styles.notificationPromptIcon}>
+                <Ionicons name={pushLoading ? 'hourglass-outline' : pushStatusCopy.icon} size={18} color="#190713" />
+              </View>
+              <View style={styles.notificationPromptBody}>
+                <Text style={styles.notificationPromptTitle}>
+                  {pushLoading ? 'Activation...' : pushStatusCopy.title}
+                </Text>
+                <Text style={styles.notificationPromptSubtitle} numberOfLines={2}>{pushStatusCopy.subtitle}</Text>
+              </View>
+              {pushStatus !== 'granted' ? <Ionicons name="chevron-forward" size={18} color="#f9a8d4" /> : null}
+            </Pressable>
           </LinearGradient>
 
           <View style={styles.sectionCard}>
@@ -990,6 +1094,44 @@ const styles = StyleSheet.create({
     color: '#f9a8d4',
     fontSize: 12,
     fontWeight: '900',
+  },
+  notificationPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(249,168,212,0.24)',
+    backgroundColor: 'rgba(249,168,212,0.10)',
+    padding: 12,
+  },
+  notificationPromptActive: {
+    borderColor: 'rgba(125,211,252,0.22)',
+    backgroundColor: 'rgba(14,165,233,0.10)',
+  },
+  notificationPromptIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#f9a8d4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationPromptBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  notificationPromptTitle: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  notificationPromptSubtitle: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
   },
   helperText: {
     color: '#94a3b8',
