@@ -20,6 +20,7 @@ export type RootStackParamList = {
     posterUrl: string;
     rating: number;
   };
+  Settings: undefined;
   UserProfile: {
     username: string;
   };

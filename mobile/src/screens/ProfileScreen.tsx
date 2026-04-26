@@ -434,10 +434,15 @@ export default function ProfileScreen() {
                 <Ionicons name="sparkles" size={14} color="#f9a8d4" />
                 <Text style={styles.profileKickerLabel}>Profil Qulte</Text>
               </View>
-              <Pressable style={styles.profileEditButton} onPress={openShowcaseEditor} disabled={isEditingShowcase}>
-                <Ionicons name={isEditingShowcase ? 'checkmark' : 'create-outline'} size={15} color="#190713" />
-                <Text style={styles.profileEditButtonLabel}>{isEditingShowcase ? 'En edition' : 'Personnaliser'}</Text>
-              </Pressable>
+              <View style={styles.profileTopActions}>
+                <Pressable style={styles.settingsIconButton} onPress={() => navigation.navigate('Settings')}>
+                  <Ionicons name="settings-outline" size={18} color="#f9a8d4" />
+                </Pressable>
+                <Pressable style={styles.profileEditButton} onPress={openShowcaseEditor} disabled={isEditingShowcase}>
+                  <Ionicons name={isEditingShowcase ? 'checkmark' : 'create-outline'} size={15} color="#190713" />
+                  <Text style={styles.profileEditButtonLabel}>{isEditingShowcase ? 'En edition' : 'Personnaliser'}</Text>
+                </Pressable>
+              </View>
             </View>
 
             <View style={styles.profileIdentityRow}>
@@ -898,6 +903,21 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  profileTopActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(249,168,212,0.22)',
+    backgroundColor: 'rgba(249,168,212,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   profileEditButton: {
     flexDirection: 'row',
