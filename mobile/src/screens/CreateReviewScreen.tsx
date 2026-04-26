@@ -138,7 +138,7 @@ export default function CreateReviewScreen({
   }, [query, results.length]);
 
   return (
-    <AppScreen>
+    <AppScreen keyboardAware>
       <View style={styles.headerRow}>
         <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={22} color={theme.colors.text} />

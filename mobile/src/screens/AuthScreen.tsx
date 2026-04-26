@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import AppScreen from '../components/AppScreen';
 import FormField from '../components/FormField';
@@ -18,7 +18,8 @@ export default function AuthScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const accent = useMemo(() => (mode === 'login' ? '#38bdf8' : '#fb7185'), [mode]);
+  const accent = mode === 'login' ? theme.colors.secondaryAccent : theme.colors.accent;
+  const accentText = mode === 'login' ? theme.colors.secondaryAccentText : theme.colors.accentText;
 
   const handleSubmit = async () => {
     const normalizedUsername = username.trim();
@@ -75,7 +76,7 @@ export default function AuthScreen() {
                 onPress={() => setMode(entry.key as 'login' | 'signup')}
                 style={[styles.segmentButton, isActive && { backgroundColor: accent }]}
               >
-                <Text style={[styles.segmentLabel, { color: theme.colors.textSoft }, isActive && { color: '#09090b' }]}>{entry.label}</Text>
+                <Text style={[styles.segmentLabel, { color: theme.colors.textSoft }, isActive && { color: accentText }]}>{entry.label}</Text>
               </Pressable>
             );
           })}
@@ -102,9 +103,9 @@ export default function AuthScreen() {
 
           <Pressable onPress={() => void handleSubmit()} style={[styles.submitButton, { backgroundColor: accent }]} disabled={loading}>
             {loading ? (
-              <ActivityIndicator color="#09090b" />
+              <ActivityIndicator color={accentText} />
             ) : (
-              <Text style={styles.submitLabel}>{mode === 'login' ? 'Se connecter' : 'Creer le compte'}</Text>
+              <Text style={[styles.submitLabel, { color: accentText }]}>{mode === 'login' ? 'Se connecter' : 'Creer le compte'}</Text>
             )}
           </Pressable>
 

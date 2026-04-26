@@ -1,19 +1,43 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 
 interface AppScreenProps {
   children: ReactNode;
   scroll?: boolean;
+  keyboardAware?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
 }
 
 const RAIL_DOTS = Array.from({ length: 9 }, (_, index) => index);
 
-export default function AppScreen({ children, scroll = true, contentStyle }: AppScreenProps) {
+export default function AppScreen({ children, scroll = true, keyboardAware = false, contentStyle }: AppScreenProps) {
   const { theme } = useTheme();
+  const content = scroll ? (
+    <ScrollView
+      automaticallyAdjustKeyboardInsets={keyboardAware}
+      contentContainerStyle={[styles.content, keyboardAware && styles.keyboardContent, contentStyle]}
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardDismissMode={keyboardAware ? 'interactive' : 'none'}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    <View style={[styles.content, styles.fill, contentStyle]}>{children}</View>
+  );
 
   return (
     <LinearGradient
@@ -28,7 +52,7 @@ export default function AppScreen({ children, scroll = true, contentStyle }: App
         <Text
           style={[
             styles.brandGhost,
-            { color: theme.isDark ? 'rgba(255,106,169,0.065)' : 'rgba(216,27,114,0.075)' },
+            { color: theme.isDark ? 'rgba(200,74,95,0.055)' : 'rgba(159,45,63,0.06)' },
           ]}
         >
           Q
@@ -38,7 +62,7 @@ export default function AppScreen({ children, scroll = true, contentStyle }: App
         pointerEvents="none"
         style={[
           styles.perfRail,
-          { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.035)' : 'rgba(216,27,114,0.055)' },
+          { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.032)' : 'rgba(51,40,36,0.055)' },
         ]}
       >
         {RAIL_DOTS.map((dot) => (
@@ -46,22 +70,22 @@ export default function AppScreen({ children, scroll = true, contentStyle }: App
             key={dot}
             style={[
               styles.perfDot,
-              { backgroundColor: theme.isDark ? 'rgba(255,106,169,0.13)' : 'rgba(216,27,114,0.16)' },
+              { backgroundColor: theme.isDark ? 'rgba(200,74,95,0.18)' : 'rgba(159,45,63,0.16)' },
             ]}
           />
         ))}
       </View>
       <SafeAreaView style={styles.safeArea}>
-        {scroll ? (
-          <ScrollView
-            contentContainerStyle={[styles.content, contentStyle]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+        {keyboardAware ? (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 18}
+            style={styles.fill}
           >
-            {children}
-          </ScrollView>
+            {content}
+          </KeyboardAvoidingView>
         ) : (
-          <View style={[styles.content, styles.fill, contentStyle]}>{children}</View>
+          content
         )}
       </SafeAreaView>
     </LinearGradient>
@@ -79,6 +103,9 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 26,
     gap: 18,
+  },
+  keyboardContent: {
+    paddingBottom: 150,
   },
   fill: {
     flex: 1,
