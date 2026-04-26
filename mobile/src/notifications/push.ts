@@ -8,8 +8,6 @@ import { registerMobileDevice, unregisterMobileDevice } from '../api/client';
 const PUSH_TOKEN_STORAGE_KEY = 'qulte.expoPushToken';
 const NOTIFICATION_CHANNEL_ID = 'qulte-default';
 
-export type PushNotificationStatus = 'granted' | 'denied' | 'undetermined' | 'unavailable' | 'missing-project';
-
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -50,19 +48,6 @@ async function requestNotificationPermission(): Promise<boolean> {
   }
 
   return finalStatus === 'granted';
-}
-
-export async function getPushNotificationStatus(): Promise<PushNotificationStatus> {
-  if (!Device.isDevice || !['ios', 'android'].includes(Platform.OS)) {
-    return 'unavailable';
-  }
-
-  if (!getProjectId()) {
-    return 'missing-project';
-  }
-
-  const permissions = await Notifications.getPermissionsAsync();
-  return permissions.status as PushNotificationStatus;
 }
 
 export async function registerForPushNotifications(authToken: string): Promise<string | null> {
