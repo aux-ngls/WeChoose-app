@@ -10,11 +10,13 @@ import ScreenHeader from '../components/ScreenHeader';
 import { ApiError, fetchReviewComments, fetchSocialFeed } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SocialComment, type SocialReview } from '../types';
 import { formatDate } from '../utils/format';
 
 export default function SocialScreen() {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [reviews, setReviews] = useState<SocialReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,37 +97,37 @@ export default function SocialScreen() {
         title="Social"
         subtitle="Le flux critiques et cinema de ton cercle, avec acces direct aux films."
         trailing={
-          <View style={styles.statsBadge}>
-            <Text style={styles.statsBadgeLabel}>{stats.reviews}</Text>
+          <View style={[styles.statsBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <Text style={[styles.statsBadgeLabel, { color: theme.colors.text }]}>{stats.reviews}</Text>
           </View>
         }
       />
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
-      <Pressable style={styles.composeButton} onPress={() => navigation.navigate('CreateReview')}>
+      <Pressable style={[styles.composeButton, { backgroundColor: theme.colors.accent }]} onPress={() => navigation.navigate('CreateReview')}>
         <View style={styles.composeButtonIcon}>
-          <Ionicons name="create-outline" size={18} color="#190713" />
+          <Ionicons name="create-outline" size={18} color={theme.colors.accentText} />
         </View>
         <View style={styles.composeButtonBody}>
-          <Text style={styles.composeButtonTitle}>Nouvelle critique</Text>
-          <Text style={styles.composeButtonSubtitle}>Publie ton avis sur un film comme sur le site.</Text>
+          <Text style={[styles.composeButtonTitle, { color: theme.colors.accentText }]}>Nouvelle critique</Text>
+          <Text style={[styles.composeButtonSubtitle, { color: theme.colors.accentText }]}>Publie ton avis sur un film comme sur le site.</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#190713" />
+        <Ionicons name="chevron-forward" size={18} color={theme.colors.accentText} />
       </Pressable>
 
       <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{stats.reviews}</Text>
-          <Text style={styles.summaryLabel}>critiques</Text>
+        <View style={[styles.summaryCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{stats.reviews}</Text>
+          <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>critiques</Text>
         </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{stats.liked}</Text>
-          <Text style={styles.summaryLabel}>likees</Text>
+        <View style={[styles.summaryCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{stats.liked}</Text>
+          <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>likees</Text>
         </View>
       </View>
 
-      {loading ? <Text style={styles.helperText}>Chargement du feed...</Text> : null}
+      {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text> : null}
 
       {!loading && reviews.length === 0 ? (
         <EmptyStateCard title="Aucune critique pour le moment" subtitle="Le feed se remplira quand ton cercle publiera des avis." />
@@ -134,21 +136,21 @@ export default function SocialScreen() {
           {reviews.map((item) => (
             <Pressable
               key={item.id}
-              style={styles.reviewCard}
+              style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
               onPress={() => void toggleReview(item.id)}
             >
               <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               <View style={styles.reviewBody}>
-                <Text style={styles.reviewTitle}>{item.title}</Text>
-                <Text style={styles.reviewMeta}>@{item.author.username} · {formatDate(item.created_at)}</Text>
+                <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{item.title}</Text>
+                <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{item.author.username} · {formatDate(item.created_at)}</Text>
                 <View style={styles.inlinePills}>
-                  <View style={styles.ratingPill}>
-                    <Text style={styles.ratingPillLabel}>{item.rating.toFixed(1)} / 5</Text>
+                  <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                    <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.rating.toFixed(1)} / 5</Text>
                   </View>
-                  <Text style={styles.inlineMeta}>{item.likes_count} likes</Text>
-                  <Text style={styles.inlineMeta}>{item.comments_count} commentaires</Text>
+                  <Text style={[styles.inlineMeta, { color: theme.colors.textSoft }]}>{item.likes_count} likes</Text>
+                  <Text style={[styles.inlineMeta, { color: theme.colors.textSoft }]}>{item.comments_count} commentaires</Text>
                 </View>
-                <Text style={styles.reviewContent} numberOfLines={expandedReviewId === item.id ? undefined : 4}>
+                <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={expandedReviewId === item.id ? undefined : 4}>
                   {item.content}
                 </Text>
                 {expandedReviewId === item.id ? (
@@ -157,23 +159,23 @@ export default function SocialScreen() {
                       style={styles.movieLink}
                       onPress={() => navigation.navigate('MovieDetails', { movieId: item.movie_id, title: item.title })}
                     >
-                      <Ionicons name="film-outline" size={15} color="#7dd3fc" />
-                      <Text style={styles.movieLinkLabel}>Fiche film</Text>
+                      <Ionicons name="film-outline" size={15} color={theme.colors.secondaryAccent} />
+                      <Text style={[styles.movieLinkLabel, { color: theme.colors.secondaryAccent }]}>Fiche film</Text>
                     </Pressable>
 
-                    <View style={styles.commentsBox}>
-                      <Text style={styles.commentsTitle}>Commentaires</Text>
+                    <View style={[styles.commentsBox, { borderTopColor: theme.rgba.border }]}>
+                      <Text style={[styles.commentsTitle, { color: theme.colors.text }]}>Commentaires</Text>
                       {loadingComments[item.id] ? (
-                        <ActivityIndicator color="#ffffff" />
+                        <ActivityIndicator color={theme.colors.text} />
                       ) : (commentsByReview[item.id] ?? []).length > 0 ? (
                         (commentsByReview[item.id] ?? []).map((comment) => (
-                          <View key={comment.id} style={styles.commentRow}>
-                            <Text style={styles.commentAuthor}>@{comment.author.username}</Text>
-                            <Text style={styles.commentText}>{comment.content}</Text>
+                          <View key={comment.id} style={[styles.commentRow, { backgroundColor: theme.rgba.cardStrong }]}>
+                            <Text style={[styles.commentAuthor, { color: theme.colors.accent }]}>@{comment.author.username}</Text>
+                            <Text style={[styles.commentText, { color: theme.colors.textSoft }]}>{comment.content}</Text>
                           </View>
                         ))
                       ) : (
-                        <Text style={styles.noComments}>Aucun commentaire pour le moment.</Text>
+                        <Text style={[styles.noComments, { color: theme.colors.textMuted }]}>Aucun commentaire pour le moment.</Text>
                       )}
                     </View>
                   </View>

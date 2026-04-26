@@ -23,6 +23,7 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type DirectMessage } from '../types';
 import { formatDate } from '../utils/format';
 
@@ -31,6 +32,7 @@ export default function ConversationScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'Conversation'>) {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [participantUsername, setParticipantUsername] = useState(route.params.participantUsername ?? 'Conversation');
@@ -136,12 +138,12 @@ export default function ConversationScreen({
     <AppScreen scroll={false} contentStyle={styles.screenContent}>
       <KeyboardAvoidingView style={styles.fill} behavior={undefined}>
         <View style={styles.headerRow}>
-          <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={22} color="#ffffff" />
+          <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
           </Pressable>
           <View style={styles.headerBody}>
-            <Text style={styles.headerTitle} numberOfLines={1}>@{participantUsername}</Text>
-            <Text style={styles.headerSubtitle}>Discussion privee</Text>
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>@{participantUsername}</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Discussion privee</Text>
           </View>
         </View>
 
@@ -170,34 +172,39 @@ export default function ConversationScreen({
             <View style={[styles.messageRow, item.is_mine ? styles.messageRowMine : styles.messageRowOther]}>
               {item.movie ? (
                 <Pressable
-                  style={[styles.sharedMovieCard, item.is_mine ? styles.sharedMovieCardMine : styles.sharedMovieCardOther]}
+                  style={[
+                    styles.sharedMovieCard,
+                    item.is_mine
+                      ? [styles.sharedMovieCardMine, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]
+                      : [styles.sharedMovieCardOther, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }],
+                  ]}
                   onPress={() => navigation.navigate('MovieDetails', { movieId: item.movie!.id, title: item.movie!.title })}
                 >
                   <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
                   <View style={styles.sharedMovieBody}>
-                    <Text style={styles.sharedMovieLabel}>Film partage</Text>
-                    <Text style={styles.sharedMovieTitle} numberOfLines={2}>{item.movie.title}</Text>
+                    <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partage</Text>
+                    <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{item.movie.title}</Text>
                     {item.movie.rating > 0 ? (
-                      <Text style={styles.sharedMovieRating}>{item.movie.rating.toFixed(1)} / 10</Text>
+                      <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{item.movie.rating.toFixed(1)} / 10</Text>
                     ) : null}
                   </View>
                   <View style={styles.sharedMovieChevron}>
-                    <Ionicons name="chevron-forward" size={16} color="#ffffff" />
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.text} />
                   </View>
                 </Pressable>
               ) : null}
               {item.content ? (
-                <View style={[styles.bubble, item.is_mine ? styles.bubbleMine : styles.bubbleOther]}>
-                  <Text style={[styles.messageText, item.is_mine ? styles.messageTextMine : styles.messageTextOther]}>{item.content}</Text>
+                <View style={[styles.bubble, item.is_mine ? [styles.bubbleMine, { backgroundColor: theme.colors.accent }] : [styles.bubbleOther, { backgroundColor: theme.rgba.cardStrong }]]}>
+                  <Text style={[styles.messageText, item.is_mine ? [styles.messageTextMine, { color: theme.colors.accentText }] : [styles.messageTextOther, { color: theme.colors.text }]]}>{item.content}</Text>
                 </View>
               ) : null}
-              <Text style={[styles.messageMeta, item.is_mine && styles.messageMetaMine]}>{formatDate(item.created_at)}</Text>
+              <Text style={[styles.messageMeta, { color: theme.colors.textMuted }, item.is_mine && styles.messageMetaMine]}>{formatDate(item.created_at)}</Text>
             </View>
           )}
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>Cette conversation est encore vide.</Text>
+                <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>Cette conversation est encore vide.</Text>
               </View>
             ) : null
           }
@@ -208,12 +215,12 @@ export default function ConversationScreen({
             value={draft}
             onChangeText={setDraft}
             placeholder="Ecrire un message"
-            placeholderTextColor="#6b7280"
-            style={styles.input}
+            placeholderTextColor={theme.colors.textMuted}
+            style={[styles.input, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
             multiline
           />
-          <Pressable style={[styles.sendButton, !canSend && styles.sendButtonDisabled]} onPress={() => void handleSend()} disabled={!canSend}>
-            <Ionicons name="arrow-up" size={18} color={canSend ? '#08111f' : '#94a3b8'} />
+          <Pressable style={[styles.sendButton, { backgroundColor: theme.colors.secondaryAccent }, !canSend && { backgroundColor: theme.rgba.cardStrong }]} onPress={() => void handleSend()} disabled={!canSend}>
+            <Ionicons name="arrow-up" size={18} color={canSend ? theme.colors.secondaryAccentText : theme.colors.textMuted} />
           </Pressable>
         </View>
       </KeyboardAvoidingView>

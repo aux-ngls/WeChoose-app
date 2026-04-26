@@ -15,6 +15,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import SearchField from '../components/SearchField';
 import { ApiError, getOnboardingPreferences, saveOnboardingPreferences, searchMovies } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie } from '../types';
 
 const GENRES = [
@@ -35,6 +36,7 @@ const GENRES = [
 
 export default function OnboardingScreen() {
   const { session, completeOnboarding, signOut } = useAuth();
+  const { theme } = useTheme();
   const [genres, setGenres] = useState<string[]>([]);
   const [people, setPeople] = useState<string[]>([]);
   const [personDraft, setPersonDraft] = useState('');
@@ -167,8 +169,8 @@ export default function OnboardingScreen() {
   if (bootLoading) {
     return (
       <AppScreen scroll={false} contentStyle={styles.centered}>
-        <ActivityIndicator color="#ffffff" />
-        <Text style={styles.helperText}>Preparation de ton profil cinema...</Text>
+        <ActivityIndicator color={theme.colors.text} />
+        <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Preparation de ton profil cinema...</Text>
       </AppScreen>
     );
   }
@@ -184,60 +186,68 @@ export default function OnboardingScreen() {
       />
 
       <View style={styles.progressRow}>
-        <View style={styles.progressPill}><Text style={styles.progressValue}>{genres.length}</Text><Text style={styles.progressLabel}>genres</Text></View>
-        <View style={styles.progressPill}><Text style={styles.progressValue}>{people.length}</Text><Text style={styles.progressLabel}>personnes</Text></View>
-        <View style={styles.progressPill}><Text style={styles.progressValue}>{movies.length}</Text><Text style={styles.progressLabel}>films</Text></View>
+        <View style={[styles.progressPill, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}><Text style={[styles.progressValue, { color: theme.colors.text }]}>{genres.length}</Text><Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>genres</Text></View>
+        <View style={[styles.progressPill, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}><Text style={[styles.progressValue, { color: theme.colors.text }]}>{people.length}</Text><Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>personnes</Text></View>
+        <View style={[styles.progressPill, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}><Text style={[styles.progressValue, { color: theme.colors.text }]}>{movies.length}</Text><Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>films</Text></View>
       </View>
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Genres</Text>
+      <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Genres</Text>
         <View style={styles.chipsWrap}>
           {GENRES.map((genre) => {
             const isActive = genres.includes(genre);
             return (
-              <Pressable key={genre} onPress={() => toggleGenre(genre)} style={[styles.chip, isActive && styles.chipActive]}>
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{genre}</Text>
+              <Pressable
+                key={genre}
+                onPress={() => toggleGenre(genre)}
+                style={[
+                  styles.chip,
+                  { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong },
+                  isActive && { borderColor: theme.colors.success, backgroundColor: theme.colors.success },
+                ]}
+              >
+                <Text style={[styles.chipLabel, { color: theme.colors.textSoft }, isActive && { color: theme.isDark ? '#09090b' : '#ffffff' }]}>{genre}</Text>
               </Pressable>
             );
           })}
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Acteurs et realisateurs</Text>
+      <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Acteurs et realisateurs</Text>
         <View style={styles.personComposer}>
           <TextInput
             value={personDraft}
             onChangeText={setPersonDraft}
             placeholder="Ajouter un nom"
-            placeholderTextColor="#6b7280"
-            style={styles.personInput}
+            placeholderTextColor={theme.colors.textMuted}
+            style={[styles.personInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
             onSubmitEditing={addPerson}
           />
-          <Pressable onPress={addPerson} style={styles.personAddButton}>
-            <Text style={styles.personAddButtonLabel}>Ajouter</Text>
+          <Pressable onPress={addPerson} style={[styles.personAddButton, { backgroundColor: theme.colors.accentSoft }]}>
+            <Text style={[styles.personAddButtonLabel, { color: theme.colors.accent }]}>Ajouter</Text>
           </Pressable>
         </View>
         {people.length > 0 ? (
           <View style={styles.chipsWrap}>
             {people.map((person) => (
-              <Pressable key={person} onPress={() => setPeople((current) => current.filter((entry) => entry !== person))} style={styles.personChip}>
-                <Text style={styles.personChipLabel}>{person}</Text>
+              <Pressable key={person} onPress={() => setPeople((current) => current.filter((entry) => entry !== person))} style={[styles.personChip, { backgroundColor: theme.colors.accentSoft }]}>
+                <Text style={[styles.personChipLabel, { color: theme.colors.accent }]}>{person}</Text>
               </Pressable>
             ))}
           </View>
         ) : (
-          <Text style={styles.helperText}>Ajoute quelques noms pour mieux demarrer.</Text>
+          <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Ajoute quelques noms pour mieux demarrer.</Text>
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Films qui te ressemblent</Text>
+      <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Films qui te ressemblent</Text>
         <SearchField value={movieQuery} onChangeText={setMovieQuery} placeholder="Chercher un film" />
 
-        {searching ? <ActivityIndicator color="#ffffff" style={{ marginTop: 12 }} /> : null}
+        {searching ? <ActivityIndicator color={theme.colors.text} style={{ marginTop: 12 }} /> : null}
 
         {movieResults.length > 0 ? (
           <View style={styles.resultsList}>
@@ -249,12 +259,12 @@ export default function OnboardingScreen() {
                   setMovieResults((current) => current.filter((entry) => entry.id !== movie.id));
                   setMovieQuery('');
                 }}
-                style={styles.resultItem}
+                style={[styles.resultItem, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
               >
                 <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.resultTitle}>{movie.title}</Text>
-                  <Text style={styles.resultMeta}>{movie.rating.toFixed(1)}</Text>
+                  <Text style={[styles.resultTitle, { color: theme.colors.text }]}>{movie.title}</Text>
+                  <Text style={[styles.resultMeta, { color: theme.colors.ratingText }]}>{movie.rating.toFixed(1)}</Text>
                 </View>
               </Pressable>
             ))}
@@ -277,8 +287,8 @@ export default function OnboardingScreen() {
         )}
       </View>
 
-      <Pressable onPress={() => void handleSubmit()} style={styles.primaryButton} disabled={saving}>
-        {saving ? <ActivityIndicator color="#09090b" /> : <Text style={styles.primaryButtonLabel}>Entrer dans l'app</Text>}
+      <Pressable onPress={() => void handleSubmit()} style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]} disabled={saving}>
+        {saving ? <ActivityIndicator color={theme.colors.accentText} /> : <Text style={[styles.primaryButtonLabel, { color: theme.colors.accentText }]}>Entrer dans l'app</Text>}
       </Pressable>
     </AppScreen>
   );

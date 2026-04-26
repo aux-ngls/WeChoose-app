@@ -1,17 +1,28 @@
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 interface FormFieldProps extends TextInputProps {
   label: string;
 }
 
 export default function FormField({ label, ...props }: FormFieldProps) {
+  const { theme } = useTheme();
+
   return (
     <View style={styles.wrapper}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, { color: theme.colors.textSoft }]}>{label}</Text>
       <TextInput
         {...props}
-        placeholderTextColor="#6b7280"
-        style={[styles.input, props.style]}
+        placeholderTextColor={theme.colors.textMuted}
+        style={[
+          styles.input,
+          {
+            borderColor: theme.rgba.border,
+            backgroundColor: theme.rgba.cardStrong,
+            color: theme.colors.text,
+          },
+          props.style,
+        ]}
       />
     </View>
   );

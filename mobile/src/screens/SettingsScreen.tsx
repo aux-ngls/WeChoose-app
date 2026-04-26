@@ -91,7 +91,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-          Le choix est deja sauvegarde. La prochaine etape sera de convertir les ecrans un par un pour un vrai mode clair complet.
+          Le choix est sauvegarde sur ce telephone et s applique aux ecrans principaux de l app.
         </Text>
       </View>
     </AppScreen>

@@ -6,9 +6,11 @@ import InlineBanner from '../components/InlineBanner';
 import ScreenHeader from '../components/ScreenHeader';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
+  const { theme } = useTheme();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -50,9 +52,9 @@ export default function AuthScreen() {
     <AppScreen contentStyle={styles.content}>
       <View style={styles.heroCard}>
         <View style={styles.brandRow}>
-          <Text style={styles.brand}>Qulte</Text>
-          <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeLabel}>Mobile</Text>
+          <Text style={[styles.brand, { color: theme.colors.text }]}>Qulte</Text>
+          <View style={[styles.brandBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <Text style={[styles.brandBadgeLabel, { color: theme.colors.text }]}>Mobile</Text>
           </View>
         </View>
 
@@ -64,7 +66,7 @@ export default function AuthScreen() {
           subtitle="Une vraie app smartphone branchee au backend Qulte existant."
         />
 
-        <View style={styles.segmentedControl}>
+        <View style={[styles.segmentedControl, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           {[
             { key: 'login', label: 'Connexion' },
             { key: 'signup', label: 'Inscription' },
@@ -76,13 +78,13 @@ export default function AuthScreen() {
                 onPress={() => setMode(entry.key as 'login' | 'signup')}
                 style={[styles.segmentButton, isActive && { backgroundColor: accent }]}
               >
-                <Text style={[styles.segmentLabel, isActive && { color: '#09090b' }]}>{entry.label}</Text>
+                <Text style={[styles.segmentLabel, { color: theme.colors.textSoft }, isActive && { color: '#09090b' }]}>{entry.label}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        <View style={styles.formCard}>
+        <View style={[styles.formCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <FormField
             label="Nom d'utilisateur"
             autoCapitalize="none"
@@ -109,7 +111,7 @@ export default function AuthScreen() {
             )}
           </Pressable>
 
-          <Text style={styles.helperText}>
+          <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
             {mode === 'login'
               ? 'Retrouve tes recos, tes playlists et tes messages.'
               : 'Ton onboarding cinema demarrera juste apres la creation du compte.'}

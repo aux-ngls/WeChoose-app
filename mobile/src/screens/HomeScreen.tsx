@@ -27,6 +27,7 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
 
 const TARGET_STACK_SIZE = 8;
@@ -46,6 +47,7 @@ interface UndoableAction {
 
 export default function HomeScreen() {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [movies, setMovies] = useState<SearchMovie[]>([]);
   const [loading, setLoading] = useState(true);
@@ -329,9 +331,9 @@ export default function HomeScreen() {
 
       <View style={styles.stackArea}>
         {loading && movies.length === 0 ? (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator color="#ffffff" />
-            <Text style={styles.loadingText}>Chargement de tes recos...</Text>
+          <View style={[styles.loadingCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <ActivityIndicator color={theme.colors.text} />
+            <Text style={[styles.loadingText, { color: theme.colors.textSoft }]}>Chargement de tes recos...</Text>
           </View>
         ) : currentMovie ? (
           <View style={styles.cardFrame}>
@@ -342,7 +344,7 @@ export default function HomeScreen() {
               </View>
             ) : null}
 
-            <Animated.View style={[styles.frontCard, cardStyle]} {...panResponder.panHandlers}>
+            <Animated.View style={[styles.frontCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }, cardStyle]} {...panResponder.panHandlers}>
               <Pressable
                 style={styles.pressableFill}
                 onPress={() => navigation.navigate('MovieDetails', { movieId: currentMovie.id, title: currentMovie.title, source: 'tinder' })}
@@ -352,9 +354,9 @@ export default function HomeScreen() {
                 <View style={styles.heroGradient} />
                 <View style={styles.heroBody}>
                   <View style={styles.pillsRow}>
-                    <View style={styles.ratingPill}>
-                      <Ionicons name="star" size={12} color="#fde68a" />
-                      <Text style={styles.ratingPillLabel}>{currentMovie.rating.toFixed(1)}</Text>
+                    <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                      <Ionicons name="star" size={12} color={theme.colors.ratingText} />
+                      <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{currentMovie.rating.toFixed(1)}</Text>
                     </View>
                     {currentMovie.release_date ? (
                       <View style={styles.metaPill}>
@@ -374,13 +376,17 @@ export default function HomeScreen() {
 
       <View style={styles.bottomArea}>
         {lastUndoableAction ? (
-          <Pressable style={styles.undoButton} onPress={() => void handleUndo()} disabled={submitting}>
-            <Ionicons name="arrow-undo" size={16} color="#ffffff" />
-            <Text style={styles.undoLabel}>Annuler</Text>
+          <Pressable
+            style={[styles.undoButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+            onPress={() => void handleUndo()}
+            disabled={submitting}
+          >
+            <Ionicons name="arrow-undo" size={16} color={theme.colors.text} />
+            <Text style={[styles.undoLabel, { color: theme.colors.text }]}>Annuler</Text>
           </Pressable>
         ) : <View style={styles.undoSpacer} />}
 
-        <View style={styles.card}>
+        <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <StarRatingInput
             value={selectedRating}
             onChange={(rating) => currentMovie && void handleRate(rating, currentMovie)}

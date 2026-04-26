@@ -22,6 +22,7 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import {
   FALLBACK_POSTER,
   FAVORITES_PLAYLIST_ID,
@@ -44,6 +45,7 @@ export default function PlaylistDetailsScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'PlaylistDetails'>) {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const [movies, setMovies] = useState<SearchMovie[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -126,12 +128,12 @@ export default function PlaylistDetailsScreen({
   return (
     <AppScreen scroll={false} contentStyle={{ flex: 1 }}>
       <View style={styles.headerRow}>
-        <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color="#ffffff" />
+        <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{route.params.name ?? 'Playlist'}</Text>
-          <Text style={styles.headerMeta}>{movies.length} film(s)</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>{route.params.name ?? 'Playlist'}</Text>
+          <Text style={[styles.headerMeta, { color: theme.colors.textMuted }]}>{movies.length} film(s)</Text>
         </View>
         <View style={styles.iconSpacer} />
       </View>
@@ -153,9 +155,13 @@ export default function PlaylistDetailsScreen({
                 <Pressable
                   key={option.key}
                   onPress={() => setSortMode(option.key)}
-                  style={[styles.filterChip, sortMode === option.key && styles.filterChipActive]}
+                  style={[
+                    styles.filterChip,
+                    { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+                    sortMode === option.key && { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.colors.accentSoft },
+                  ]}
                 >
-                  <Text style={[styles.filterChipLabel, sortMode === option.key && styles.filterChipLabelActive]}>
+                  <Text style={[styles.filterChipLabel, { color: theme.colors.textSoft }, sortMode === option.key && { color: theme.colors.text }]}>
                     {option.label}
                   </Text>
                 </Pressable>
@@ -163,7 +169,7 @@ export default function PlaylistDetailsScreen({
             </View>
             {loading ? (
               <View style={styles.loadingState}>
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={theme.colors.text} />
               </View>
             ) : null}
           </View>
@@ -171,7 +177,7 @@ export default function PlaylistDetailsScreen({
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <Pressable
-            style={styles.movieCard}
+            style={[styles.movieCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
             onPress={() => navigation.navigate('MovieDetails', { movieId: item.id, title: item.title })}
           >
             <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />

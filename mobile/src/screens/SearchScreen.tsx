@@ -12,6 +12,7 @@ import SearchField from '../components/SearchField';
 import { ApiError, searchMovies, searchSocialUsers } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, type SocialUser } from '../types';
 
 type SearchMode = 'movies' | 'users';
@@ -31,6 +32,7 @@ function resolveMediaUrl(url: string | null | undefined): string | null {
 
 export default function SearchScreen() {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [searchMode, setSearchMode] = useState<SearchMode>('movies');
   const [query, setQuery] = useState('');
@@ -108,13 +110,13 @@ export default function SearchScreen() {
               subtitle="Retrouve un film ou un membre de Qulte en quelques secondes."
               trailing={
                 resultsLabel ? (
-                  <View style={styles.resultsBadge}>
-                    <Text style={styles.resultsBadgeLabel}>{resultsLabel}</Text>
+                  <View style={[styles.resultsBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+                    <Text style={[styles.resultsBadgeLabel, { color: theme.colors.text }]}>{resultsLabel}</Text>
                   </View>
                 ) : null
               }
             />
-            <View style={styles.modeSwitcher}>
+            <View style={[styles.modeSwitcher, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
               {[
                 ['movies', 'Films', 'film-outline'],
                 ['users', 'Utilisateurs', 'people-outline'],
@@ -123,15 +125,15 @@ export default function SearchScreen() {
                 return (
                   <Pressable
                     key={mode}
-                    style={[styles.modeButton, isActive && styles.modeButtonActive]}
+                    style={[styles.modeButton, isActive && { backgroundColor: theme.colors.accent }]}
                     onPress={() => {
                       setSearchMode(mode as SearchMode);
                       setMovieResults([]);
                       setUserResults([]);
                     }}
                   >
-                    <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={16} color={isActive ? '#190713' : '#cbd5e1'} />
-                    <Text style={[styles.modeButtonLabel, isActive && styles.modeButtonLabelActive]}>{label}</Text>
+                    <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={16} color={isActive ? theme.colors.accentText : theme.colors.textSoft} />
+                    <Text style={[styles.modeButtonLabel, { color: theme.colors.textSoft }, isActive && { color: theme.colors.accentText }]}>{label}</Text>
                   </Pressable>
                 );
               })}
@@ -145,7 +147,7 @@ export default function SearchScreen() {
             {error ? <InlineBanner message={error} tone="error" /> : null}
             {loading ? (
               <View style={styles.loadingWrap}>
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={theme.colors.text} />
               </View>
             ) : null}
           </View>
@@ -153,39 +155,39 @@ export default function SearchScreen() {
         renderItem={({ item }) => (
           item.kind === 'movie' ? (
             <Pressable
-              style={styles.itemCard}
+              style={[styles.itemCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
               onPress={() => navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title })}
             >
               <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               <View style={styles.itemBody}>
-                <Text style={styles.itemTitle}>{item.movie.title}</Text>
-                <View style={styles.ratingPill}>
-                  <Text style={styles.ratingPillLabel}>{item.movie.rating.toFixed(1)} / 10</Text>
+                <Text style={[styles.itemTitle, { color: theme.colors.text }]}>{item.movie.title}</Text>
+                <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                  <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.movie.rating.toFixed(1)} / 10</Text>
                 </View>
-                <Text style={styles.itemHint}>Ouvrir la fiche</Text>
+                <Text style={[styles.itemHint, { color: theme.colors.textMuted }]}>Ouvrir la fiche</Text>
               </View>
             </Pressable>
           ) : (
             <Pressable
-              style={styles.itemCard}
+              style={[styles.itemCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
               onPress={() => navigation.navigate('UserProfile', { username: item.user.username })}
             >
               {resolveMediaUrl(item.user.avatar_url) ? (
                 <Image source={{ uri: resolveMediaUrl(item.user.avatar_url) ?? '' }} style={styles.avatar} />
               ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarInitial}>{item.user.username.slice(0, 1).toUpperCase()}</Text>
+                <View style={[styles.avatarFallback, { backgroundColor: theme.colors.accentSoft }]}>
+                  <Text style={[styles.avatarInitial, { color: theme.colors.accent }]}>{item.user.username.slice(0, 1).toUpperCase()}</Text>
                 </View>
               )}
               <View style={styles.itemBody}>
-                <Text style={styles.itemTitle}>@{item.user.username}</Text>
+                <Text style={[styles.itemTitle, { color: theme.colors.text }]}>@{item.user.username}</Text>
                 <View style={styles.userMetaRow}>
-                  <Text style={styles.userMeta}>{item.user.reviews_count} critiques</Text>
-                  <Text style={styles.userMeta}>{item.user.followers_count} abonnes</Text>
+                  <Text style={[styles.userMeta, { color: theme.colors.textSoft }]}>{item.user.reviews_count} critiques</Text>
+                  <Text style={[styles.userMeta, { color: theme.colors.textSoft }]}>{item.user.followers_count} abonnes</Text>
                 </View>
-                <Text style={styles.itemHint}>{item.user.is_following ? 'Profil suivi' : 'Voir le profil'}</Text>
+                <Text style={[styles.itemHint, { color: theme.colors.textMuted }]}>{item.user.is_following ? 'Profil suivi' : 'Voir le profil'}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
             </Pressable>
           )
         )}

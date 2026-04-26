@@ -31,6 +31,7 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
@@ -61,6 +62,7 @@ export default function MovieDetailsScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'MovieDetails'>) {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const [movie, setMovie] = useState<Awaited<ReturnType<typeof fetchMovieDetails>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -303,32 +305,32 @@ export default function MovieDetailsScreen({
     <>
       <AppScreen>
         <View style={styles.headerRow}>
-          <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={22} color="#ffffff" />
+          <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
           </Pressable>
-          <Text style={styles.headerTitle} numberOfLines={1}>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
             {movie?.title ?? route.params.title ?? 'Fiche film'}
           </Text>
           <View style={styles.iconSpacer} />
         </View>
 
         {loading ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator color="#ffffff" />
-            <Text style={styles.stateText}>Chargement de la fiche...</Text>
+          <View style={[styles.stateCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <ActivityIndicator color={theme.colors.text} />
+            <Text style={[styles.stateText, { color: theme.colors.textSoft }]}>Chargement de la fiche...</Text>
           </View>
         ) : movie ? (
           <>
-            <View style={styles.heroCard}>
+            <View style={[styles.heroCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
               <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
               <View style={styles.heroBody}>
-                <Text style={styles.movieTitle}>{movie.title}</Text>
-                {metaLine ? <Text style={styles.metaLine}>{metaLine}</Text> : null}
-                {movie.tagline ? <Text style={styles.tagline}>{movie.tagline}</Text> : null}
+                <Text style={[styles.movieTitle, { color: theme.colors.text }]}>{movie.title}</Text>
+                {metaLine ? <Text style={[styles.metaLine, { color: theme.colors.textSoft }]}>{metaLine}</Text> : null}
+                {movie.tagline ? <Text style={[styles.tagline, { color: theme.colors.accent }]}>{movie.tagline}</Text> : null}
                 <View style={styles.genreRow}>
                   {movie.genres.map((genre) => (
-                    <View key={genre} style={styles.genreChip}>
-                      <Text style={styles.genreChipLabel}>{genre}</Text>
+                    <View key={genre} style={[styles.genreChip, { backgroundColor: theme.rgba.cardStrong }]}>
+                      <Text style={[styles.genreChipLabel, { color: theme.colors.text }]}>{genre}</Text>
                     </View>
                   ))}
                 </View>
@@ -338,36 +340,36 @@ export default function MovieDetailsScreen({
             {error ? <InlineBanner message={error} tone="error" /> : null}
             {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
 
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Actions</Text>
+            <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Actions</Text>
               <View style={styles.actionsRow}>
                 <Pressable
-                  style={[styles.movieActionButton, styles.movieActionButtonPrimary, actionLoading && styles.movieActionButtonDisabled]}
+                  style={[styles.movieActionButton, styles.movieActionButtonPrimary, { backgroundColor: theme.colors.accent }, actionLoading && styles.movieActionButtonDisabled]}
                   onPress={() => void handleWatchLater()}
                   disabled={actionLoading}
                 >
                   <View style={[styles.movieActionIcon, styles.movieActionIconPrimary]}>
-                    <Ionicons name="time-outline" size={21} color="#14050f" />
+                    <Ionicons name="time-outline" size={21} color={theme.colors.accentText} />
                   </View>
-                  <Text style={[styles.movieActionLabel, styles.movieActionLabelPrimary]} numberOfLines={1}>Plus tard</Text>
+                  <Text style={[styles.movieActionLabel, styles.movieActionLabelPrimary, { color: theme.colors.accentText }]} numberOfLines={1}>Plus tard</Text>
                 </Pressable>
-                <Pressable style={styles.movieActionButton} onPress={() => void openPlaylistPicker()}>
-                  <View style={styles.movieActionIcon}>
-                    <Ionicons name="albums-outline" size={21} color="#ffffff" />
+                <Pressable style={[styles.movieActionButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]} onPress={() => void openPlaylistPicker()}>
+                  <View style={[styles.movieActionIcon, { backgroundColor: theme.rgba.card }]}>
+                    <Ionicons name="albums-outline" size={21} color={theme.colors.text} />
                   </View>
-                  <Text style={styles.movieActionLabel} numberOfLines={1}>Playlist</Text>
+                  <Text style={[styles.movieActionLabel, { color: theme.colors.text }]} numberOfLines={1}>Playlist</Text>
                 </Pressable>
                 {movie.trailer_url ? (
-                  <Pressable style={styles.movieActionButton} onPress={openTrailer}>
-                    <View style={styles.movieActionIcon}>
-                      <Ionicons name="play-circle-outline" size={22} color="#ffffff" />
+                  <Pressable style={[styles.movieActionButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]} onPress={openTrailer}>
+                    <View style={[styles.movieActionIcon, { backgroundColor: theme.rgba.card }]}>
+                      <Ionicons name="play-circle-outline" size={22} color={theme.colors.text} />
                     </View>
-                    <Text style={styles.movieActionLabel} numberOfLines={1}>Trailer</Text>
+                    <Text style={[styles.movieActionLabel, { color: theme.colors.text }]} numberOfLines={1}>Trailer</Text>
                   </Pressable>
                 ) : null}
               </View>
               <Pressable
-                style={styles.shareButton}
+                style={[styles.shareButton, { backgroundColor: theme.colors.secondaryAccent }]}
                 onPress={() => navigation.navigate('ShareMovie', {
                   movieId: movie.id,
                   title: movie.title,
@@ -375,11 +377,11 @@ export default function MovieDetailsScreen({
                   rating: movie.rating,
                 })}
               >
-                <Ionicons name="send" size={16} color="#08111f" />
-                <Text style={styles.shareButtonLabel}>Partager</Text>
+                <Ionicons name="send" size={16} color={theme.colors.secondaryAccentText} />
+                <Text style={[styles.shareButtonLabel, { color: theme.colors.secondaryAccentText }]}>Partager</Text>
               </Pressable>
               <Pressable
-                style={styles.reviewButton}
+                style={[styles.reviewButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}
                 onPress={() => navigation.navigate('CreateReview', {
                   movieId: movie.id,
                   title: movie.title,
@@ -387,11 +389,11 @@ export default function MovieDetailsScreen({
                   rating: movie.rating,
                 })}
               >
-                <Ionicons name="create-outline" size={16} color="#f9a8d4" />
-                <Text style={styles.reviewButtonLabel}>Ecrire une critique</Text>
+                <Ionicons name="create-outline" size={16} color={theme.colors.accent} />
+                <Text style={[styles.reviewButtonLabel, { color: theme.colors.accent }]}>Ecrire une critique</Text>
               </Pressable>
               <View style={styles.ratingBlock}>
-                <Text style={styles.ratingLabel}>Ta note</Text>
+                <Text style={[styles.ratingLabel, { color: theme.colors.textSoft }]}>Ta note</Text>
                 <StarRatingInput
                   value={userRating}
                   onChange={(value) => void handleRate(value)}
@@ -402,32 +404,32 @@ export default function MovieDetailsScreen({
             </View>
 
             {movie.overview ? (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>Synopsis</Text>
-                <Text style={styles.bodyText}>{movie.overview}</Text>
+              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Synopsis</Text>
+                <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.overview}</Text>
               </View>
             ) : null}
 
             {movie.directors.length > 0 ? (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>Realisation</Text>
-                <Text style={styles.bodyText}>{movie.directors.join(', ')}</Text>
+              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Realisation</Text>
+                <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.directors.join(', ')}</Text>
               </View>
             ) : null}
 
             {providers.length > 0 ? (
-              <View style={styles.sectionCard}>
+              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
                 <View style={styles.rowBetween}>
-                  <Text style={styles.sectionTitle}>Ou le regarder</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Ou le regarder</Text>
                   {movie.watch_providers.link ? (
                     <Pressable onPress={() => void openProviderLink()}>
-                      <Text style={styles.inlineLink}>Voir</Text>
+                      <Text style={[styles.inlineLink, { color: theme.colors.secondaryAccent }]}>Voir</Text>
                     </Pressable>
                   ) : null}
                 </View>
                 {providers.map((group) => (
                   <View key={group.label} style={styles.providerGroup}>
-                    <Text style={styles.providerLabel}>{group.label}</Text>
+                    <Text style={[styles.providerLabel, { color: theme.colors.textSoft }]}>{group.label}</Text>
                     <FlatList
                       horizontal
                       data={group.items}
@@ -435,9 +437,9 @@ export default function MovieDetailsScreen({
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.providersList}
                       renderItem={({ item }) => (
-                        <View style={styles.providerCard}>
+                        <View style={[styles.providerCard, { backgroundColor: theme.rgba.cardStrong }]}>
                           {item.logo_url ? <Image source={{ uri: item.logo_url }} style={styles.providerLogo} /> : null}
-                          <Text style={styles.providerName} numberOfLines={2}>{item.name}</Text>
+                          <Text style={[styles.providerName, { color: theme.colors.text }]} numberOfLines={2}>{item.name}</Text>
                         </View>
                       )}
                     />
@@ -447,8 +449,8 @@ export default function MovieDetailsScreen({
             ) : null}
 
             {movie.cast.length > 0 ? (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>Casting</Text>
+              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Casting</Text>
                 <FlatList
                   horizontal
                   data={movie.cast}
@@ -458,8 +460,8 @@ export default function MovieDetailsScreen({
                   renderItem={({ item }) => (
                     <View style={styles.castCard}>
                       <Image source={{ uri: item.photo || FALLBACK_POSTER }} style={styles.castPhoto} />
-                      <Text style={styles.castName} numberOfLines={2}>{item.name}</Text>
-                      <Text style={styles.castCharacter} numberOfLines={2}>{item.character}</Text>
+                      <Text style={[styles.castName, { color: theme.colors.text }]} numberOfLines={2}>{item.name}</Text>
+                      <Text style={[styles.castCharacter, { color: theme.colors.textMuted }]} numberOfLines={2}>{item.character}</Text>
                     </View>
                   )}
                 />
@@ -467,8 +469,8 @@ export default function MovieDetailsScreen({
             ) : null}
           </>
         ) : (
-          <View style={styles.stateCard}>
-            <Text style={styles.stateText}>Cette fiche est indisponible pour le moment.</Text>
+          <View style={[styles.stateCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <Text style={[styles.stateText, { color: theme.colors.textSoft }]}>Cette fiche est indisponible pour le moment.</Text>
           </View>
         )}
       </AppScreen>
@@ -499,11 +501,11 @@ export default function MovieDetailsScreen({
 
       <Modal visible={showPlaylistPicker} animationType="slide" transparent>
         <View style={styles.sheetBackdrop}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { borderColor: theme.rgba.border, backgroundColor: theme.colors.surface }]}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Ajouter a une playlist</Text>
-              <Pressable style={styles.sheetCloseButton} onPress={() => setShowPlaylistPicker(false)}>
-                <Ionicons name="close" size={20} color="#ffffff" />
+              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Ajouter a une playlist</Text>
+              <Pressable style={[styles.sheetCloseButton, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => setShowPlaylistPicker(false)}>
+                <Ionicons name="close" size={20} color={theme.colors.text} />
               </Pressable>
             </View>
 
@@ -512,29 +514,29 @@ export default function MovieDetailsScreen({
                 value={newPlaylistName}
                 onChangeText={setNewPlaylistName}
                 placeholder="Nouvelle playlist"
-                placeholderTextColor="#64748b"
-                style={styles.createInput}
+                placeholderTextColor={theme.colors.textMuted}
+                style={[styles.createInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
               />
-              <Pressable style={styles.createButton} onPress={() => void handleCreatePlaylist()}>
-                <Ionicons name="add" size={20} color="#08111f" />
+              <Pressable style={[styles.createButton, { backgroundColor: theme.colors.secondaryAccent }]} onPress={() => void handleCreatePlaylist()}>
+                <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
               </Pressable>
             </View>
 
-            {loadingPlaylists ? <Text style={styles.sheetHelper}>Chargement...</Text> : null}
+            {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement...</Text> : null}
             <View style={styles.playlistList}>
               {playlists.map((playlist) => (
                 <Pressable
                   key={playlist.id}
-                  style={styles.playlistRow}
+                  style={[styles.playlistRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
                   onPress={() => void handleAddToPlaylist(playlist)}
                   disabled={actionLoading}
                 >
-                  <Ionicons name={playlist.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'} size={19} color="#7dd3fc" />
+                  <Ionicons name={playlist.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'} size={19} color={theme.colors.secondaryAccent} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.playlistName}>{playlist.name}</Text>
-                    <Text style={styles.playlistMeta}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste systeme'}</Text>
+                    <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
+                    <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste systeme'}</Text>
                   </View>
-                  <Ionicons name="add-circle" size={21} color="#f9a8d4" />
+                  <Ionicons name="add-circle" size={21} color={theme.colors.accent} />
                 </Pressable>
               ))}
             </View>

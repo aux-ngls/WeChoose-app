@@ -23,6 +23,9 @@ export interface AppTheme {
     accentSoft: string;
     accentText: string;
     secondaryAccent: string;
+    secondaryAccentText: string;
+    ratingText: string;
+    ratingBackground: string;
     danger: string;
     success: string;
   };
@@ -57,6 +60,9 @@ const darkTheme: AppTheme = {
     accentSoft: 'rgba(249,168,212,0.12)',
     accentText: '#190713',
     secondaryAccent: '#7dd3fc',
+    secondaryAccentText: '#08111f',
+    ratingText: '#fde68a',
+    ratingBackground: 'rgba(251,191,36,0.14)',
     danger: '#fecaca',
     success: '#bbf7d0',
   },
@@ -91,6 +97,9 @@ const lightTheme: AppTheme = {
     accentSoft: 'rgba(219,39,119,0.10)',
     accentText: '#fff7ed',
     secondaryAccent: '#0284c7',
+    secondaryAccentText: '#ffffff',
+    ratingText: '#92400e',
+    ratingBackground: 'rgba(217,119,6,0.14)',
     danger: '#b91c1c',
     success: '#047857',
   },

@@ -16,11 +16,13 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import type { DirectConversationSummary, SocialUser } from '../types';
 import { formatDate } from '../utils/format';
 
 export default function MessagesScreen() {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [conversations, setConversations] = useState<DirectConversationSummary[]>([]);
   const [userQuery, setUserQuery] = useState('');
@@ -145,8 +147,8 @@ export default function MessagesScreen() {
         title="Messages"
         subtitle="Inbox mobile, nouveaux DM et conversations privees dans une vraie vue app."
         trailing={
-          <View style={styles.headerBadge}>
-            <Text style={styles.headerBadgeLabel}>{conversations.length}</Text>
+          <View style={[styles.headerBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <Text style={[styles.headerBadgeLabel, { color: theme.colors.text }]}>{conversations.length}</Text>
           </View>
         }
       />
@@ -154,7 +156,7 @@ export default function MessagesScreen() {
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
       <View style={styles.inboxHeader}>
-        <Text style={styles.sectionLabel}>Inbox</Text>
+        <Text style={[styles.sectionLabel, { color: theme.colors.text }]}>Inbox</Text>
         <Pressable
           style={styles.newMessageButton}
           onPress={() => {
@@ -163,33 +165,33 @@ export default function MessagesScreen() {
             setUserResults([]);
           }}
         >
-          <Ionicons name={isNewMessageOpen ? 'close' : 'create-outline'} size={18} color="#08111f" />
+          <Ionicons name={isNewMessageOpen ? 'close' : 'create-outline'} size={18} color={theme.colors.secondaryAccentText} />
         </Pressable>
       </View>
 
       {isNewMessageOpen ? (
-        <View style={styles.newMessagePanel}>
+        <View style={[styles.newMessagePanel, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <SearchField
             value={userQuery}
             onChangeText={setUserQuery}
             placeholder="Chercher quelqu un"
             icon="person-add"
           />
-          {searchingUsers ? <Text style={styles.helperText}>Recherche en cours...</Text> : null}
+          {searchingUsers ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Recherche en cours...</Text> : null}
           {userResults.length > 0 ? (
             <View style={styles.resultsList}>
               {userResults.map((user) => {
                 const isStarting = startingUserIds.includes(user.id);
                 return (
-                  <Pressable key={user.id} style={styles.userResultCard} onPress={() => void handleStartConversation(user)}>
-                    <View style={styles.userAvatar}>
-                      <Text style={styles.userAvatarLabel}>{user.username.slice(0, 2).toUpperCase()}</Text>
+                  <Pressable key={user.id} style={[styles.userResultCard, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => void handleStartConversation(user)}>
+                    <View style={[styles.userAvatar, { backgroundColor: theme.colors.accentSoft }]}>
+                      <Text style={[styles.userAvatarLabel, { color: theme.colors.accent }]}>{user.username.slice(0, 2).toUpperCase()}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.userName}>@{user.username}</Text>
-                      <Text style={styles.userMeta}>{user.followers_count} abonnes</Text>
+                      <Text style={[styles.userName, { color: theme.colors.text }]}>@{user.username}</Text>
+                      <Text style={[styles.userMeta, { color: theme.colors.textMuted }]}>{user.followers_count} abonnes</Text>
                     </View>
-                    <Text style={styles.userAction}>{isStarting ? 'Ouverture...' : 'Ecrire'}</Text>
+                    <Text style={[styles.userAction, { color: theme.colors.secondaryAccent }]}>{isStarting ? 'Ouverture...' : 'Ecrire'}</Text>
                   </Pressable>
                 );
               })}
@@ -198,7 +200,7 @@ export default function MessagesScreen() {
         </View>
       ) : null}
 
-      {loading ? <Text style={styles.helperText}>Chargement des conversations...</Text> : null}
+      {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement des conversations...</Text> : null}
 
       {!loading && unreadConversations.length === 0 && recentConversations.length === 0 ? (
         <EmptyStateCard title="Aucune conversation" subtitle="Commence un nouveau message depuis la recherche ci-dessus." />
@@ -206,19 +208,19 @@ export default function MessagesScreen() {
         <View style={styles.groupsWrap}>
           {unreadConversations.length > 0 ? (
             <View style={styles.groupBlock}>
-              <Text style={styles.groupTitle}>Non lus</Text>
+              <Text style={[styles.groupTitle, { color: theme.colors.textSoft }]}>Non lus</Text>
               <View style={styles.cardsList}>
                 {unreadConversations.map((conversation) => (
-                  <Pressable key={conversation.id} style={styles.card} onPress={() => openConversation(conversation)}>
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarLabel}>{conversation.participant.username.slice(0, 2).toUpperCase()}</Text>
+                  <Pressable key={conversation.id} style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => openConversation(conversation)}>
+                    <View style={[styles.avatar, { backgroundColor: theme.colors.accentSoft }]}>
+                      <Text style={[styles.avatarLabel, { color: theme.colors.accent }]}>{conversation.participant.username.slice(0, 2).toUpperCase()}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={styles.rowBetween}>
-                        <Text style={styles.username}>@{conversation.participant.username}</Text>
-                        <Text style={styles.date}>{formatDate(conversation.updated_at)}</Text>
+                        <Text style={[styles.username, { color: theme.colors.text }]}>@{conversation.participant.username}</Text>
+                        <Text style={[styles.date, { color: theme.colors.textMuted }]}>{formatDate(conversation.updated_at)}</Text>
                       </View>
-                      <Text style={styles.preview} numberOfLines={2}>
+                      <Text style={[styles.preview, { color: theme.colors.textSoft }]} numberOfLines={2}>
                         {conversation.last_message?.preview ?? 'Commencer la discussion'}
                       </Text>
                     </View>
@@ -233,19 +235,19 @@ export default function MessagesScreen() {
 
           {recentConversations.length > 0 ? (
             <View style={styles.groupBlock}>
-              <Text style={styles.groupTitle}>Recents</Text>
+              <Text style={[styles.groupTitle, { color: theme.colors.textSoft }]}>Recents</Text>
               <View style={styles.cardsList}>
                 {recentConversations.map((conversation) => (
-                  <Pressable key={conversation.id} style={styles.card} onPress={() => openConversation(conversation)}>
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarLabel}>{conversation.participant.username.slice(0, 2).toUpperCase()}</Text>
+                  <Pressable key={conversation.id} style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => openConversation(conversation)}>
+                    <View style={[styles.avatar, { backgroundColor: theme.colors.accentSoft }]}>
+                      <Text style={[styles.avatarLabel, { color: theme.colors.accent }]}>{conversation.participant.username.slice(0, 2).toUpperCase()}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={styles.rowBetween}>
-                        <Text style={styles.username}>@{conversation.participant.username}</Text>
-                        <Text style={styles.date}>{formatDate(conversation.updated_at)}</Text>
+                        <Text style={[styles.username, { color: theme.colors.text }]}>@{conversation.participant.username}</Text>
+                        <Text style={[styles.date, { color: theme.colors.textMuted }]}>{formatDate(conversation.updated_at)}</Text>
                       </View>
-                      <Text style={styles.preview} numberOfLines={2}>
+                      <Text style={[styles.preview, { color: theme.colors.textSoft }]} numberOfLines={2}>
                         {conversation.last_message?.preview ?? 'Commencer la discussion'}
                       </Text>
                     </View>

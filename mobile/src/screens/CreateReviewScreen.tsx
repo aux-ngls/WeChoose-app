@@ -18,6 +18,7 @@ import StarRatingInput from '../components/StarRatingInput';
 import { ApiError, createReview, searchMovies } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie } from '../types';
 
 export default function CreateReviewScreen({
@@ -25,6 +26,7 @@ export default function CreateReviewScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'CreateReview'>) {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const initialMovie = route.params?.movieId
     ? {
         id: route.params.movieId,
@@ -138,13 +140,13 @@ export default function CreateReviewScreen({
   return (
     <AppScreen>
       <View style={styles.headerRow}>
-        <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color="#ffffff" />
+        <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
         </Pressable>
         <View style={styles.headerBody}>
-          <Text style={styles.headerEyebrow}>Social</Text>
-          <Text style={styles.headerTitle}>Nouvelle critique</Text>
-          <Text style={styles.headerSubtitle}>
+          <Text style={[styles.headerEyebrow, { color: theme.colors.accent }]}>Social</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Nouvelle critique</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>
             Choisis un film, note-le sur 5 et partage ton avis avec ton cercle.
           </Text>
         </View>
@@ -152,10 +154,10 @@ export default function CreateReviewScreen({
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
-      <View style={styles.sectionCard}>
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.rowBetween}>
-          <Text style={styles.sectionTitle}>Film</Text>
-          {resultsLabel ? <Text style={styles.metaLabel}>{resultsLabel}</Text> : null}
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Film</Text>
+          {resultsLabel ? <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>{resultsLabel}</Text> : null}
         </View>
         <SearchField
           value={query}
@@ -164,15 +166,15 @@ export default function CreateReviewScreen({
         />
 
         {selectedMovie ? (
-          <View style={styles.selectedMovieCard}>
+          <View style={[styles.selectedMovieCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
             <Image
               source={{ uri: selectedMovie.poster_url || FALLBACK_POSTER }}
               style={styles.selectedMoviePoster}
             />
             <View style={styles.selectedMovieBody}>
-              <Text style={styles.selectedMovieTitle}>{selectedMovie.title}</Text>
-              <View style={styles.ratingPill}>
-                <Text style={styles.ratingPillLabel}>{selectedMovie.rating.toFixed(1)} / 10</Text>
+              <Text style={[styles.selectedMovieTitle, { color: theme.colors.text }]}>{selectedMovie.title}</Text>
+              <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{selectedMovie.rating.toFixed(1)} / 10</Text>
               </View>
             </View>
             <Pressable
@@ -183,14 +185,14 @@ export default function CreateReviewScreen({
                 setResults([]);
               }}
             >
-              <Ionicons name="refresh-outline" size={16} color="#f9a8d4" />
+              <Ionicons name="refresh-outline" size={16} color={theme.colors.accent} />
             </Pressable>
           </View>
         ) : null}
 
         {loading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={theme.colors.text} />
           </View>
         ) : null}
 
@@ -199,15 +201,15 @@ export default function CreateReviewScreen({
             {results.map((movie) => (
               <Pressable
                 key={movie.id}
-                style={styles.resultCard}
+                style={[styles.resultCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
                 onPress={() => selectMovie(movie)}
               >
                 <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
                 <View style={styles.resultBody}>
-                  <Text style={styles.resultTitle}>{movie.title}</Text>
-                  <Text style={styles.resultHint}>Selectionner pour critiquer</Text>
+                  <Text style={[styles.resultTitle, { color: theme.colors.text }]}>{movie.title}</Text>
+                  <Text style={[styles.resultHint, { color: theme.colors.textMuted }]}>Selectionner pour critiquer</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
               </Pressable>
             ))}
           </View>
@@ -219,8 +221,8 @@ export default function CreateReviewScreen({
         ) : null}
       </View>
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Ta note</Text>
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Ta note</Text>
         <StarRatingInput
           value={reviewRating}
           onChange={setReviewRating}
@@ -229,30 +231,30 @@ export default function CreateReviewScreen({
         />
       </View>
 
-      <View style={styles.sectionCard}>
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.rowBetween}>
-          <Text style={styles.sectionTitle}>Ton avis</Text>
-          <Text style={styles.metaLabel}>{reviewContent.trim().length} caracteres</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Ton avis</Text>
+          <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>{reviewContent.trim().length} caracteres</Text>
         </View>
         <TextInput
           value={reviewContent}
           onChangeText={setReviewContent}
           placeholder="Ecris ce que tu as ressenti, ce qui t'a marque, ce que tu recommandes..."
-          placeholderTextColor="#64748b"
+          placeholderTextColor={theme.colors.textMuted}
           multiline
           textAlignVertical="top"
-          style={styles.reviewInput}
+          style={[styles.reviewInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
           maxLength={600}
         />
       </View>
 
       <Pressable
-        style={[styles.publishButton, !canPublish && styles.publishButtonDisabled]}
+        style={[styles.publishButton, { backgroundColor: theme.colors.secondaryAccent }, !canPublish && { backgroundColor: theme.rgba.cardStrong }]}
         onPress={() => void handlePublish()}
         disabled={!canPublish}
       >
-        <Ionicons name="send" size={17} color={canPublish ? '#08111f' : '#94a3b8'} />
-        <Text style={[styles.publishButtonLabel, !canPublish && styles.publishButtonLabelDisabled]}>
+        <Ionicons name="send" size={17} color={canPublish ? theme.colors.secondaryAccentText : theme.colors.textMuted} />
+        <Text style={[styles.publishButtonLabel, { color: theme.colors.secondaryAccentText }, !canPublish && { color: theme.colors.textMuted }]}>
           {publishing ? 'Publication...' : 'Publier la critique'}
         </Text>
       </Pressable>

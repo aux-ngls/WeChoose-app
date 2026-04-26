@@ -21,7 +21,7 @@ export default function MoviePosterTile({ movie, onPress }: MoviePosterTileProps
         <Text style={styles.title} numberOfLines={2}>
           {movie.title}
         </Text>
-        <Text style={styles.rating}>{movie.rating.toFixed(1)}</Text>
+        <Text style={[styles.rating, { color: theme.colors.ratingText }]}>{movie.rating.toFixed(1)}</Text>
       </View>
     </Pressable>
   );

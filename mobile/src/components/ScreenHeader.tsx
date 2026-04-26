@@ -12,32 +12,20 @@ interface ScreenHeaderProps {
   trailing?: ReactNode;
 }
 
-const accentMap = {
-  pink: {
-    border: 'rgba(244,114,182,0.22)',
-    background: 'rgba(244,114,182,0.12)',
-    icon: '#f9a8d4',
-  },
-  blue: {
-    border: 'rgba(56,189,248,0.22)',
-    background: 'rgba(14,165,233,0.12)',
-    icon: '#7dd3fc',
-  },
-  amber: {
-    border: 'rgba(251,191,36,0.22)',
-    background: 'rgba(245,158,11,0.12)',
-    icon: '#fcd34d',
-  },
-  violet: {
-    border: 'rgba(167,139,250,0.24)',
-    background: 'rgba(139,92,246,0.12)',
-    icon: '#c4b5fd',
-  },
-  emerald: {
-    border: 'rgba(74,222,128,0.22)',
-    background: 'rgba(34,197,94,0.12)',
-    icon: '#86efac',
-  },
+const darkAccentMap = {
+  pink: { border: 'rgba(244,114,182,0.22)', background: 'rgba(244,114,182,0.12)', icon: '#f9a8d4' },
+  blue: { border: 'rgba(56,189,248,0.22)', background: 'rgba(14,165,233,0.12)', icon: '#7dd3fc' },
+  amber: { border: 'rgba(251,191,36,0.22)', background: 'rgba(245,158,11,0.12)', icon: '#fcd34d' },
+  violet: { border: 'rgba(167,139,250,0.24)', background: 'rgba(139,92,246,0.12)', icon: '#c4b5fd' },
+  emerald: { border: 'rgba(74,222,128,0.22)', background: 'rgba(34,197,94,0.12)', icon: '#86efac' },
+} as const;
+
+const lightAccentMap = {
+  pink: { border: 'rgba(219,39,119,0.18)', background: 'rgba(219,39,119,0.10)', icon: '#be185d' },
+  blue: { border: 'rgba(2,132,199,0.18)', background: 'rgba(2,132,199,0.10)', icon: '#0369a1' },
+  amber: { border: 'rgba(217,119,6,0.20)', background: 'rgba(245,158,11,0.14)', icon: '#b45309' },
+  violet: { border: 'rgba(124,58,237,0.18)', background: 'rgba(124,58,237,0.10)', icon: '#6d28d9' },
+  emerald: { border: 'rgba(4,120,87,0.18)', background: 'rgba(4,120,87,0.10)', icon: '#047857' },
 } as const;
 
 export default function ScreenHeader({
@@ -48,8 +36,8 @@ export default function ScreenHeader({
   accent = 'blue',
   trailing,
 }: ScreenHeaderProps) {
-  const accentTheme = accentMap[accent];
   const { theme } = useTheme();
+  const accentTheme = (theme.isDark ? darkAccentMap : lightAccentMap)[accent];
 
   return (
     <View style={styles.wrapper}>

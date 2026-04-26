@@ -25,6 +25,7 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import {
   FALLBACK_POSTER,
   type PlaylistSummary,
@@ -67,6 +68,7 @@ function guessImageType(uri: string, mimeType?: string | null): string {
 
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [profile, setProfile] = useState<SocialProfile | null>(null);
   const [playlists, setPlaylists] = useState<PlaylistWithPreview[]>([]);
@@ -414,32 +416,32 @@ export default function ProfileScreen() {
     <AppScreen>
       {error ? <InlineBanner message={error} tone="error" /> : null}
       {playerMessage ? <InlineBanner message={playerMessage} tone="error" /> : null}
-      {loading ? <Text style={styles.helperText}>Chargement de ton profil...</Text> : null}
+      {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de ton profil...</Text> : null}
 
       {!loading && !profile ? <EmptyStateCard title="Profil indisponible" subtitle="Réessaie dans quelques instants." /> : null}
 
       {profile ? (
         <>
           <LinearGradient
-            colors={['#3b0b22', '#15111d', '#08111f']}
+            colors={theme.gradients.profileCover}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.profileCover}
+            style={[styles.profileCover, { borderColor: theme.colors.accentSoft }]}
           >
-            <View style={styles.profileGlowOne} />
-            <View style={styles.profileGlowTwo} />
+            <View style={[styles.profileGlowOne, { backgroundColor: theme.rgba.pinkGlow }]} />
+            <View style={[styles.profileGlowTwo, { backgroundColor: theme.rgba.blueGlow }]} />
 
             <View style={styles.profileTopBar}>
-              <View style={styles.profileKicker}>
-                <Ionicons name="sparkles" size={14} color="#f9a8d4" />
-                <Text style={styles.profileKickerLabel}>Profil Qulte</Text>
+              <View style={[styles.profileKicker, { borderColor: theme.colors.accentSoft, backgroundColor: theme.rgba.card }]}>
+                <Ionicons name="sparkles" size={14} color={theme.colors.accent} />
+                <Text style={[styles.profileKickerLabel, { color: theme.colors.text }]}>Profil Qulte</Text>
               </View>
               <View style={styles.profileTopActions}>
-                <Pressable style={styles.profileEditButton} onPress={openShowcaseEditor} disabled={isEditingShowcase}>
-                  <Ionicons name={isEditingShowcase ? 'checkmark' : 'create-outline'} size={18} color="#190713" />
+                <Pressable style={[styles.profileEditButton, { backgroundColor: theme.colors.accent }]} onPress={openShowcaseEditor} disabled={isEditingShowcase}>
+                  <Ionicons name={isEditingShowcase ? 'checkmark' : 'create-outline'} size={18} color={theme.colors.accentText} />
                 </Pressable>
-                <Pressable style={styles.settingsIconButton} onPress={() => navigation.navigate('Settings')}>
-                  <Ionicons name="settings-outline" size={18} color="#f9a8d4" />
+                <Pressable style={[styles.settingsIconButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]} onPress={() => navigation.navigate('Settings')}>
+                  <Ionicons name="settings-outline" size={18} color={theme.colors.accent} />
                 </Pressable>
               </View>
             </View>
@@ -457,21 +459,25 @@ export default function ProfileScreen() {
                 {profileAvatarUrl ? (
                   <Image source={{ uri: profileAvatarUrl }} style={styles.avatarImage} />
                 ) : (
-                  <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarInitial}>{profileInitial}</Text>
+                  <View style={[styles.avatarFallback, { backgroundColor: theme.colors.accentSoft }]}>
+                    <Text style={[styles.avatarInitial, { color: theme.colors.accent }]}>{profileInitial}</Text>
                   </View>
                 )}
                 {isEditingShowcase ? (
-                  <View style={styles.avatarCameraBadge}>
-                    <Ionicons name={savingAvatar ? 'hourglass-outline' : 'camera'} size={16} color="#14050f" />
+                  <View style={[styles.avatarCameraBadge, { backgroundColor: theme.colors.accent }]}>
+                    <Ionicons name={savingAvatar ? 'hourglass-outline' : 'camera'} size={16} color={theme.colors.accentText} />
                   </View>
                 ) : null}
               </Pressable>
 
               <View style={styles.profileHeroBody}>
-                <Text style={styles.profileHeroName} numberOfLines={1}>@{profile.username}</Text>
+                <Text style={[styles.profileHeroName, { color: theme.colors.text }]} numberOfLines={1}>@{profile.username}</Text>
                 <Text
-                  style={[styles.profileHeroDescription, !profileDescription && styles.profileHeroDescriptionEmpty]}
+                  style={[
+                    styles.profileHeroDescription,
+                    { color: theme.colors.textSoft },
+                    !profileDescription && [styles.profileHeroDescriptionEmpty, { color: theme.colors.accent }],
+                  ]}
                   numberOfLines={4}
                 >
                   {profileDescription || 'Ajoute une courte description pour raconter ton univers cine.'}
@@ -480,50 +486,54 @@ export default function ProfileScreen() {
             </View>
 
             {isEditingShowcase ? (
-              <Pressable style={styles.changePhotoButton} onPress={() => void changeProfilePhoto()} disabled={savingAvatar}>
-                <Ionicons name="image-outline" size={15} color="#f9a8d4" />
-                <Text style={styles.changePhotoLabel}>{savingAvatar ? 'Envoi...' : 'Changer la photo'}</Text>
+              <Pressable style={[styles.changePhotoButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]} onPress={() => void changeProfilePhoto()} disabled={savingAvatar}>
+                <Ionicons name="image-outline" size={15} color={theme.colors.accent} />
+                <Text style={[styles.changePhotoLabel, { color: theme.colors.accent }]}>{savingAvatar ? 'Envoi...' : 'Changer la photo'}</Text>
               </Pressable>
             ) : null}
           </LinearGradient>
 
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             {isEditingShowcase ? (
-              <View style={styles.editorPanel}>
+              <View style={[styles.editorPanel, { borderColor: theme.colors.accentSoft, backgroundColor: theme.rgba.cardStrong }]}>
                 <View style={styles.editorHeader}>
-                  <Text style={styles.editorTitle}>Personnalisation</Text>
+                  <Text style={[styles.editorTitle, { color: theme.colors.text }]}>Personnalisation</Text>
                   <Pressable onPress={() => setIsEditingShowcase(false)}>
-                    <Ionicons name="close" size={20} color="#ffffff" />
+                    <Ionicons name="close" size={20} color={theme.colors.text} />
                   </Pressable>
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={styles.editorLabel}>Description</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Description</Text>
                   <TextInput
                     value={draftDescription}
                     onChangeText={(value) => setDraftDescription(value.slice(0, 180))}
                     placeholder="Ex: romance tragique, thrillers nerveux et BO qui restent en tete..."
-                    placeholderTextColor="#64748b"
+                    placeholderTextColor={theme.colors.textMuted}
                     multiline
                     maxLength={180}
-                    style={[styles.editorInput, styles.editorTextarea]}
+                    style={[
+                      styles.editorInput,
+                      styles.editorTextarea,
+                      { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text },
+                    ]}
                   />
-                  <Text style={styles.editorCounter}>{draftDescription.trim().length}/180</Text>
+                  <Text style={[styles.editorCounter, { color: theme.colors.textMuted }]}>{draftDescription.trim().length}/180</Text>
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={styles.editorLabel}>Genres</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Genres</Text>
                   <TextInput
                     value={draftGenresText}
                     onChangeText={setDraftGenresText}
                     placeholder="Comedie, thriller, romance..."
-                    placeholderTextColor="#64748b"
-                    style={styles.editorInput}
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                   />
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={styles.editorLabel}>Films totems</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Films totems</Text>
                   <View style={styles.selectedRow}>
                     {draftMovies.map((movie) => (
                       <Pressable
@@ -541,11 +551,11 @@ export default function ProfileScreen() {
                       value={movieQuery}
                       onChangeText={setMovieQuery}
                       placeholder="Chercher un film"
-                      placeholderTextColor="#64748b"
-                      style={styles.editorInput}
+                      placeholderTextColor={theme.colors.textMuted}
+                      style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                     />
-                    <Pressable style={styles.searchButton} onPress={() => void runMovieSearch()}>
-                      <Ionicons name="search" size={18} color="#08111f" />
+                    <Pressable style={[styles.searchButton, { backgroundColor: theme.colors.secondaryAccent }]} onPress={() => void runMovieSearch()}>
+                      <Ionicons name="search" size={18} color={theme.colors.secondaryAccentText} />
                     </Pressable>
                   </View>
                   {movieResults.length > 0 ? (
@@ -560,16 +570,16 @@ export default function ProfileScreen() {
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={styles.editorLabel}>Personnes clefs</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Personnes clefs</Text>
                   <View style={styles.selectedPeopleRow}>
                     {draftPeople.map((person) => (
                       <Pressable
                         key={`${person.id ?? person.name}-${person.name}`}
-                        style={styles.selectedPersonChip}
+                        style={[styles.selectedPersonChip, { backgroundColor: theme.colors.accentSoft }]}
                         onPress={() => setDraftPeople((current) => current.filter((entry) => entry.name !== person.name))}
                       >
-                        <Text style={styles.selectedPersonName}>{person.name}</Text>
-                        <Ionicons name="close" size={14} color="#f9a8d4" />
+                        <Text style={[styles.selectedPersonName, { color: theme.colors.text }]}>{person.name}</Text>
+                        <Ionicons name="close" size={14} color={theme.colors.accent} />
                       </Pressable>
                     ))}
                   </View>
@@ -578,11 +588,11 @@ export default function ProfileScreen() {
                       value={personQuery}
                       onChangeText={setPersonQuery}
                       placeholder="Chercher une personne"
-                      placeholderTextColor="#64748b"
-                      style={styles.editorInput}
+                      placeholderTextColor={theme.colors.textMuted}
+                      style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                     />
-                    <Pressable style={styles.searchButton} onPress={() => void runPersonSearch()}>
-                      <Ionicons name="search" size={18} color="#08111f" />
+                    <Pressable style={[styles.searchButton, { backgroundColor: theme.colors.secondaryAccent }]} onPress={() => void runPersonSearch()}>
+                      <Ionicons name="search" size={18} color={theme.colors.secondaryAccentText} />
                     </Pressable>
                   </View>
                   {personResults.length > 0 ? (
@@ -590,11 +600,11 @@ export default function ProfileScreen() {
                       {personResults.map((person) => (
                         <Pressable
                           key={`${person.id ?? person.name}-${person.name}`}
-                          style={styles.personResult}
+                          style={[styles.personResult, { backgroundColor: theme.rgba.cardStrong }]}
                           onPress={() => addDraftPerson(person)}
                         >
                           <Image source={{ uri: person.photo_url || FALLBACK_POSTER }} style={styles.personResultImage} />
-                          <Text style={styles.personResultName} numberOfLines={1}>{person.name}</Text>
+                          <Text style={[styles.personResultName, { color: theme.colors.text }]} numberOfLines={1}>{person.name}</Text>
                         </Pressable>
                       ))}
                     </View>
@@ -602,15 +612,15 @@ export default function ProfileScreen() {
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={styles.editorLabel}>Musique favorite</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Musique favorite</Text>
                   {draftSoundtrack ? (
-                    <Pressable style={styles.selectedSoundtrack} onPress={() => setDraftSoundtrack(null)}>
+                    <Pressable style={[styles.selectedSoundtrack, { backgroundColor: theme.colors.accentSoft }]} onPress={() => setDraftSoundtrack(null)}>
                       <Image source={{ uri: draftSoundtrack.artwork_url || FALLBACK_POSTER }} style={styles.selectedSoundtrackArt} />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.soundtrackTitle} numberOfLines={1}>{draftSoundtrack.track_name}</Text>
-                        <Text style={styles.soundtrackArtist} numberOfLines={1}>{draftSoundtrack.artist_name}</Text>
+                        <Text style={[styles.soundtrackTitle, { color: theme.colors.text }]} numberOfLines={1}>{draftSoundtrack.track_name}</Text>
+                        <Text style={[styles.soundtrackArtist, { color: theme.colors.textMuted }]} numberOfLines={1}>{draftSoundtrack.artist_name}</Text>
                       </View>
-                      <Ionicons name="close" size={18} color="#f9a8d4" />
+                      <Ionicons name="close" size={18} color={theme.colors.accent} />
                     </Pressable>
                   ) : null}
                   <View style={styles.searchRow}>
@@ -618,11 +628,11 @@ export default function ProfileScreen() {
                       value={soundtrackQuery}
                       onChangeText={setSoundtrackQuery}
                       placeholder="Chercher une musique"
-                      placeholderTextColor="#64748b"
-                      style={styles.editorInput}
+                      placeholderTextColor={theme.colors.textMuted}
+                      style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                     />
-                    <Pressable style={styles.searchButton} onPress={() => void runSoundtrackSearch()}>
-                      <Ionicons name="search" size={18} color="#08111f" />
+                    <Pressable style={[styles.searchButton, { backgroundColor: theme.colors.secondaryAccent }]} onPress={() => void runSoundtrackSearch()}>
+                      <Ionicons name="search" size={18} color={theme.colors.secondaryAccentText} />
                     </Pressable>
                   </View>
                   {soundtrackResults.length > 0 ? (
@@ -630,13 +640,13 @@ export default function ProfileScreen() {
                       {soundtrackResults.map((track) => (
                         <Pressable
                           key={`${track.track_name}-${track.artist_name}`}
-                          style={styles.soundtrackResult}
+                          style={[styles.soundtrackResult, { backgroundColor: theme.rgba.cardStrong }]}
                           onPress={() => setDraftSoundtrack(track)}
                         >
                           <Image source={{ uri: track.artwork_url || FALLBACK_POSTER }} style={styles.selectedSoundtrackArt} />
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.soundtrackTitle} numberOfLines={1}>{track.track_name}</Text>
-                            <Text style={styles.soundtrackArtist} numberOfLines={1}>{track.artist_name}</Text>
+                            <Text style={[styles.soundtrackTitle, { color: theme.colors.text }]} numberOfLines={1}>{track.track_name}</Text>
+                            <Text style={[styles.soundtrackArtist, { color: theme.colors.textMuted }]} numberOfLines={1}>{track.artist_name}</Text>
                           </View>
                         </Pressable>
                       ))}
@@ -644,15 +654,15 @@ export default function ProfileScreen() {
                   ) : null}
                 </View>
 
-                <Pressable style={styles.saveButton} onPress={() => void saveShowcase()} disabled={savingShowcase}>
-                  <Text style={styles.saveButtonLabel}>{savingShowcase ? 'Enregistrement...' : 'Enregistrer'}</Text>
+                <Pressable style={[styles.saveButton, { backgroundColor: theme.colors.accent }]} onPress={() => void saveShowcase()} disabled={savingShowcase}>
+                  <Text style={[styles.saveButtonLabel, { color: theme.colors.accentText }]}>{savingShowcase ? 'Enregistrement...' : 'Enregistrer'}</Text>
                 </Pressable>
               </View>
             ) : null}
 
             {profile.profile_movies.length > 0 ? (
               <View style={styles.subsection}>
-                <Text style={styles.subsectionTitle}>Films totems</Text>
+                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Films totems</Text>
                 <View style={styles.posterGrid}>
                   {profile.profile_movies.slice(0, 6).map((movie) => (
                     <View key={movie.id} style={styles.posterCell}>
@@ -668,7 +678,7 @@ export default function ProfileScreen() {
 
             {profile.profile_people.length > 0 ? (
               <View style={styles.subsection}>
-                <Text style={styles.subsectionTitle}>Personnes clefs</Text>
+                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Personnes clefs</Text>
                 <FlatList
                   data={profile.profile_people}
                   horizontal
@@ -676,7 +686,7 @@ export default function ProfileScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ gap: 12 }}
                   renderItem={({ item }) => (
-                    <View style={styles.personCard}>
+                      <View style={[styles.personCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
                       <Image source={{ uri: item.photo_url || FALLBACK_POSTER }} style={styles.personImage} />
                       <View style={styles.personOverlay}>
                         <Text style={styles.personName} numberOfLines={2}>{item.name}</Text>
@@ -688,36 +698,36 @@ export default function ProfileScreen() {
             ) : null}
 
             {profile.profile_soundtrack ? (
-              <Pressable style={styles.soundtrackCard} onPress={() => void openSoundtrack()}>
+              <Pressable style={[styles.soundtrackCard, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => void openSoundtrack()}>
                 <Image
                   source={{ uri: profile.profile_soundtrack.artwork_url || FALLBACK_POSTER }}
                   style={styles.soundtrackArt}
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.soundtrackLabel}>Musique favorite</Text>
-                  <Text style={styles.soundtrackTitle} numberOfLines={2}>{profile.profile_soundtrack.track_name}</Text>
-                  <Text style={styles.soundtrackArtist} numberOfLines={1}>{profile.profile_soundtrack.artist_name}</Text>
+                  <Text style={[styles.soundtrackLabel, { color: theme.colors.accent }]}>Musique favorite</Text>
+                  <Text style={[styles.soundtrackTitle, { color: theme.colors.text }]} numberOfLines={2}>{profile.profile_soundtrack.track_name}</Text>
+                  <Text style={[styles.soundtrackArtist, { color: theme.colors.textMuted }]} numberOfLines={1}>{profile.profile_soundtrack.artist_name}</Text>
                 </View>
                 <Ionicons
                   name={isSoundtrackPlaying && activeSoundtrackUrl === profile.profile_soundtrack.preview_url ? 'pause-circle' : 'play-circle'}
                   size={30}
-                  color="#f9a8d4"
+                  color={theme.colors.accent}
                 />
               </Pressable>
             ) : null}
           </View>
 
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <View style={styles.playlistsHeader}>
-              <Text style={styles.sectionTitle}>Playlists</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Playlists</Text>
               <Pressable
-                style={styles.addPlaylistButton}
+                style={[styles.addPlaylistButton, { backgroundColor: theme.colors.secondaryAccent }]}
                 onPress={() => {
                   setIsCreatingPlaylist((current) => !current);
                   setNewPlaylistName('');
                 }}
               >
-                <Ionicons name={isCreatingPlaylist ? 'close' : 'add'} size={18} color="#08111f" />
+                <Ionicons name={isCreatingPlaylist ? 'close' : 'add'} size={18} color={theme.colors.secondaryAccentText} />
               </Pressable>
             </View>
 
@@ -727,15 +737,19 @@ export default function ProfileScreen() {
                   value={newPlaylistName}
                   onChangeText={setNewPlaylistName}
                   placeholder="Nom de la playlist"
-                  placeholderTextColor="#64748b"
-                  style={styles.editorInput}
+                  placeholderTextColor={theme.colors.textMuted}
+                  style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                 />
                 <Pressable
-                  style={[styles.createPlaylistButton, (!newPlaylistName.trim() || savingPlaylist) && styles.createPlaylistButtonDisabled]}
+                  style={[
+                    styles.createPlaylistButton,
+                    { backgroundColor: theme.colors.accent },
+                    (!newPlaylistName.trim() || savingPlaylist) && styles.createPlaylistButtonDisabled,
+                  ]}
                   onPress={() => void handleCreatePlaylist()}
                   disabled={!newPlaylistName.trim() || savingPlaylist}
                 >
-                  <Text style={styles.createPlaylistButtonLabel}>{savingPlaylist ? '...' : 'Creer'}</Text>
+                  <Text style={[styles.createPlaylistButtonLabel, { color: theme.colors.accentText }]}>{savingPlaylist ? '...' : 'Creer'}</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -744,15 +758,15 @@ export default function ProfileScreen() {
               {visiblePlaylists.map((playlist) => (
                 <Pressable
                   key={playlist.id}
-                  style={styles.playlistCard}
+                  style={[styles.playlistCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
                   onPress={() => navigation.navigate('PlaylistDetails', { playlistId: playlist.id, name: playlist.name })}
                 >
                   <View style={styles.playlistHeader}>
                     <View>
-                      <Text style={styles.playlistName}>{playlist.name}</Text>
-                      <Text style={styles.playlistMeta}>{playlist.count} film(s)</Text>
+                      <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
+                      <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.count} film(s)</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
                   </View>
                   {playlist.preview_movies.length > 0 ? (
                     <View style={styles.previewRow}>
@@ -766,25 +780,25 @@ export default function ProfileScreen() {
             </View>
             {playlists.length > 2 ? (
               <Pressable
-                style={styles.showMoreButton}
+                style={[styles.showMoreButton, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong }]}
                 onPress={() => setShowAllPlaylists((current) => !current)}
               >
-                <Text style={styles.showMoreButtonLabel}>
+                <Text style={[styles.showMoreButtonLabel, { color: theme.colors.secondaryAccent }]}>
                   {showAllPlaylists ? 'Afficher moins' : `Afficher toutes les playlists (${playlists.length})`}
                 </Text>
-                <Ionicons name={showAllPlaylists ? 'chevron-up' : 'chevron-down'} size={16} color="#7dd3fc" />
+                <Ionicons name={showAllPlaylists ? 'chevron-up' : 'chevron-down'} size={16} color={theme.colors.secondaryAccent} />
               </Pressable>
             ) : null}
           </View>
 
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <View style={styles.playlistsHeader}>
-              <Text style={styles.sectionTitle}>Critiques</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Critiques</Text>
               <Pressable
-                style={styles.addPlaylistButton}
+                style={[styles.addPlaylistButton, { backgroundColor: theme.colors.secondaryAccent }]}
                 onPress={() => navigation.navigate('CreateReview')}
               >
-                <Ionicons name="create-outline" size={18} color="#08111f" />
+                <Ionicons name="create-outline" size={18} color={theme.colors.secondaryAccentText} />
               </Pressable>
             </View>
 
@@ -793,19 +807,19 @@ export default function ProfileScreen() {
                 {visibleReviews.map((review) => (
                   <Pressable
                     key={review.id}
-                    style={styles.profileReviewCard}
+                    style={[styles.profileReviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
                     onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}
                   >
                     <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
                     <View style={styles.reviewBody}>
-                      <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
+                      <Text style={[styles.reviewTitle, { color: theme.colors.text }]} numberOfLines={1}>{review.title}</Text>
                       <View style={styles.reviewMetaRow}>
-                        <View style={styles.reviewRatingPill}>
-                          <Text style={styles.reviewRatingLabel}>{review.rating.toFixed(1)} / 5</Text>
+                        <View style={[styles.reviewRatingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                          <Text style={[styles.reviewRatingLabel, { color: theme.colors.ratingText }]}>{review.rating.toFixed(1)} / 5</Text>
                         </View>
-                        <Text style={styles.reviewDate}>{formatDate(review.created_at)}</Text>
+                        <Text style={[styles.reviewDate, { color: theme.colors.textMuted }]}>{formatDate(review.created_at)}</Text>
                       </View>
-                      <Text style={styles.reviewContent} numberOfLines={3}>{review.content}</Text>
+                      <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={3}>{review.content}</Text>
                     </View>
                   </Pressable>
                 ))}
@@ -816,13 +830,13 @@ export default function ProfileScreen() {
 
             {profileReviews.length > 2 ? (
               <Pressable
-                style={styles.showMoreButton}
+                style={[styles.showMoreButton, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong }]}
                 onPress={() => setShowAllReviews((current) => !current)}
               >
-                <Text style={styles.showMoreButtonLabel}>
+                <Text style={[styles.showMoreButtonLabel, { color: theme.colors.secondaryAccent }]}>
                   {showAllReviews ? 'Afficher moins' : `Afficher toutes les critiques (${profileReviews.length})`}
                 </Text>
-                <Ionicons name={showAllReviews ? 'chevron-up' : 'chevron-down'} size={16} color="#7dd3fc" />
+                <Ionicons name={showAllReviews ? 'chevron-up' : 'chevron-down'} size={16} color={theme.colors.secondaryAccent} />
               </Pressable>
             ) : null}
           </View>
@@ -834,9 +848,9 @@ export default function ProfileScreen() {
               ['Abonnes', profile.followers_count],
               ['Abonnements', profile.following_count],
             ].map(([label, value]) => (
-              <View key={label} style={styles.statCard}>
-                <Text style={styles.statLabel}>{label}</Text>
-                <Text style={styles.statValue}>{value}</Text>
+              <View key={label} style={[styles.statCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+                <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>{label}</Text>
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{value}</Text>
               </View>
             ))}
           </View>

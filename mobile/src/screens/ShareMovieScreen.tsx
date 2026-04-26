@@ -13,6 +13,7 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SocialUser } from '../types';
 
 export default function ShareMovieScreen({
@@ -20,6 +21,7 @@ export default function ShareMovieScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'ShareMovie'>) {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SocialUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -92,39 +94,39 @@ export default function ShareMovieScreen({
   return (
     <AppScreen>
       <View style={styles.headerRow}>
-        <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color="#ffffff" />
+        <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Partager</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Partager</Text>
         <View style={styles.iconSpacer} />
       </View>
 
-      <View style={styles.movieCard}>
+      <View style={[styles.movieCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <Image source={{ uri: route.params.posterUrl || FALLBACK_POSTER }} style={styles.poster} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.movieTitle} numberOfLines={2}>{route.params.title}</Text>
-          <Text style={styles.movieMeta}>{route.params.rating.toFixed(1)} / 10</Text>
+          <Text style={[styles.movieTitle, { color: theme.colors.text }]} numberOfLines={2}>{route.params.title}</Text>
+          <Text style={[styles.movieMeta, { color: theme.colors.ratingText }]}>{route.params.rating.toFixed(1)} / 10</Text>
         </View>
       </View>
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
       <SearchField value={query} onChangeText={setQuery} placeholder="Chercher une personne" icon="person-add" />
-      {loading ? <Text style={styles.helperText}>Recherche en cours...</Text> : null}
+      {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Recherche en cours...</Text> : null}
 
       <View style={styles.resultsList}>
         {results.map((user) => {
           const isSharing = sharingUserIds.includes(user.id);
           return (
-            <Pressable key={user.id} style={styles.userCard} onPress={() => void shareWithUser(user)}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarLabel}>{user.username.slice(0, 2).toUpperCase()}</Text>
+            <Pressable key={user.id} style={[styles.userCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => void shareWithUser(user)}>
+              <View style={[styles.avatar, { backgroundColor: theme.colors.accentSoft }]}>
+                <Text style={[styles.avatarLabel, { color: theme.colors.accent }]}>{user.username.slice(0, 2).toUpperCase()}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.username}>@{user.username}</Text>
-                <Text style={styles.userMeta}>{user.followers_count} abonnes</Text>
+                <Text style={[styles.username, { color: theme.colors.text }]}>@{user.username}</Text>
+                <Text style={[styles.userMeta, { color: theme.colors.textMuted }]}>{user.followers_count} abonnes</Text>
               </View>
-              <Ionicons name={isSharing ? 'hourglass-outline' : 'send'} size={18} color="#7dd3fc" />
+              <Ionicons name={isSharing ? 'hourglass-outline' : 'send'} size={18} color={theme.colors.secondaryAccent} />
             </Pressable>
           );
         })}

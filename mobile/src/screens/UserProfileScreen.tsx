@@ -12,6 +12,7 @@ import InlineBanner from '../components/InlineBanner';
 import MoviePosterTile from '../components/MoviePosterTile';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SocialProfile } from '../types';
 import { formatDate } from '../utils/format';
 
@@ -29,6 +30,7 @@ export default function UserProfileScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'UserProfile'>>();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const [profile, setProfile] = useState<SocialProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -116,13 +118,13 @@ export default function UserProfileScreen() {
 
   return (
     <AppScreen>
-      <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Ionicons name="chevron-back" size={20} color="#ffffff" />
-        <Text style={styles.backLabel}>Retour</Text>
+      <Pressable style={[styles.backButton, { backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
+        <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+        <Text style={[styles.backLabel, { color: theme.colors.text }]}>Retour</Text>
       </Pressable>
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
-      {loading ? <ActivityIndicator color="#ffffff" /> : null}
+      {loading ? <ActivityIndicator color={theme.colors.text} /> : null}
 
       {!loading && !profile ? (
         <EmptyStateCard title="Profil introuvable" subtitle="Cet utilisateur n'existe peut-etre plus." />
@@ -130,58 +132,62 @@ export default function UserProfileScreen() {
 
       {profile ? (
         <>
-          <View style={styles.heroCard}>
-            <View style={styles.heroGlow} />
+          <View style={[styles.heroCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}>
+            <View style={[styles.heroGlow, { backgroundColor: theme.rgba.pinkGlow }]} />
             <View style={styles.identityRow}>
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatar} />
               ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarInitial}>{profile.username.slice(0, 1).toUpperCase()}</Text>
+                <View style={[styles.avatarFallback, { backgroundColor: theme.colors.accentSoft }]}>
+                  <Text style={[styles.avatarInitial, { color: theme.colors.accent }]}>{profile.username.slice(0, 1).toUpperCase()}</Text>
                 </View>
               )}
               <View style={styles.identityBody}>
-                <Text style={styles.username} numberOfLines={1}>@{profile.username}</Text>
-                <Text style={styles.description} numberOfLines={4}>
+                <Text style={[styles.username, { color: theme.colors.text }]} numberOfLines={1}>@{profile.username}</Text>
+                <Text style={[styles.description, { color: theme.colors.textSoft }]} numberOfLines={4}>
                   {description || 'Aucune description pour le moment.'}
                 </Text>
               </View>
             </View>
 
             <View style={styles.statsRow}>
-              <View style={styles.statPill}>
-                <Text style={styles.statValue}>{profile.reviews_count}</Text>
-                <Text style={styles.statLabel}>critiques</Text>
+              <View style={[styles.statPill, { backgroundColor: theme.rgba.card }]}>
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{profile.reviews_count}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>critiques</Text>
               </View>
-              <View style={styles.statPill}>
-                <Text style={styles.statValue}>{profile.followers_count}</Text>
-                <Text style={styles.statLabel}>abonnes</Text>
+              <View style={[styles.statPill, { backgroundColor: theme.rgba.card }]}>
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{profile.followers_count}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>abonnes</Text>
               </View>
-              <View style={styles.statPill}>
-                <Text style={styles.statValue}>{profile.following_count}</Text>
-                <Text style={styles.statLabel}>suit</Text>
+              <View style={[styles.statPill, { backgroundColor: theme.rgba.card }]}>
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{profile.following_count}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>suit</Text>
               </View>
             </View>
 
             {!profile.is_self ? (
               <View style={styles.actionsRow}>
-                <Pressable style={[styles.primaryAction, profile.is_following && styles.secondaryAction]} onPress={() => void toggleFollow()} disabled={actionLoading}>
-                  <Ionicons name={profile.is_following ? 'checkmark' : 'person-add-outline'} size={17} color={profile.is_following ? '#f9a8d4' : '#190713'} />
-                  <Text style={[styles.primaryActionLabel, profile.is_following && styles.secondaryActionLabel]}>
+                <Pressable
+                  style={[styles.primaryAction, { backgroundColor: theme.colors.accent }, profile.is_following && [styles.secondaryAction, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]]}
+                  onPress={() => void toggleFollow()}
+                  disabled={actionLoading}
+                >
+                  <Ionicons name={profile.is_following ? 'checkmark' : 'person-add-outline'} size={17} color={profile.is_following ? theme.colors.accent : theme.colors.accentText} />
+                  <Text style={[styles.primaryActionLabel, { color: theme.colors.accentText }, profile.is_following && [styles.secondaryActionLabel, { color: theme.colors.accent }]]}>
                     {profile.is_following ? 'Abonne' : 'Suivre'}
                   </Text>
                 </Pressable>
-                <Pressable style={styles.messageAction} onPress={() => void openConversation()} disabled={actionLoading}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={17} color="#7dd3fc" />
-                  <Text style={styles.messageActionLabel}>Message</Text>
+                <Pressable style={[styles.messageAction, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.card }]} onPress={() => void openConversation()} disabled={actionLoading}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={17} color={theme.colors.secondaryAccent} />
+                  <Text style={[styles.messageActionLabel, { color: theme.colors.secondaryAccent }]}>Message</Text>
                 </Pressable>
               </View>
             ) : null}
           </View>
 
           {profile.profile_movies.length > 0 ? (
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Films totems</Text>
+            <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Films totems</Text>
               <View style={styles.posterGrid}>
                 {profile.profile_movies.slice(0, 6).map((movie) => (
                   <View key={movie.id} style={styles.posterCell}>
@@ -193,8 +199,8 @@ export default function UserProfileScreen() {
           ) : null}
 
           {profile.profile_people.length > 0 ? (
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Personnes clefs</Text>
+            <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Personnes clefs</Text>
               <FlatList
                 data={profile.profile_people}
                 horizontal
@@ -202,7 +208,7 @@ export default function UserProfileScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 12 }}
                 renderItem={({ item }) => (
-                  <View style={styles.personCard}>
+                  <View style={[styles.personCard, { backgroundColor: theme.rgba.cardStrong }]}>
                     <Image source={{ uri: item.photo_url || FALLBACK_POSTER }} style={styles.personImage} />
                     <View style={styles.personOverlay}>
                       <Text style={styles.personName} numberOfLines={2}>{item.name}</Text>
@@ -213,21 +219,21 @@ export default function UserProfileScreen() {
             </View>
           ) : null}
 
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Critiques</Text>
+          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Critiques</Text>
             {profile.reviews.length > 0 ? (
               <View style={styles.reviewsList}>
                 {profile.reviews.map((review) => (
                   <Pressable
                     key={review.id}
-                    style={styles.reviewCard}
+                    style={[styles.reviewCard, { backgroundColor: theme.rgba.cardStrong }]}
                     onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}
                   >
                     <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
                     <View style={styles.reviewBody}>
-                      <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
-                      <Text style={styles.reviewMeta}>{review.rating.toFixed(1)} / 5 · {formatDate(review.created_at)}</Text>
-                      <Text style={styles.reviewContent} numberOfLines={3}>{review.content}</Text>
+                      <Text style={[styles.reviewTitle, { color: theme.colors.text }]} numberOfLines={1}>{review.title}</Text>
+                      <Text style={[styles.reviewMeta, { color: theme.colors.ratingText }]}>{review.rating.toFixed(1)} / 5 · {formatDate(review.created_at)}</Text>
+                      <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={3}>{review.content}</Text>
                     </View>
                   </Pressable>
                 ))}
