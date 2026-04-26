@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import AppScreen from '../components/AppScreen';
 import FormField from '../components/FormField';
 import InlineBanner from '../components/InlineBanner';
+import QulteMark from '../components/QulteMark';
 import ScreenHeader from '../components/ScreenHeader';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -52,18 +53,14 @@ export default function AuthScreen() {
     <AppScreen contentStyle={styles.content}>
       <View style={styles.heroCard}>
         <View style={styles.brandRow}>
+          <QulteMark size={54} />
           <Text style={[styles.brand, { color: theme.colors.text }]}>Qulte</Text>
-          <View style={[styles.brandBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-            <Text style={[styles.brandBadgeLabel, { color: theme.colors.text }]}>Mobile</Text>
-          </View>
         </View>
 
         <ScreenHeader
           icon={mode === 'login' ? 'log-in' : 'person-add'}
           accent={mode === 'login' ? 'blue' : 'pink'}
-          eyebrow="React Native"
           title={mode === 'login' ? 'Connexion' : 'Creer un compte'}
-          subtitle="Une vraie app smartphone branchee au backend Qulte existant."
         />
 
         <View style={[styles.segmentedControl, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -113,8 +110,8 @@ export default function AuthScreen() {
 
           <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
             {mode === 'login'
-              ? 'Retrouve tes recos, tes playlists et tes messages.'
-              : 'Ton onboarding cinema demarrera juste apres la creation du compte.'}
+              ? 'Recos, playlists, messages.'
+              : 'Cree ton univers cine.'}
           </Text>
         </View>
       </View>
@@ -134,26 +131,13 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
   brand: {
     color: '#ffffff',
     fontSize: 34,
     fontWeight: '900',
     letterSpacing: -1,
-  },
-  brandBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  brandBadgeLabel: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800',
   },
   segmentedControl: {
     flexDirection: 'row',

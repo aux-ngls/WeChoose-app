@@ -1,6 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -60,30 +61,38 @@ export default function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: theme.colors.text,
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
-          backgroundColor: theme.isDark ? '#09090bf4' : 'rgba(255,247,237,0.96)',
+          backgroundColor: theme.isDark ? 'rgba(13,7,17,0.96)' : 'rgba(255,248,239,0.97)',
           borderTopColor: theme.colors.border,
-          height: 78,
-          paddingTop: 10,
-          paddingBottom: 12,
+          borderTopWidth: 1,
+          height: 74,
+          paddingTop: 8,
+          paddingBottom: 13,
+          shadowColor: '#000000',
+          shadowOffset: { width: 0, height: -8 },
+          shadowOpacity: theme.isDark ? 0.24 : 0.08,
+          shadowRadius: 18,
         },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '700',
+        tabBarIcon: ({ focused }) => {
+          const iconName = (focused ? icons[route.name].replace('-outline', '') : icons[route.name]) as keyof typeof Ionicons.glyphMap;
+          return (
+            <View
+              style={[
+                styles.tabIconWrap,
+                focused && { backgroundColor: theme.colors.accent },
+              ]}
+            >
+              <Ionicons
+                name={iconName}
+                size={21}
+                color={focused ? theme.colors.accentText : theme.colors.textMuted}
+              />
+            </View>
+          );
         },
-        tabBarIcon: ({ color, size, focused }) => (
-          <Ionicons
-            name={
-              (focused
-                ? icons[route.name].replace('-outline', '')
-                : icons[route.name]) as keyof typeof Ionicons.glyphMap
-            }
-            size={size}
-            color={color}
-          />
-        ),
         tabBarBadge:
           route.name === 'Messages' && unreadCount > 0
             ? unreadCount > 99
@@ -109,3 +118,13 @@ export default function MainTabs() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  tabIconWrap: {
+    width: 46,
+    height: 40,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

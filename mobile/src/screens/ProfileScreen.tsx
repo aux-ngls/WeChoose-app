@@ -418,7 +418,7 @@ export default function ProfileScreen() {
       {playerMessage ? <InlineBanner message={playerMessage} tone="error" /> : null}
       {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de ton profil...</Text> : null}
 
-      {!loading && !profile ? <EmptyStateCard title="Profil indisponible" subtitle="Réessaie dans quelques instants." /> : null}
+      {!loading && !profile ? <EmptyStateCard title="Profil indisponible" /> : null}
 
       {profile ? (
         <>
@@ -825,7 +825,7 @@ export default function ProfileScreen() {
                 ))}
               </View>
             ) : (
-              <EmptyStateCard title="Aucune critique" subtitle="Tes avis publies apparaitront ici." />
+              <EmptyStateCard title="Aucune critique" />
             )}
 
             {profileReviews.length > 2 ? (

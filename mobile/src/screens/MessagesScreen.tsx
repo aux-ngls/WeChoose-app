@@ -143,9 +143,7 @@ export default function MessagesScreen() {
       <ScreenHeader
         icon="chatbubbles"
         accent="blue"
-        eyebrow="Direct"
         title="Messages"
-        subtitle="Inbox mobile, nouveaux DM et conversations privees dans une vraie vue app."
         trailing={
           <View style={[styles.headerBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <Text style={[styles.headerBadgeLabel, { color: theme.colors.text }]}>{conversations.length}</Text>
@@ -203,7 +201,7 @@ export default function MessagesScreen() {
       {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement des conversations...</Text> : null}
 
       {!loading && unreadConversations.length === 0 && recentConversations.length === 0 ? (
-        <EmptyStateCard title="Aucune conversation" subtitle="Commence un nouveau message depuis la recherche ci-dessus." />
+        <EmptyStateCard title="Aucune conversation" />
       ) : (
         <View style={styles.groupsWrap}>
           {unreadConversations.length > 0 ? (

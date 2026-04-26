@@ -146,9 +146,7 @@ export default function CreateReviewScreen({
         <View style={styles.headerBody}>
           <Text style={[styles.headerEyebrow, { color: theme.colors.accent }]}>Social</Text>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Nouvelle critique</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>
-            Choisis un film, note-le sur 5 et partage ton avis avec ton cercle.
-          </Text>
+          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Note. Ecris. Publie.</Text>
         </View>
       </View>
 
@@ -214,10 +212,7 @@ export default function CreateReviewScreen({
             ))}
           </View>
         ) : !loading && !selectedMovie && query.trim().length >= 2 ? (
-          <EmptyStateCard
-            title="Aucun film trouve"
-            subtitle="Essaie un autre titre ou un mot-cle plus large."
-          />
+          <EmptyStateCard title="Aucun film" />
         ) : null}
       </View>
 

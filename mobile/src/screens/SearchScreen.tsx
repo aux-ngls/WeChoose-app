@@ -105,9 +105,7 @@ export default function SearchScreen() {
             <ScreenHeader
               icon="search"
               accent="amber"
-              eyebrow="Trouver"
               title="Recherche"
-              subtitle="Retrouve un film ou un membre de Qulte en quelques secondes."
               trailing={
                 resultsLabel ? (
                   <View style={[styles.resultsBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -194,12 +192,9 @@ export default function SearchScreen() {
         ListEmptyComponent={
           !loading ? (
             query.trim().length >= 2 ? (
-              <EmptyStateCard
-                title={searchMode === 'movies' ? 'Aucun film trouve' : 'Aucun utilisateur trouve'}
-                subtitle={searchMode === 'movies' ? 'Essaie un autre titre ou un mot-cle plus large.' : 'Essaie un pseudo plus court ou une autre orthographe.'}
-              />
+              <EmptyStateCard title={searchMode === 'movies' ? 'Aucun film' : 'Aucun profil'} />
             ) : (
-              <EmptyStateCard title="Commence une recherche" subtitle="Entre au moins deux caracteres pour lancer la recherche." />
+              <EmptyStateCard title="Cherche un film ou un profil" />
             )
           ) : null
         }

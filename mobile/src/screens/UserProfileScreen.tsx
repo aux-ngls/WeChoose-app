@@ -127,7 +127,7 @@ export default function UserProfileScreen() {
       {loading ? <ActivityIndicator color={theme.colors.text} /> : null}
 
       {!loading && !profile ? (
-        <EmptyStateCard title="Profil introuvable" subtitle="Cet utilisateur n'existe peut-etre plus." />
+        <EmptyStateCard title="Profil introuvable" />
       ) : null}
 
       {profile ? (
@@ -239,7 +239,7 @@ export default function UserProfileScreen() {
                 ))}
               </View>
             ) : (
-              <EmptyStateCard title="Aucune critique" subtitle="Ses critiques apparaitront ici." />
+              <EmptyStateCard title="Aucune critique" />
             )}
           </View>
         </>

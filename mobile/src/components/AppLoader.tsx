@@ -1,5 +1,6 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import AppScreen from './AppScreen';
+import QulteMark from './QulteMark';
 import { useTheme } from '../theme/ThemeContext';
 
 export default function AppLoader({ label }: { label: string }) {
@@ -8,7 +9,8 @@ export default function AppLoader({ label }: { label: string }) {
   return (
     <AppScreen scroll={false} contentStyle={styles.content}>
       <View style={[styles.badge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}>
-        <ActivityIndicator color={theme.colors.text} />
+        <QulteMark size={44} />
+        <ActivityIndicator color={theme.colors.accent} />
         <Text style={[styles.label, { color: theme.colors.textSoft }]}>{label}</Text>
       </View>
     </AppScreen>
@@ -22,12 +24,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badge: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 999,
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: 'rgba(255,255,255,0.05)',

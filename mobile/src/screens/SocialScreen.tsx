@@ -93,9 +93,7 @@ export default function SocialScreen() {
       <ScreenHeader
         icon="people"
         accent="violet"
-        eyebrow="Communaute"
         title="Social"
-        subtitle="Le flux critiques et cinema de ton cercle, avec acces direct aux films."
         trailing={
           <View style={[styles.statsBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <Text style={[styles.statsBadgeLabel, { color: theme.colors.text }]}>{stats.reviews}</Text>
@@ -111,7 +109,7 @@ export default function SocialScreen() {
         </View>
         <View style={styles.composeButtonBody}>
           <Text style={[styles.composeButtonTitle, { color: theme.colors.accentText }]}>Nouvelle critique</Text>
-          <Text style={[styles.composeButtonSubtitle, { color: theme.colors.accentText }]}>Publie ton avis sur un film comme sur le site.</Text>
+          <Text style={[styles.composeButtonSubtitle, { color: theme.colors.accentText }]}>Ton avis, ton cercle.</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.colors.accentText} />
       </Pressable>
@@ -130,7 +128,7 @@ export default function SocialScreen() {
       {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text> : null}
 
       {!loading && reviews.length === 0 ? (
-        <EmptyStateCard title="Aucune critique pour le moment" subtitle="Le feed se remplira quand ton cercle publiera des avis." />
+        <EmptyStateCard title="Aucune critique" />
       ) : (
         <View style={styles.feedList}>
           {reviews.map((item) => (

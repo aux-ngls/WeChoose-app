@@ -180,9 +180,8 @@ export default function OnboardingScreen() {
       <ScreenHeader
         icon="sparkles"
         accent="pink"
-        eyebrow="Bienvenue"
-        title="Configure ton Qulte"
-        subtitle="Choisis quelques genres, personnes et films. L'app affinera ensuite les recommandations tres vite."
+        title="Ton Qulte"
+        subtitle="Quelques choix pour demarrer."
       />
 
       <View style={styles.progressRow}>
@@ -283,7 +282,7 @@ export default function OnboardingScreen() {
             ))}
           </View>
         ) : (
-          <EmptyStateCard title="Ajoute quelques films" subtitle="Quelques references suffisent pour lancer un premier feed deja pertinent." />
+          <EmptyStateCard title="Ajoute quelques films" />
         )}
       </View>
 

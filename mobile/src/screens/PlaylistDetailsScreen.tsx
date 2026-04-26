@@ -196,7 +196,7 @@ export default function PlaylistDetailsScreen({
         )}
         ListEmptyComponent={
           !loading ? (
-            <EmptyStateCard title="Aucun film visible" subtitle={query.trim() ? 'Essaie un autre filtre ou un autre tri.' : 'Cette playlist est vide pour le moment.'} />
+            <EmptyStateCard title="Aucun film" />
           ) : null
         }
       />

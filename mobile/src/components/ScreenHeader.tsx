@@ -46,9 +46,9 @@ export default function ScreenHeader({
           <Ionicons name={icon} size={18} color={accentTheme.icon} />
         </View>
         <View style={styles.textBlock}>
-          {eyebrow ? <Text style={[styles.eyebrow, { color: theme.colors.textMuted }]}>{eyebrow}</Text> : null}
+          {eyebrow ? <Text style={[styles.eyebrow, { color: theme.colors.textMuted }]} numberOfLines={1}>{eyebrow}</Text> : null}
           <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
-          {subtitle ? <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text> : null}
+          {subtitle ? <Text style={[styles.subtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
         </View>
       </View>
       {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 42,
     height: 42,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -90,14 +90,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#ffffff',
-    fontSize: 28,
+    fontSize: 29,
     fontWeight: '900',
-    letterSpacing: -0.8,
+    letterSpacing: -1.2,
   },
   subtitle: {
     color: '#9ca3af',
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   trailing: {
     alignSelf: 'center',

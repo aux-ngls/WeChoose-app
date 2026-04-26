@@ -55,7 +55,7 @@ export default function AppNavigator() {
   }, []);
 
   if (isBootstrapping) {
-    return <AppLoader label="Ouverture de Qulte..." />;
+    return <AppLoader label="Qulte" />;
   }
 
   return (

@@ -370,7 +370,7 @@ export default function HomeScreen() {
             </Animated.View>
           </View>
         ) : (
-          <EmptyStateCard title="Plus de films pour le moment" subtitle="Le feed se recharge automatiquement." />
+          <EmptyStateCard title="Recharge en cours" />
         )}
       </View>
 
