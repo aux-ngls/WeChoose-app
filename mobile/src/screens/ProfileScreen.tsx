@@ -430,6 +430,10 @@ export default function ProfileScreen() {
             <View style={styles.profileGlowTwo} />
 
             <View style={styles.profileTopBar}>
+              <View style={styles.profileKicker}>
+                <Ionicons name="sparkles" size={14} color="#f9a8d4" />
+                <Text style={styles.profileKickerLabel}>Profil Qulte</Text>
+              </View>
               <View style={styles.profileTopActions}>
                 <Pressable style={styles.profileEditButton} onPress={openShowcaseEditor} disabled={isEditingShowcase}>
                   <Ionicons name={isEditingShowcase ? 'checkmark' : 'create-outline'} size={18} color="#190713" />
@@ -878,8 +882,26 @@ const styles = StyleSheet.create({
   profileTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     gap: 12,
+  },
+  profileKicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(249,168,212,0.24)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  profileKickerLabel: {
+    color: '#fce7f3',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   profileTopActions: {
     flexDirection: 'row',
