@@ -1,12 +1,15 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import AppScreen from './AppScreen';
+import { useTheme } from '../theme/ThemeContext';
 
 export default function AppLoader({ label }: { label: string }) {
+  const { theme } = useTheme();
+
   return (
     <AppScreen scroll={false} contentStyle={styles.content}>
-      <View style={styles.badge}>
-        <ActivityIndicator color="#ffffff" />
-        <Text style={styles.label}>{label}</Text>
+      <View style={[styles.badge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}>
+        <ActivityIndicator color={theme.colors.text} />
+        <Text style={[styles.label, { color: theme.colors.textSoft }]}>{label}</Text>
       </View>
     </AppScreen>
   );

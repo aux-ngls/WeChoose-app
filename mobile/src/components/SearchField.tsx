@@ -1,18 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 interface SearchFieldProps extends TextInputProps {
   icon?: keyof typeof Ionicons.glyphMap;
 }
 
 export default function SearchField({ icon = 'search', ...props }: SearchFieldProps) {
+  const { theme } = useTheme();
+
   return (
-    <View style={styles.wrapper}>
-      <Ionicons name={icon} size={18} color="#6b7280" />
+    <View style={[styles.wrapper, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+      <Ionicons name={icon} size={18} color={theme.colors.textMuted} />
       <TextInput
         {...props}
-        placeholderTextColor="#6b7280"
-        style={[styles.input, props.style]}
+        placeholderTextColor={theme.colors.textMuted}
+        style={[styles.input, { color: theme.colors.text }, props.style]}
       />
     </View>
   );

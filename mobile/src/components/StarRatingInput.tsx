@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 interface StarRatingInputProps {
   value?: number;
@@ -15,16 +16,20 @@ export default function StarRatingInput({
   value = 0,
   onChange,
   size = 26,
-  color = '#facc15',
-  emptyColor = '#475569',
+  color,
+  emptyColor,
   disabled = false,
   allowHalf = true,
 }: StarRatingInputProps) {
+  const { theme } = useTheme();
+  const activeColor = color ?? '#facc15';
+  const inactiveColor = emptyColor ?? (theme.isDark ? '#475569' : '#d6b8c6');
+
   return (
     <View style={styles.row}>
       {[1, 2, 3, 4, 5].map((star) => {
         const iconName = value >= star ? 'star' : value >= star - 0.5 ? 'star-half' : 'star-outline';
-        const iconColor = value >= star - 0.5 ? color : emptyColor;
+        const iconColor = value >= star - 0.5 ? activeColor : inactiveColor;
         return (
           <View key={star} style={[styles.starSlot, { width: size + 8, height: size + 10 }]}>
             <Ionicons name={iconName} size={size} color={iconColor} />

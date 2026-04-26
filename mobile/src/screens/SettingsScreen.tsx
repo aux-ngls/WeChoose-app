@@ -15,7 +15,7 @@ const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: 
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { themePreference, resolvedThemeName, setThemePreference } = useTheme();
+  const { theme, themePreference, resolvedThemeName, setThemePreference } = useTheme();
   const [savingThemePreference, setSavingThemePreference] = useState(false);
 
   const handleThemePreferenceChange = async (preference: ThemePreference) => {
@@ -33,28 +33,28 @@ export default function SettingsScreen() {
 
   return (
     <AppScreen>
-      <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Ionicons name="chevron-back" size={20} color="#ffffff" />
-        <Text style={styles.backLabel}>Retour</Text>
+      <Pressable style={[styles.backButton, { backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
+        <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+        <Text style={[styles.backLabel, { color: theme.colors.text }]}>Retour</Text>
       </Pressable>
 
-      <View style={styles.heroCard}>
-        <View style={styles.heroIcon}>
-          <Ionicons name="settings-outline" size={22} color="#190713" />
+      <View style={[styles.heroCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
+        <View style={[styles.heroIcon, { backgroundColor: theme.colors.accent }]}>
+          <Ionicons name="settings-outline" size={22} color={theme.colors.accentText} />
         </View>
         <View style={styles.heroBody}>
-          <Text style={styles.heroTitle}>Reglages</Text>
-          <Text style={styles.heroSubtitle}>Les preferences de l'app, sans encombrer ton profil.</Text>
+          <Text style={[styles.heroTitle, { color: theme.colors.text }]}>Reglages</Text>
+          <Text style={[styles.heroSubtitle, { color: theme.colors.textSoft }]}>Les preferences de l'app, sans encombrer ton profil.</Text>
         </View>
       </View>
 
-      <View style={styles.sectionCard}>
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="color-palette-outline" size={18} color="#f9a8d4" />
-            <Text style={styles.sectionTitle}>Apparence</Text>
+            <Ionicons name="color-palette-outline" size={18} color={theme.colors.accent} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Apparence</Text>
           </View>
-          <Text style={styles.currentBadge}>{resolvedThemeName === 'light' ? 'Clair' : 'Sombre'}</Text>
+          <Text style={[styles.currentBadge, { color: theme.colors.accent }]}>{resolvedThemeName === 'light' ? 'Clair' : 'Sombre'}</Text>
         </View>
 
         <View style={styles.optionsList}>
@@ -63,24 +63,34 @@ export default function SettingsScreen() {
             return (
               <Pressable
                 key={option.value}
-                style={[styles.optionCard, isActive && styles.optionCardActive]}
+                style={[
+                  styles.optionCard,
+                  { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+                  isActive && { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
+                ]}
                 onPress={() => void handleThemePreferenceChange(option.value)}
                 disabled={savingThemePreference}
               >
-                <View style={[styles.optionIcon, isActive && styles.optionIconActive]}>
-                  <Ionicons name={option.icon} size={18} color={isActive ? '#190713' : '#f9a8d4'} />
+                <View
+                  style={[
+                    styles.optionIcon,
+                    { borderColor: theme.colors.accentSoft },
+                    isActive && { backgroundColor: theme.colors.accent },
+                  ]}
+                >
+                  <Ionicons name={option.icon} size={18} color={isActive ? theme.colors.accentText : theme.colors.accent} />
                 </View>
                 <View style={styles.optionBody}>
-                  <Text style={styles.optionTitle}>{option.label}</Text>
-                  <Text style={styles.optionDetail}>{option.detail}</Text>
+                  <Text style={[styles.optionTitle, { color: theme.colors.text }]}>{option.label}</Text>
+                  <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>{option.detail}</Text>
                 </View>
-                {isActive ? <Ionicons name="checkmark-circle" size={20} color="#f9a8d4" /> : null}
+                {isActive ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} /> : null}
               </Pressable>
             );
           })}
         </View>
 
-        <Text style={styles.helperText}>
+        <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
           Le choix est deja sauvegarde. La prochaine etape sera de convertir les ecrans un par un pour un vrai mode clair complet.
         </Text>
       </View>

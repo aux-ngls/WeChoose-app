@@ -1,5 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FALLBACK_POSTER, type SearchMovie } from '../types';
+import { useTheme } from '../theme/ThemeContext';
 
 interface MoviePosterTileProps {
   movie: SearchMovie;
@@ -7,10 +8,16 @@ interface MoviePosterTileProps {
 }
 
 export default function MoviePosterTile({ movie, onPress }: MoviePosterTileProps) {
+  const { theme } = useTheme();
+
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={styles.card}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+    >
       <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { backgroundColor: theme.rgba.overlay }]}>
         <Text style={styles.title} numberOfLines={2}>
           {movie.title}
         </Text>

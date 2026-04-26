@@ -9,6 +9,7 @@ import SocialScreen from '../screens/SocialScreen';
 import type { MainTabParamList } from './types';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, fetchUnreadDirectMessagesCount } from '../api/client';
+import { useTheme } from '../theme/ThemeContext';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -22,6 +23,7 @@ const icons: Record<keyof MainTabParamList, string> = {
 
 export default function MainTabs() {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -58,11 +60,11 @@ export default function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#ffffff',
-        tabBarInactiveTintColor: '#7c8aa5',
+        tabBarActiveTintColor: theme.colors.text,
+        tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
-          backgroundColor: '#09090bf4',
-          borderTopColor: 'rgba(255,255,255,0.08)',
+          backgroundColor: theme.isDark ? '#09090bf4' : 'rgba(255,247,237,0.96)',
+          borderTopColor: theme.colors.border,
           height: 78,
           paddingTop: 10,
           paddingBottom: 12,

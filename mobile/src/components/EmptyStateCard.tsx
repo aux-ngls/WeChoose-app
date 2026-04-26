@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 interface EmptyStateCardProps {
   title: string;
@@ -6,10 +7,12 @@ interface EmptyStateCardProps {
 }
 
 export default function EmptyStateCard({ title, subtitle }: EmptyStateCardProps) {
+  const { theme } = useTheme();
+
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{title}</Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+    <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+      <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
+      {subtitle ? <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text> : null}
     </View>
   );
 }

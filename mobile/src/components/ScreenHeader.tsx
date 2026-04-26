@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 interface ScreenHeaderProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -47,18 +48,19 @@ export default function ScreenHeader({
   accent = 'blue',
   trailing,
 }: ScreenHeaderProps) {
-  const theme = accentMap[accent];
+  const accentTheme = accentMap[accent];
+  const { theme } = useTheme();
 
   return (
     <View style={styles.wrapper}>
       <View style={styles.left}>
-        <View style={[styles.iconWrap, { borderColor: theme.border, backgroundColor: theme.background }]}> 
-          <Ionicons name={icon} size={18} color={theme.icon} />
+        <View style={[styles.iconWrap, { borderColor: accentTheme.border, backgroundColor: accentTheme.background }]}>
+          <Ionicons name={icon} size={18} color={accentTheme.icon} />
         </View>
         <View style={styles.textBlock}>
-          {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          {eyebrow ? <Text style={[styles.eyebrow, { color: theme.colors.textMuted }]}>{eyebrow}</Text> : null}
+          <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
+          {subtitle ? <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text> : null}
         </View>
       </View>
       {trailing ? <View style={styles.trailing}>{trailing}</View> : null}

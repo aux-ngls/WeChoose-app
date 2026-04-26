@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '../theme/ThemeContext';
 
 interface AppScreenProps {
   children: ReactNode;
@@ -10,15 +11,17 @@ interface AppScreenProps {
 }
 
 export default function AppScreen({ children, scroll = true, contentStyle }: AppScreenProps) {
+  const { theme } = useTheme();
+
   return (
     <LinearGradient
-      colors={['#07070A', '#0B1322', '#07070A']}
+      colors={theme.gradients.appBackground}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={styles.gradient}
+      style={[styles.gradient, { backgroundColor: theme.colors.background }]}
     >
-      <View pointerEvents="none" style={styles.orbTop} />
-      <View pointerEvents="none" style={styles.orbBottom} />
+      <View pointerEvents="none" style={[styles.orbTop, { backgroundColor: theme.rgba.pinkGlow }]} />
+      <View pointerEvents="none" style={[styles.orbBottom, { backgroundColor: theme.rgba.blueGlow }]} />
       <SafeAreaView style={styles.safeArea}>
         {scroll ? (
           <ScrollView

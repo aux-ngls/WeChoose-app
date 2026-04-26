@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 interface SectionTitleProps {
   eyebrow?: string;
@@ -7,11 +8,13 @@ interface SectionTitleProps {
 }
 
 export default function SectionTitle({ eyebrow, title, subtitle }: SectionTitleProps) {
+  const { theme } = useTheme();
+
   return (
     <View style={styles.wrapper}>
-      {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-      <Text style={styles.title}>{title}</Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {eyebrow ? <Text style={[styles.eyebrow, { color: theme.colors.textMuted }]}>{eyebrow}</Text> : null}
+      <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
+      {subtitle ? <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text> : null}
     </View>
   );
 }
