@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
-import NewsScreen from '../screens/NewsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SearchScreen from '../screens/SearchScreen';
 import SocialScreen from '../screens/SocialScreen';
@@ -17,7 +16,6 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const icons: Record<keyof MainTabParamList, string> = {
   Home: 'home-outline',
-  News: 'newspaper-outline',
   Search: 'search-outline',
   Social: 'people-outline',
   Messages: 'chatbubble-ellipses-outline',
@@ -113,7 +111,6 @@ export default function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Accueil' }} />
-      <Tab.Screen name="News" component={NewsScreen} options={{ title: "A l'affiche" }} />
       <Tab.Screen name="Search" component={SearchScreen} options={{ title: 'Recherche' }} />
       <Tab.Screen name="Social" component={SocialScreen} options={{ title: 'Social' }} />
       <Tab.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />

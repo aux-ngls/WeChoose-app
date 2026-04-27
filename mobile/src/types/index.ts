@@ -96,17 +96,6 @@ export interface SocialNotificationsPayload {
   unread_count: number;
 }
 
-export interface FriendRatedMovie extends SearchMovie {
-  username?: string;
-}
-
-export interface MovieNewsHighlights {
-  popular_now: SearchMovie[];
-  tailored_for_you: SearchMovie[];
-  discovery_for_you: SearchMovie[];
-  friends_recent_ratings: FriendRatedMovie[];
-}
-
 export interface ProfileShowcaseMovie {
   id: number;
   title: string;

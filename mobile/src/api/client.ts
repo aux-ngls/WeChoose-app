@@ -3,7 +3,6 @@ import type {
   AuthPayload,
   DirectConversationDetails,
   DirectConversationSummary,
-  MovieNewsHighlights,
   MovieDetails,
   OnboardingPreferencesResponse,
   PlaylistSummary,
@@ -156,10 +155,6 @@ export async function addMovieToPlaylist(token: string, playlistId: number, movi
 
 export async function searchMovies(token: string, query: string): Promise<SearchMovie[]> {
   return request<SearchMovie[]>(`/search?query=${encodeURIComponent(query)}`, undefined, token);
-}
-
-export async function fetchMovieNewsHighlights(token: string): Promise<MovieNewsHighlights> {
-  return request<MovieNewsHighlights>('/movies/news/highlights', undefined, token);
 }
 
 export async function fetchSocialFeed(token: string): Promise<SocialReview[]> {
