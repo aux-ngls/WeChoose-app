@@ -73,6 +73,40 @@ export interface SocialComment {
   reply_to_username: string | null;
 }
 
+export interface SocialNotification {
+  id: number;
+  type: 'follow' | 'like' | 'review' | 'comment' | 'reply' | string;
+  created_at: string;
+  is_read: boolean;
+  message: string;
+  actor: {
+    id: number;
+    username: string;
+  };
+  review: {
+    id: number;
+    title: string;
+    poster_url: string | null;
+  } | null;
+  comment_preview: string;
+}
+
+export interface SocialNotificationsPayload {
+  items: SocialNotification[];
+  unread_count: number;
+}
+
+export interface FriendRatedMovie extends SearchMovie {
+  username?: string;
+}
+
+export interface MovieNewsHighlights {
+  popular_now: SearchMovie[];
+  tailored_for_you: SearchMovie[];
+  discovery_for_you: SearchMovie[];
+  friends_recent_ratings: FriendRatedMovie[];
+}
+
 export interface ProfileShowcaseMovie {
   id: number;
   title: string;

@@ -1,17 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import ScreenHeader from '../components/ScreenHeader';
-import { ApiError, fetchReviewComments, fetchSocialFeed } from '../api/client';
+import {
+  ApiError,
+  createReviewComment,
+  fetchReviewComments,
+  fetchSocialFeed,
+  fetchSocialNotifications,
+  markSocialNotificationsRead,
+  toggleReviewLike,
+} from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SocialComment, type SocialReview } from '../types';
+import { FALLBACK_POSTER, type SocialComment, type SocialNotification, type SocialReview } from '../types';
 import { formatDate } from '../utils/format';
 
 export default function SocialScreen() {
@@ -19,10 +27,15 @@ export default function SocialScreen() {
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [reviews, setReviews] = useState<SocialReview[]>([]);
+  const [notifications, setNotifications] = useState<SocialNotification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
   const [commentsByReview, setCommentsByReview] = useState<Record<number, SocialComment[]>>({});
   const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [submittingCommentIds, setSubmittingCommentIds] = useState<number[]>([]);
+  const [likingReviewIds, setLikingReviewIds] = useState<number[]>([]);
   const [error, setError] = useState('');
 
   const loadFeed = useCallback(async () => {
@@ -45,11 +58,28 @@ export default function SocialScreen() {
     }
   }, [session, signOut]);
 
+  const loadNotifications = useCallback(async () => {
+    if (!session) {
+      return;
+    }
+
+    try {
+      const payload = await fetchSocialNotifications(session.token);
+      setNotifications(payload.items);
+      setUnreadNotifications(payload.unread_count);
+    } catch (notificationError) {
+      if (notificationError instanceof ApiError && notificationError.status === 401) {
+        await signOut();
+      }
+    }
+  }, [session, signOut]);
+
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       void loadFeed();
-    }, [loadFeed]),
+      void loadNotifications();
+    }, [loadFeed, loadNotifications]),
   );
 
   const stats = useMemo(() => ({
@@ -88,20 +118,121 @@ export default function SocialScreen() {
     }
   }, [commentsByReview, expandedReviewId, session, signOut]);
 
+  const handleToggleLike = useCallback(async (reviewId: number) => {
+    if (!session || likingReviewIds.includes(reviewId)) {
+      return;
+    }
+
+    setLikingReviewIds((current) => [...current, reviewId]);
+    try {
+      const payload = await toggleReviewLike(session.token, reviewId);
+      setReviews((current) =>
+        current.map((review) =>
+          review.id === reviewId
+            ? { ...review, liked_by_me: payload.liked, likes_count: payload.likes_count }
+            : review,
+        ),
+      );
+      setError('');
+    } catch (likeError) {
+      if (likeError instanceof ApiError && likeError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError("Impossible d'actualiser le like.");
+    } finally {
+      setLikingReviewIds((current) => current.filter((id) => id !== reviewId));
+    }
+  }, [likingReviewIds, session, signOut]);
+
+  const handleSubmitComment = useCallback(async (reviewId: number) => {
+    if (!session || submittingCommentIds.includes(reviewId)) {
+      return;
+    }
+
+    const content = (commentDrafts[reviewId] ?? '').trim();
+    if (content.length < 2) {
+      return;
+    }
+
+    setSubmittingCommentIds((current) => [...current, reviewId]);
+    try {
+      const createdComment = await createReviewComment(session.token, reviewId, content);
+      setCommentsByReview((current) => ({
+        ...current,
+        [reviewId]: [...(current[reviewId] ?? []), createdComment],
+      }));
+      setCommentDrafts((current) => ({ ...current, [reviewId]: '' }));
+      setReviews((current) =>
+        current.map((review) =>
+          review.id === reviewId
+            ? { ...review, comments_count: review.comments_count + 1 }
+            : review,
+        ),
+      );
+      setError('');
+    } catch (commentError) {
+      if (commentError instanceof ApiError && commentError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError("Impossible d'ajouter le commentaire.");
+    } finally {
+      setSubmittingCommentIds((current) => current.filter((id) => id !== reviewId));
+    }
+  }, [commentDrafts, session, signOut, submittingCommentIds]);
+
+  const handleMarkNotificationsRead = useCallback(async () => {
+    if (!session) {
+      return;
+    }
+
+    try {
+      await markSocialNotificationsRead(session.token);
+      setNotifications([]);
+      setUnreadNotifications(0);
+    } catch (notificationError) {
+      if (notificationError instanceof ApiError && notificationError.status === 401) {
+        await signOut();
+      }
+    }
+  }, [session, signOut]);
+
   return (
-    <AppScreen>
+    <AppScreen keyboardAware>
       <ScreenHeader
         icon="people"
         accent="violet"
         title="Social"
         trailing={
           <View style={[styles.statsBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-            <Text style={[styles.statsBadgeLabel, { color: theme.colors.text }]}>{stats.reviews}</Text>
+            <Text style={[styles.statsBadgeLabel, { color: theme.colors.text }]}>{unreadNotifications || stats.reviews}</Text>
           </View>
         }
       />
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
+
+      {notifications.length > 0 ? (
+        <View style={[styles.notificationsCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <View style={styles.notificationsHeader}>
+            <Text style={[styles.notificationsTitle, { color: theme.colors.text }]}>Notifications</Text>
+            <Pressable onPress={() => void handleMarkNotificationsRead()}>
+              <Text style={[styles.notificationsAction, { color: theme.colors.secondaryAccent }]}>Tout lire</Text>
+            </Pressable>
+          </View>
+          {notifications.map((notification) => (
+            <Pressable
+              key={notification.id}
+              style={[styles.notificationRow, { backgroundColor: theme.rgba.cardStrong }]}
+              onPress={() => navigation.navigate('UserProfile', { username: notification.actor.username })}
+            >
+              <Text style={[styles.notificationText, { color: theme.colors.textSoft }]} numberOfLines={2}>{notification.message}</Text>
+              <Text style={[styles.notificationDate, { color: theme.colors.textMuted }]}>{formatDate(notification.created_at)}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       <Pressable style={[styles.composeButton, { backgroundColor: theme.colors.accent }]} onPress={() => navigation.navigate('CreateReview')}>
         <View style={styles.composeButtonIcon}>
@@ -145,7 +276,21 @@ export default function SocialScreen() {
                   <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                     <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.rating.toFixed(1)} / 5</Text>
                   </View>
-                  <Text style={[styles.inlineMeta, { color: theme.colors.textSoft }]}>{item.likes_count} likes</Text>
+                  <Pressable
+                    style={[styles.likeButton, item.liked_by_me && { backgroundColor: theme.colors.accentSoft }]}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      void handleToggleLike(item.id);
+                    }}
+                    disabled={likingReviewIds.includes(item.id)}
+                  >
+                    <Ionicons
+                      name={item.liked_by_me ? 'heart' : 'heart-outline'}
+                      size={14}
+                      color={item.liked_by_me ? theme.colors.accent : theme.colors.textSoft}
+                    />
+                    <Text style={[styles.inlineMeta, { color: item.liked_by_me ? theme.colors.accent : theme.colors.textSoft }]}>{item.likes_count}</Text>
+                  </Pressable>
                   <Text style={[styles.inlineMeta, { color: theme.colors.textSoft }]}>{item.comments_count} commentaires</Text>
                 </View>
                 <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={expandedReviewId === item.id ? undefined : 4}>
@@ -175,6 +320,22 @@ export default function SocialScreen() {
                       ) : (
                         <Text style={[styles.noComments, { color: theme.colors.textMuted }]}>Aucun commentaire pour le moment.</Text>
                       )}
+                      <View style={styles.commentComposer}>
+                        <TextInput
+                          value={commentDrafts[item.id] ?? ''}
+                          onChangeText={(value) => setCommentDrafts((current) => ({ ...current, [item.id]: value }))}
+                          placeholder="Ajouter un commentaire"
+                          placeholderTextColor={theme.colors.textMuted}
+                          style={[styles.commentInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card, color: theme.colors.text }]}
+                        />
+                        <Pressable
+                          style={[styles.commentSendButton, { backgroundColor: theme.colors.secondaryAccent }]}
+                          onPress={() => void handleSubmitComment(item.id)}
+                          disabled={submittingCommentIds.includes(item.id)}
+                        >
+                          <Ionicons name="send" size={15} color={theme.colors.secondaryAccentText} />
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 ) : null}
@@ -203,6 +364,40 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '800',
+  },
+  notificationsCard: {
+    gap: 10,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 12,
+  },
+  notificationsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  notificationsTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  notificationsAction: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  notificationRow: {
+    borderRadius: 16,
+    padding: 10,
+    gap: 4,
+  },
+  notificationText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  notificationDate: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   composeButton: {
     flexDirection: 'row',
@@ -317,6 +512,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
   reviewContent: {
     color: '#e5e7eb',
     fontSize: 14,
@@ -373,5 +576,25 @@ const styles = StyleSheet.create({
   noComments: {
     color: '#94a3b8',
     fontSize: 12,
+  },
+  commentComposer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  commentInput: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+  },
+  commentSendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

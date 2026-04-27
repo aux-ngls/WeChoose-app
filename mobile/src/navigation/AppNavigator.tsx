@@ -12,6 +12,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import PlaylistDetailsScreen from '../screens/PlaylistDetailsScreen';
 import ShareMovieScreen from '../screens/ShareMovieScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import TutorialScreen from '../screens/TutorialScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import MainTabs from './MainTabs';
 import { flushPendingNotificationNavigation, navigateFromNotificationData, navigationRef } from './rootNavigation';
@@ -65,6 +66,8 @@ export default function AppNavigator() {
           <Stack.Screen name="Auth" component={AuthScreen} />
         ) : !session.hasCompletedOnboarding ? (
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+        ) : !session.hasCompletedTutorial ? (
+          <Stack.Screen name="Tutorial" component={TutorialScreen} />
         ) : (
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} />

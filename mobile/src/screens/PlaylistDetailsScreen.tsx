@@ -19,6 +19,7 @@ import {
   ApiError,
   fetchPlaylistMovies,
   removeMovieFromPlaylist,
+  reorderPlaylistMovies,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
@@ -32,6 +33,7 @@ import {
 } from '../types';
 
 const SORT_OPTIONS = [
+  { key: 'manual', label: 'Ordre' },
   { key: 'genre', label: 'Genre' },
   { key: 'recent', label: 'Recents' },
   { key: 'oldest', label: 'Anciens' },
@@ -39,6 +41,15 @@ const SORT_OPTIONS = [
 ] as const;
 
 type SortMode = (typeof SORT_OPTIONS)[number]['key'];
+
+function compareManualOrder(a: SearchMovie, b: SearchMovie) {
+  const orderA = a.sort_index ?? Number.MAX_SAFE_INTEGER;
+  const orderB = b.sort_index ?? Number.MAX_SAFE_INTEGER;
+  if (orderA !== orderB) {
+    return orderA - orderB;
+  }
+  return a.title.localeCompare(b.title);
+}
 
 export default function PlaylistDetailsScreen({
   navigation,
@@ -50,9 +61,10 @@ export default function PlaylistDetailsScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'recent');
+  const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'manual');
 
   const canRemove = route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
+  const canReorder = canRemove && sortMode === 'manual' && !query.trim();
 
   const loadPlaylist = useCallback(async () => {
     if (!session) {
@@ -83,7 +95,9 @@ export default function PlaylistDetailsScreen({
 
   const sortedMovies = useMemo(() => {
     const copy = [...movies];
-    if (sortMode === 'genre') {
+    if (sortMode === 'manual') {
+      copy.sort(compareManualOrder);
+    } else if (sortMode === 'genre') {
       copy.sort((a, b) => {
         const genreA = (a.primary_genre ?? 'Autres').toLowerCase();
         const genreB = (b.primary_genre ?? 'Autres').toLowerCase();
@@ -122,6 +136,42 @@ export default function PlaylistDetailsScreen({
         return;
       }
       setError('Impossible de retirer ce film.');
+    }
+  };
+
+  const handleMove = async (movieId: number, direction: -1 | 1) => {
+    if (!session || !canReorder) {
+      return;
+    }
+
+    const orderedMovies = [...movies].sort(compareManualOrder);
+    const currentIndex = orderedMovies.findIndex((movie) => movie.id === movieId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedMovies.length) {
+      return;
+    }
+
+    const nextOrderedMovies = [...orderedMovies];
+    [nextOrderedMovies[currentIndex], nextOrderedMovies[targetIndex]] = [
+      nextOrderedMovies[targetIndex],
+      nextOrderedMovies[currentIndex],
+    ];
+    const indexedMovies = nextOrderedMovies.map((movie, index) => ({ ...movie, sort_index: index + 1 }));
+
+    setMovies((currentMovies) =>
+      currentMovies.map((movie) => indexedMovies.find((indexedMovie) => indexedMovie.id === movie.id) ?? movie),
+    );
+
+    try {
+      await reorderPlaylistMovies(session.token, route.params.playlistId, indexedMovies.map((movie) => movie.id));
+      setError('');
+    } catch (actionError) {
+      void loadPlaylist();
+      if (actionError instanceof ApiError && actionError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de reordonner cette playlist.');
     }
   };
 
@@ -175,14 +225,44 @@ export default function PlaylistDetailsScreen({
           </View>
         }
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <Pressable
             style={[styles.movieCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
             onPress={() => navigation.navigate('MovieDetails', { movieId: item.id, title: item.title })}
           >
             <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+            {canReorder ? (
+              <View style={styles.reorderControls}>
+                <Pressable
+                  disabled={index === 0}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    void handleMove(item.id, -1);
+                  }}
+                  style={[styles.reorderButton, index === 0 && styles.reorderButtonDisabled]}
+                >
+                  <Ionicons name="chevron-up" size={13} color="#ffffff" />
+                </Pressable>
+                <Pressable
+                  disabled={index === sortedMovies.length - 1}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    void handleMove(item.id, 1);
+                  }}
+                  style={[styles.reorderButton, index === sortedMovies.length - 1 && styles.reorderButtonDisabled]}
+                >
+                  <Ionicons name="chevron-down" size={13} color="#ffffff" />
+                </Pressable>
+              </View>
+            ) : null}
             {canRemove ? (
-              <Pressable style={styles.removeBadge} onPress={() => void handleRemove(item.id)}>
+              <Pressable
+                style={styles.removeBadge}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleRemove(item.id);
+                }}
+              >
                 <Ionicons name="close" size={12} color="#ffffff" />
               </Pressable>
             ) : null}
@@ -322,5 +402,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.86)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  reorderControls: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 2,
+    gap: 5,
+  },
+  reorderButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.86)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderButtonDisabled: {
+    opacity: 0.28,
   },
 });

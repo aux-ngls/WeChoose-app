@@ -3,6 +3,7 @@ import type {
   AuthPayload,
   DirectConversationDetails,
   DirectConversationSummary,
+  MovieNewsHighlights,
   MovieDetails,
   OnboardingPreferencesResponse,
   PlaylistSummary,
@@ -11,6 +12,7 @@ import type {
   ProfileShowcaseSoundtrack,
   SearchMovie,
   SocialComment,
+  SocialNotificationsPayload,
   SocialProfile,
   SocialReview,
   SocialUser,
@@ -83,8 +85,12 @@ export async function signup(username: string, password: string): Promise<AuthPa
   });
 }
 
-export async function getMe(token: string): Promise<{ has_completed_onboarding: boolean }> {
-  return request<{ has_completed_onboarding: boolean }>('/users/me', undefined, token);
+export async function getMe(token: string): Promise<{ has_completed_onboarding: boolean; has_completed_tutorial: boolean }> {
+  return request<{ has_completed_onboarding: boolean; has_completed_tutorial: boolean }>('/users/me', undefined, token);
+}
+
+export async function completeTutorial(token: string): Promise<void> {
+  await request<null>('/tutorial/complete', { method: 'POST' }, token);
 }
 
 export async function getOnboardingPreferences(token: string): Promise<OnboardingPreferencesResponse> {
@@ -152,6 +158,10 @@ export async function searchMovies(token: string, query: string): Promise<Search
   return request<SearchMovie[]>(`/search?query=${encodeURIComponent(query)}`, undefined, token);
 }
 
+export async function fetchMovieNewsHighlights(token: string): Promise<MovieNewsHighlights> {
+  return request<MovieNewsHighlights>('/movies/news/highlights', undefined, token);
+}
+
 export async function fetchSocialFeed(token: string): Promise<SocialReview[]> {
   return request<SocialReview[]>('/social/feed', undefined, token);
 }
@@ -179,6 +189,42 @@ export async function createReview(
 
 export async function fetchReviewComments(token: string, reviewId: number): Promise<SocialComment[]> {
   return request<SocialComment[]>(`/social/reviews/${reviewId}/comments`, undefined, token);
+}
+
+export async function createReviewComment(
+  token: string,
+  reviewId: number,
+  content: string,
+  parentId?: number | null,
+): Promise<SocialComment> {
+  return request<SocialComment>(
+    `/social/reviews/${reviewId}/comments`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, parent_id: parentId ?? null }),
+    },
+    token,
+  );
+}
+
+export async function toggleReviewLike(
+  token: string,
+  reviewId: number,
+): Promise<{ liked: boolean; likes_count: number }> {
+  return request<{ liked: boolean; likes_count: number }>(
+    `/social/reviews/${reviewId}/like`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+export async function fetchSocialNotifications(token: string): Promise<SocialNotificationsPayload> {
+  return request<SocialNotificationsPayload>('/social/notifications?limit=12', undefined, token);
+}
+
+export async function markSocialNotificationsRead(token: string): Promise<{ updated: number }> {
+  return request<{ updated: number }>('/social/notifications/read-all', { method: 'POST' }, token);
 }
 
 export async function searchSocialUsers(token: string, query: string): Promise<SocialUser[]> {
@@ -296,6 +342,18 @@ export async function fetchPlaylistMovies(token: string, playlistId: number): Pr
 
 export async function removeMovieFromPlaylist(token: string, playlistId: number, movieId: number): Promise<void> {
   await request<null>(`/playlists/${playlistId}/remove/${movieId}`, { method: 'DELETE' }, token);
+}
+
+export async function reorderPlaylistMovies(token: string, playlistId: number, movieIds: number[]): Promise<void> {
+  await request<null>(
+    `/playlists/${playlistId}/reorder`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ movie_ids: movieIds }),
+    },
+    token,
+  );
 }
 
 export async function saveProfilePreferences(

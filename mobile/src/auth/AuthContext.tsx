@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { ApiError, getMe, login as apiLogin, signup as apiSignup } from '../api/client';
+import { ApiError, completeTutorial as apiCompleteTutorial, getMe, login as apiLogin, signup as apiSignup } from '../api/client';
 import { clearSession, loadSession, saveSession } from './storage';
 import { registerForPushNotifications, unregisterCurrentPushToken } from '../notifications/push';
 import type { SessionState } from '../types';
@@ -11,6 +11,7 @@ interface AuthContextValue {
   signUp: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
+  completeTutorial: () => Promise<void>;
   refreshOnboardingState: () => Promise<void>;
 }
 
@@ -91,6 +92,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const completeTutorial = async () => {
+    if (!session) {
+      return;
+    }
+
+    try {
+      await apiCompleteTutorial(session.token);
+      await persistSession({
+        ...session,
+        hasCompletedTutorial: true,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await persistSession(null);
+      }
+      throw error;
+    }
+  };
+
   const refreshOnboardingState = async () => {
     if (!session) {
       return;
@@ -101,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await persistSession({
         ...session,
         hasCompletedOnboarding: Boolean(payload.has_completed_onboarding),
+        hasCompletedTutorial: Boolean(payload.has_completed_tutorial),
       });
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -118,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       signOut,
       completeOnboarding,
+      completeTutorial,
       refreshOnboardingState,
     }),
     [session, isBootstrapping],

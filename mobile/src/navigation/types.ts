@@ -2,6 +2,7 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 
 export type MainTabParamList = {
   Home: undefined;
+  News: undefined;
   Search: undefined;
   Social: undefined;
   Messages: undefined;
@@ -11,6 +12,7 @@ export type MainTabParamList = {
 export type RootStackParamList = {
   Auth: undefined;
   Onboarding: undefined;
+  Tutorial: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   MovieDetails: { movieId: number; title?: string; source?: 'tinder' | 'default' };
   PlaylistDetails: { playlistId: number; name?: string };
