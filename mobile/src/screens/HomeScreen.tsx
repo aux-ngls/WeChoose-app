@@ -56,6 +56,7 @@ export default function HomeScreen() {
   const [selectedRating, setSelectedRating] = useState(0);
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
   const isFetchingRef = useRef(false);
+  const locallyExcludedMovieIdsRef = useRef<Set<number>>(new Set());
   const pan = useRef(new Animated.ValueXY()).current;
 
   const currentMovie = useMemo(() => movies[0] ?? null, [movies]);
@@ -66,6 +67,23 @@ export default function HomeScreen() {
     setSelectedRating(0);
   }, [currentMovie?.id, pan]);
 
+  const rememberExcludedMovieIds = useCallback((movieIds: number[]) => {
+    const excludedMovieIds = locallyExcludedMovieIdsRef.current;
+    movieIds.forEach((movieId) => excludedMovieIds.add(movieId));
+
+    while (excludedMovieIds.size > 120) {
+      const oldestMovieId = excludedMovieIds.values().next().value;
+      if (typeof oldestMovieId !== 'number') {
+        break;
+      }
+      excludedMovieIds.delete(oldestMovieId);
+    }
+  }, []);
+
+  const forgetExcludedMovieId = useCallback((movieId: number) => {
+    locallyExcludedMovieIdsRef.current.delete(movieId);
+  }, []);
+
   const loadFeed = useCallback(async (excludeIds: number[] = [], options?: { reset?: boolean }) => {
     if (!session || isFetchingRef.current) {
       return;
@@ -73,16 +91,18 @@ export default function HomeScreen() {
 
     isFetchingRef.current = true;
     try {
+      const effectiveExcludeIds = Array.from(new Set([...excludeIds, ...locallyExcludedMovieIdsRef.current]));
       const payload = await fetchMovieFeed(session.token, {
-        excludeIds,
-        limit: Math.max(TARGET_STACK_SIZE - excludeIds.length, 6),
+        excludeIds: effectiveExcludeIds,
+        limit: TARGET_STACK_SIZE + REFILL_THRESHOLD,
         mode: 'tinder',
       });
 
       setMovies((current) => {
         const base = options?.reset ? [] : current;
         const existingIds = new Set(base.map((movie) => movie.id));
-        const next = payload.filter((movie) => !existingIds.has(movie.id));
+        const excludedIds = new Set(effectiveExcludeIds);
+        const next = payload.filter((movie) => !existingIds.has(movie.id) && !excludedIds.has(movie.id));
         return [...base, ...next];
       });
       setError('');
@@ -120,6 +140,7 @@ export default function HomeScreen() {
     const subscription = DeviceEventEmitter.addListener(
       TINDER_MOVIE_ACTION_EVENT,
       (event: { type: 'rated' | 'watch-later'; movieId: number; rating?: number }) => {
+        rememberExcludedMovieIds([event.movieId]);
         setMovies((current) => {
           const activeMovie = current[0];
           if (!activeMovie || activeMovie.id !== event.movieId) {
@@ -140,7 +161,7 @@ export default function HomeScreen() {
     );
 
     return () => subscription.remove();
-  }, [refillIfNeeded]);
+  }, [refillIfNeeded, rememberExcludedMovieIds]);
 
   const consumeMovie = useCallback(() => {
     setMovies((current) => {
@@ -210,7 +231,16 @@ export default function HomeScreen() {
 
     setSubmitting(true);
     setError('');
-    animateCardOut(direction, () => consumeMovie());
+    rememberExcludedMovieIds([movie.id]);
+    let didConsumeMovie = false;
+    let shouldKeepMovie = false;
+    animateCardOut(direction, () => {
+      if (shouldKeepMovie) {
+        return;
+      }
+      didConsumeMovie = true;
+      consumeMovie();
+    });
 
     try {
       await persistSwipeAction(direction, movie);
@@ -223,12 +253,17 @@ export default function HomeScreen() {
         await signOut();
         return;
       }
-      restoreMovieToFront(movie);
+      forgetExcludedMovieId(movie.id);
+      if (didConsumeMovie) {
+        restoreMovieToFront(movie);
+      } else {
+        shouldKeepMovie = true;
+      }
       setError("Impossible d'enregistrer cette action.");
     } finally {
       setSubmitting(false);
     }
-  }, [animateCardOut, consumeMovie, persistSwipeAction, restoreMovieToFront, session, signOut, submitting]);
+  }, [animateCardOut, consumeMovie, forgetExcludedMovieId, persistSwipeAction, rememberExcludedMovieIds, restoreMovieToFront, session, signOut, submitting]);
 
   const handleRate = useCallback(async (rating: number, movie: SearchMovie) => {
     if (!session || submitting) {
@@ -238,8 +273,17 @@ export default function HomeScreen() {
     setSubmitting(true);
     setError('');
     setSelectedRating(rating);
-    setTimeout(() => {
-      animateCardOut(rating >= 4 ? 'right' : 'left', () => consumeMovie());
+    rememberExcludedMovieIds([movie.id]);
+    let didConsumeMovie = false;
+    let shouldKeepMovie = false;
+    const animationTimeout = setTimeout(() => {
+      animateCardOut(rating >= 4 ? 'right' : 'left', () => {
+        if (shouldKeepMovie) {
+          return;
+        }
+        didConsumeMovie = true;
+        consumeMovie();
+      });
     }, 140);
 
     try {
@@ -250,12 +294,19 @@ export default function HomeScreen() {
         await signOut();
         return;
       }
-      restoreMovieToFront(movie);
+      forgetExcludedMovieId(movie.id);
+      clearTimeout(animationTimeout);
+      if (didConsumeMovie) {
+        restoreMovieToFront(movie);
+      } else {
+        shouldKeepMovie = true;
+      }
+      setSelectedRating(0);
       setError("Impossible d'enregistrer cette note.");
     } finally {
       setSubmitting(false);
     }
-  }, [animateCardOut, consumeMovie, restoreMovieToFront, session, signOut, submitting]);
+  }, [animateCardOut, consumeMovie, forgetExcludedMovieId, rememberExcludedMovieIds, restoreMovieToFront, session, signOut, submitting]);
 
   const handleUndo = useCallback(async () => {
     if (!lastUndoableAction || !session || submitting) {
@@ -265,6 +316,7 @@ export default function HomeScreen() {
     setSubmitting(true);
     try {
       await undoSwipeAction(lastUndoableAction);
+      forgetExcludedMovieId(lastUndoableAction.movie.id);
       restoreMovieToFront(lastUndoableAction.movie);
       setLastUndoableAction(null);
       setError('');
@@ -277,7 +329,7 @@ export default function HomeScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [lastUndoableAction, restoreMovieToFront, session, signOut, submitting, undoSwipeAction]);
+  }, [forgetExcludedMovieId, lastUndoableAction, restoreMovieToFront, session, signOut, submitting, undoSwipeAction]);
 
   const panResponder = useMemo(
     () =>

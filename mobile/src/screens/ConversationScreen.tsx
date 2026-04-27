@@ -43,7 +43,9 @@ export default function ConversationScreen({
   const [keyboardLift, setKeyboardLift] = useState(0);
   const listRef = useRef<FlatList<DirectMessage>>(null);
   const shouldScrollToEndRef = useRef(true);
+  const isNearBottomRef = useRef(true);
   const hasLoadedConversationRef = useRef(false);
+  const messageCountRef = useRef(0);
 
   const loadConversation = useCallback(async () => {
     if (!session) {
@@ -52,10 +54,14 @@ export default function ConversationScreen({
 
     try {
       const payload = await fetchConversation(session.token, route.params.conversationId);
+      const hasNewMessages = payload.messages.length > messageCountRef.current;
       if (!hasLoadedConversationRef.current) {
         shouldScrollToEndRef.current = true;
         hasLoadedConversationRef.current = true;
+      } else if (hasNewMessages && isNearBottomRef.current) {
+        shouldScrollToEndRef.current = true;
       }
+      messageCountRef.current = payload.messages.length;
       setMessages(payload.messages);
       setParticipantUsername(payload.conversation.participant.username);
       setError('');
@@ -92,6 +98,8 @@ export default function ConversationScreen({
       setLoading(true);
       hasLoadedConversationRef.current = false;
       shouldScrollToEndRef.current = true;
+      isNearBottomRef.current = true;
+      messageCountRef.current = 0;
       void loadConversation();
       const interval = setInterval(() => {
         void loadConversation();
@@ -101,9 +109,10 @@ export default function ConversationScreen({
   );
 
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && shouldScrollToEndRef.current) {
       setTimeout(() => {
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
+        shouldScrollToEndRef.current = false;
       }, 80);
     }
   }, [messages.length]);
@@ -157,6 +166,10 @@ export default function ConversationScreen({
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          onScroll={(event) => {
+            isNearBottomRef.current = event.nativeEvent.contentOffset.y < 80;
+          }}
+          scrollEventThrottle={80}
           onContentSizeChange={() => {
             if (shouldScrollToEndRef.current) {
               listRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -164,8 +177,9 @@ export default function ConversationScreen({
             }
           }}
           onLayout={() => {
-            if (messages.length > 0) {
+            if (messages.length > 0 && shouldScrollToEndRef.current) {
               listRef.current?.scrollToOffset({ offset: 0, animated: false });
+              shouldScrollToEndRef.current = false;
             }
           }}
           renderItem={({ item }) => (

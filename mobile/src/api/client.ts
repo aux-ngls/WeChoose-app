@@ -18,6 +18,8 @@ import type {
   UserMovieRating,
 } from '../types';
 
+const REQUEST_TIMEOUT_MS = 18000;
+
 export class ApiError extends Error {
   status: number;
 
@@ -43,10 +45,24 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers,
+      signal: init?.signal ?? controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError('Le serveur met trop de temps a repondre.', 408);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const payload = await parseJson<unknown>(response);
 

@@ -93,6 +93,15 @@ export default function MovieDetailsScreen({
     }
 
     let active = true;
+    setLoading(true);
+    setActionLoading(false);
+    setMovie(null);
+    setUserRating(0);
+    setError('');
+    setFeedback('');
+    setShowPlaylistPicker(false);
+    setNewPlaylistName('');
+
     void (async () => {
       try {
         const [payload, ratingPayload] = await Promise.all([
