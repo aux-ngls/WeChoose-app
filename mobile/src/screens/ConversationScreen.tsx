@@ -25,7 +25,43 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type DirectMessage } from '../types';
-import { formatDate } from '../utils/format';
+
+type ConversationItem =
+  | { type: 'day'; id: string; label: string }
+  | { type: 'message'; id: string; message: DirectMessage };
+
+function getLocalDayKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function formatDayLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const dayKey = getLocalDayKey(value);
+
+  if (dayKey === getLocalDayKey(today.toISOString())) {
+    return "Aujourd'hui";
+  }
+  if (dayKey === getLocalDayKey(yesterday.toISOString())) {
+    return 'Hier';
+  }
+
+  return new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(date);
+}
 
 export default function ConversationScreen({
   navigation,
@@ -38,14 +74,15 @@ export default function ConversationScreen({
   const [participantUsername, setParticipantUsername] = useState(route.params.participantUsername ?? 'Conversation');
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  const [sendingMessageIds, setSendingMessageIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [keyboardLift, setKeyboardLift] = useState(0);
-  const listRef = useRef<FlatList<DirectMessage>>(null);
+  const listRef = useRef<FlatList<ConversationItem>>(null);
   const shouldScrollToEndRef = useRef(true);
   const isNearBottomRef = useRef(true);
   const hasLoadedConversationRef = useRef(false);
   const messageCountRef = useRef(0);
+  const optimisticMessageIdRef = useRef(-1);
 
   const loadConversation = useCallback(async () => {
     if (!session) {
@@ -62,7 +99,10 @@ export default function ConversationScreen({
         shouldScrollToEndRef.current = true;
       }
       messageCountRef.current = payload.messages.length;
-      setMessages(payload.messages);
+      setMessages((current) => {
+        const pendingMessages = current.filter((message) => message.id < 0);
+        return [...payload.messages, ...pendingMessages];
+      });
       setParticipantUsername(payload.conversation.participant.username);
       setError('');
     } catch (fetchError) {
@@ -82,7 +122,7 @@ export default function ConversationScreen({
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
       setKeyboardLift(Math.max(0, event.endCoordinates.height - insets.bottom + 12));
       requestAnimationFrame(() => {
-        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        listRef.current?.scrollToEnd({ animated: true });
       });
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardLift(0));
@@ -111,14 +151,37 @@ export default function ConversationScreen({
   useEffect(() => {
     if (messages.length > 0 && shouldScrollToEndRef.current) {
       setTimeout(() => {
-        listRef.current?.scrollToOffset({ offset: 0, animated: false });
+        listRef.current?.scrollToEnd({ animated: false });
         shouldScrollToEndRef.current = false;
       }, 80);
     }
   }, [messages.length]);
 
-  const displayedMessages = useMemo(() => [...messages].reverse(), [messages]);
-  const canSend = useMemo(() => draft.trim().length > 0 && !sending, [draft, sending]);
+  const conversationItems = useMemo<ConversationItem[]>(() => {
+    const items: ConversationItem[] = [];
+    let currentDayKey = '';
+
+    messages.forEach((message) => {
+      const dayKey = getLocalDayKey(message.created_at);
+      if (dayKey !== currentDayKey) {
+        currentDayKey = dayKey;
+        items.push({
+          type: 'day',
+          id: `day-${dayKey}`,
+          label: formatDayLabel(message.created_at),
+        });
+      }
+      items.push({
+        type: 'message',
+        id: `message-${message.id}`,
+        message,
+      });
+    });
+
+    return items;
+  }, [messages]);
+
+  const canSend = useMemo(() => draft.trim().length > 0, [draft]);
 
   const handleSend = async () => {
     const content = draft.trim();
@@ -126,20 +189,41 @@ export default function ConversationScreen({
       return;
     }
 
-    setSending(true);
+    const optimisticId = optimisticMessageIdRef.current;
+    optimisticMessageIdRef.current -= 1;
+    const optimisticMessage: DirectMessage = {
+      id: optimisticId,
+      content,
+      created_at: new Date().toISOString(),
+      is_mine: true,
+      sender: {
+        id: 0,
+        username: session.username,
+      },
+      movie: null,
+    };
+
+    setDraft('');
+    setSendingMessageIds((current) => [...current, optimisticId]);
+    shouldScrollToEndRef.current = true;
+    isNearBottomRef.current = true;
+    setMessages((current) => [...current, optimisticMessage]);
+
     try {
       await sendMessage(session.token, route.params.conversationId, { content });
-      setDraft('');
+      setMessages((current) => current.filter((message) => message.id !== optimisticId));
       shouldScrollToEndRef.current = true;
       await loadConversation();
     } catch (sendError) {
+      setMessages((current) => current.filter((message) => message.id !== optimisticId));
       if (sendError instanceof ApiError && sendError.status === 401) {
         await signOut();
         return;
       }
+      setDraft((current) => (current.trim().length > 0 ? current : content));
       setError('Impossible d envoyer le message.');
     } finally {
-      setSending(false);
+      setSendingMessageIds((current) => current.filter((id) => id !== optimisticId));
     }
   };
 
@@ -150,71 +234,97 @@ export default function ConversationScreen({
           <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
           </Pressable>
-          <View style={styles.headerBody}>
+          <Pressable
+            style={styles.headerBody}
+            onPress={() => {
+              if (participantUsername !== 'Conversation') {
+                navigation.navigate('UserProfile', { username: participantUsername });
+              }
+            }}
+          >
             <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>@{participantUsername}</Text>
             <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Discussion privee</Text>
-          </View>
+          </Pressable>
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <FlatList
           ref={listRef}
-          data={displayedMessages}
-          inverted
+          data={conversationItems}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onScroll={(event) => {
-            isNearBottomRef.current = event.nativeEvent.contentOffset.y < 80;
+            const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+            isNearBottomRef.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 90;
           }}
           scrollEventThrottle={80}
           onContentSizeChange={() => {
             if (shouldScrollToEndRef.current) {
-              listRef.current?.scrollToOffset({ offset: 0, animated: false });
+              listRef.current?.scrollToEnd({ animated: false });
               shouldScrollToEndRef.current = false;
             }
           }}
           onLayout={() => {
             if (messages.length > 0 && shouldScrollToEndRef.current) {
-              listRef.current?.scrollToOffset({ offset: 0, animated: false });
+              listRef.current?.scrollToEnd({ animated: false });
               shouldScrollToEndRef.current = false;
             }
           }}
-          renderItem={({ item }) => (
-            <View style={[styles.messageRow, item.is_mine ? styles.messageRowMine : styles.messageRowOther]}>
-              {item.movie ? (
-                <Pressable
-                  style={[
-                    styles.sharedMovieCard,
-                    item.is_mine
-                      ? [styles.sharedMovieCardMine, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]
-                      : [styles.sharedMovieCardOther, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }],
-                  ]}
-                  onPress={() => navigation.navigate('MovieDetails', { movieId: item.movie!.id, title: item.movie!.title })}
-                >
-                  <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
-                  <View style={styles.sharedMovieBody}>
-                    <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partage</Text>
-                    <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{item.movie.title}</Text>
-                    {item.movie.rating > 0 ? (
-                      <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{item.movie.rating.toFixed(1)} / 10</Text>
-                    ) : null}
+          renderItem={({ item }) => {
+            if (item.type === 'day') {
+              return (
+                <View style={styles.daySeparatorWrap}>
+                  <View style={[styles.daySeparator, { backgroundColor: theme.rgba.cardStrong }]}>
+                    <Text style={[styles.daySeparatorLabel, { color: theme.colors.textMuted }]}>{item.label}</Text>
                   </View>
-                  <View style={styles.sharedMovieChevron}>
-                    <Ionicons name="chevron-forward" size={16} color={theme.colors.text} />
-                  </View>
-                </Pressable>
-              ) : null}
-              {item.content ? (
-                <View style={[styles.bubble, item.is_mine ? [styles.bubbleMine, { backgroundColor: theme.colors.accent }] : [styles.bubbleOther, { backgroundColor: theme.rgba.cardStrong }]]}>
-                  <Text style={[styles.messageText, item.is_mine ? [styles.messageTextMine, { color: theme.colors.accentText }] : [styles.messageTextOther, { color: theme.colors.text }]]}>{item.content}</Text>
                 </View>
-              ) : null}
-              <Text style={[styles.messageMeta, { color: theme.colors.textMuted }, item.is_mine && styles.messageMetaMine]}>{formatDate(item.created_at)}</Text>
-            </View>
-          )}
+              );
+            }
+
+            const message = item.message;
+            const isSending = sendingMessageIds.includes(message.id);
+            return (
+              <View style={[styles.messageRow, message.is_mine ? styles.messageRowMine : styles.messageRowOther]}>
+                {message.movie ? (
+                  <Pressable
+                    style={[
+                      styles.sharedMovieCard,
+                      message.is_mine
+                        ? [styles.sharedMovieCardMine, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]
+                        : [styles.sharedMovieCardOther, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }],
+                    ]}
+                    onPress={() => navigation.navigate('MovieDetails', { movieId: message.movie!.id, title: message.movie!.title })}
+                  >
+                    <Image source={{ uri: message.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
+                    <View style={styles.sharedMovieBody}>
+                      <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partage</Text>
+                      <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{message.movie.title}</Text>
+                      {message.movie.rating > 0 ? (
+                        <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{message.movie.rating.toFixed(1)} / 10</Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.sharedMovieChevron}>
+                      <Ionicons name="chevron-forward" size={16} color={theme.colors.text} />
+                    </View>
+                  </Pressable>
+                ) : null}
+                {message.content ? (
+                  <View
+                    style={[
+                      styles.bubble,
+                      message.is_mine ? [styles.bubbleMine, { backgroundColor: theme.colors.accent }] : [styles.bubbleOther, { backgroundColor: theme.rgba.cardStrong }],
+                      isSending && styles.bubbleSending,
+                    ]}
+                  >
+                    <Text style={[styles.messageText, message.is_mine ? [styles.messageTextMine, { color: theme.colors.accentText }] : [styles.messageTextOther, { color: theme.colors.text }]]}>{message.content}</Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          }}
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyState}>
@@ -280,6 +390,21 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     paddingBottom: 18,
+    justifyContent: 'flex-end',
+  },
+  daySeparatorWrap: {
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  daySeparator: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  daySeparatorLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'capitalize',
   },
   messageRow: {
     gap: 6,
@@ -303,6 +428,9 @@ const styles = StyleSheet.create({
   bubbleOther: {
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderBottomLeftRadius: 8,
+  },
+  bubbleSending: {
+    opacity: 0.62,
   },
   sharedMovieCard: {
     width: 248,
@@ -372,14 +500,6 @@ const styles = StyleSheet.create({
   },
   messageTextOther: {
     color: '#f8fafc',
-  },
-  messageMeta: {
-    color: '#94a3b8',
-    fontSize: 11,
-    paddingHorizontal: 4,
-  },
-  messageMetaMine: {
-    textAlign: 'right',
   },
   composerRow: {
     flexDirection: 'row',

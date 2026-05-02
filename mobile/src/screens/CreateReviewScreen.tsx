@@ -38,7 +38,7 @@ export default function CreateReviewScreen({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchMovie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<SearchMovie | null>(initialMovie);
-  const [reviewRating, setReviewRating] = useState(4);
+  const [reviewRating, setReviewRating] = useState(0);
   const [reviewContent, setReviewContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -79,8 +79,8 @@ export default function CreateReviewScreen({
   }, [query, session, signOut]);
 
   const canPublish = useMemo(
-    () => Boolean(selectedMovie) && reviewContent.trim().length >= 10 && !publishing,
-    [publishing, reviewContent, selectedMovie],
+    () => Boolean(selectedMovie) && reviewRating > 0 && reviewContent.trim().length >= 10 && !publishing,
+    [publishing, reviewContent, reviewRating, selectedMovie],
   );
 
   const selectMovie = (movie: SearchMovie) => {
@@ -102,6 +102,10 @@ export default function CreateReviewScreen({
     }
     if (trimmedContent.length < 10) {
       setError('Ta critique doit contenir au moins 10 caracteres.');
+      return;
+    }
+    if (reviewRating <= 0) {
+      setError('Ajoute une note avant de publier ta critique.');
       return;
     }
 
@@ -221,8 +225,7 @@ export default function CreateReviewScreen({
         <StarRatingInput
           value={reviewRating}
           onChange={setReviewRating}
-          size={34}
-          allowHalf={false}
+          size={30}
         />
       </View>
 

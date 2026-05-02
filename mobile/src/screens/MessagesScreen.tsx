@@ -210,9 +210,15 @@ export default function MessagesScreen() {
               <View style={styles.cardsList}>
                 {unreadConversations.map((conversation) => (
                   <Pressable key={conversation.id} style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => openConversation(conversation)}>
-                    <View style={[styles.avatar, { backgroundColor: theme.colors.accentSoft }]}>
+                    <Pressable
+                      style={[styles.avatar, { backgroundColor: theme.colors.accentSoft }]}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        navigation.navigate('UserProfile', { username: conversation.participant.username });
+                      }}
+                    >
                       <Text style={[styles.avatarLabel, { color: theme.colors.accent }]}>{conversation.participant.username.slice(0, 2).toUpperCase()}</Text>
-                    </View>
+                    </Pressable>
                     <View style={{ flex: 1 }}>
                       <View style={styles.rowBetween}>
                         <Text style={[styles.username, { color: theme.colors.text }]}>@{conversation.participant.username}</Text>
@@ -237,9 +243,15 @@ export default function MessagesScreen() {
               <View style={styles.cardsList}>
                 {recentConversations.map((conversation) => (
                   <Pressable key={conversation.id} style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => openConversation(conversation)}>
-                    <View style={[styles.avatar, { backgroundColor: theme.colors.accentSoft }]}>
+                    <Pressable
+                      style={[styles.avatar, { backgroundColor: theme.colors.accentSoft }]}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        navigation.navigate('UserProfile', { username: conversation.participant.username });
+                      }}
+                    >
                       <Text style={[styles.avatarLabel, { color: theme.colors.accent }]}>{conversation.participant.username.slice(0, 2).toUpperCase()}</Text>
-                    </View>
+                    </Pressable>
                     <View style={{ flex: 1 }}>
                       <View style={styles.rowBetween}>
                         <Text style={[styles.username, { color: theme.colors.text }]}>@{conversation.participant.username}</Text>

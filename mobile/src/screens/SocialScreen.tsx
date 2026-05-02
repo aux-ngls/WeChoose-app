@@ -271,7 +271,14 @@ export default function SocialScreen() {
               <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               <View style={styles.reviewBody}>
                 <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{item.title}</Text>
-                <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{item.author.username} · {formatDate(item.created_at)}</Text>
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    navigation.navigate('UserProfile', { username: item.author.username });
+                  }}
+                >
+                  <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{item.author.username} · {formatDate(item.created_at)}</Text>
+                </Pressable>
                 <View style={styles.inlinePills}>
                   <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                     <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.rating.toFixed(1)} / 5</Text>
@@ -313,7 +320,14 @@ export default function SocialScreen() {
                       ) : (commentsByReview[item.id] ?? []).length > 0 ? (
                         (commentsByReview[item.id] ?? []).map((comment) => (
                           <View key={comment.id} style={[styles.commentRow, { backgroundColor: theme.rgba.cardStrong }]}>
-                            <Text style={[styles.commentAuthor, { color: theme.colors.accent }]}>@{comment.author.username}</Text>
+                            <Pressable
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                navigation.navigate('UserProfile', { username: comment.author.username });
+                              }}
+                            >
+                              <Text style={[styles.commentAuthor, { color: theme.colors.accent }]}>@{comment.author.username}</Text>
+                            </Pressable>
                             <Text style={[styles.commentText, { color: theme.colors.textSoft }]}>{comment.content}</Text>
                           </View>
                         ))
