@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -83,6 +84,25 @@ export default function ConversationScreen({
   const hasLoadedConversationRef = useRef(false);
   const messageCountRef = useRef(0);
   const optimisticMessageIdRef = useRef(-1);
+  const scrollTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearScheduledScrolls = useCallback(() => {
+    scrollTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    scrollTimeoutsRef.current = [];
+  }, []);
+
+  const scrollToLatestMessage = useCallback((animated = false) => {
+    listRef.current?.scrollToEnd({ animated });
+  }, []);
+
+  const scheduleScrollToLatestMessage = useCallback((animated = false) => {
+    clearScheduledScrolls();
+    requestAnimationFrame(() => scrollToLatestMessage(animated));
+    InteractionManager.runAfterInteractions(() => scrollToLatestMessage(animated));
+    scrollTimeoutsRef.current = [80, 180, 360, 700].map((delay) =>
+      setTimeout(() => scrollToLatestMessage(animated), delay),
+    );
+  }, [clearScheduledScrolls, scrollToLatestMessage]);
 
   const loadConversation = useCallback(async () => {
     if (!session) {
@@ -121,9 +141,7 @@ export default function ConversationScreen({
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
       setKeyboardLift(Math.max(0, event.endCoordinates.height - insets.bottom + 12));
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToEnd({ animated: true });
-      });
+      scheduleScrollToLatestMessage(true);
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardLift(0));
 
@@ -144,18 +162,19 @@ export default function ConversationScreen({
       const interval = setInterval(() => {
         void loadConversation();
       }, 5000);
-      return () => clearInterval(interval);
-    }, [loadConversation]),
+      return () => {
+        clearInterval(interval);
+        clearScheduledScrolls();
+      };
+    }, [clearScheduledScrolls, loadConversation]),
   );
 
   useEffect(() => {
     if (messages.length > 0 && shouldScrollToEndRef.current) {
-      setTimeout(() => {
-        listRef.current?.scrollToEnd({ animated: false });
-        shouldScrollToEndRef.current = false;
-      }, 80);
+      scheduleScrollToLatestMessage(false);
+      shouldScrollToEndRef.current = false;
     }
-  }, [messages.length]);
+  }, [messages.length, scheduleScrollToLatestMessage]);
 
   const conversationItems = useMemo<ConversationItem[]>(() => {
     const items: ConversationItem[] = [];
@@ -263,13 +282,13 @@ export default function ConversationScreen({
           scrollEventThrottle={80}
           onContentSizeChange={() => {
             if (shouldScrollToEndRef.current) {
-              listRef.current?.scrollToEnd({ animated: false });
+              scheduleScrollToLatestMessage(false);
               shouldScrollToEndRef.current = false;
             }
           }}
           onLayout={() => {
             if (messages.length > 0 && shouldScrollToEndRef.current) {
-              listRef.current?.scrollToEnd({ animated: false });
+              scheduleScrollToLatestMessage(false);
               shouldScrollToEndRef.current = false;
             }
           }}
