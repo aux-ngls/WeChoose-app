@@ -29,7 +29,11 @@ import { FALLBACK_POSTER, type DirectMessage } from '../types';
 
 type ConversationItem =
   | { type: 'day'; id: string; label: string }
-  | { type: 'message'; id: string; message: DirectMessage };
+  | { type: 'message'; id: string; message: LocalDirectMessage };
+
+type LocalDirectMessage = DirectMessage & {
+  local_client_id?: number;
+};
 
 function getLocalDayKey(value: string): string {
   const date = new Date(value);
@@ -64,6 +68,53 @@ function formatDayLabel(value: string): string {
   }).format(date);
 }
 
+function findConfirmedServerMessageIndex(pendingMessage: LocalDirectMessage, serverMessages: LocalDirectMessage[]) {
+  const pendingCreatedAt = new Date(pendingMessage.created_at).getTime();
+
+  return serverMessages.findIndex((serverMessage) => {
+    if (!serverMessage.is_mine || serverMessage.content !== pendingMessage.content) {
+      return false;
+    }
+    if (serverMessage.movie || pendingMessage.movie) {
+      return serverMessage.movie?.id === pendingMessage.movie?.id;
+    }
+
+    const serverCreatedAt = new Date(serverMessage.created_at).getTime();
+    if (Number.isNaN(pendingCreatedAt) || Number.isNaN(serverCreatedAt)) {
+      return true;
+    }
+
+    return Math.abs(serverCreatedAt - pendingCreatedAt) < 120000;
+  });
+}
+
+function mergeServerMessages(currentMessages: LocalDirectMessage[], serverMessages: DirectMessage[]) {
+  const currentByServerId = new Map(
+    currentMessages
+      .filter((message) => message.id > 0)
+      .map((message) => [message.id, message]),
+  );
+  const mergedServerMessages: LocalDirectMessage[] = serverMessages.map((serverMessage) => {
+    const existingMessage = currentByServerId.get(serverMessage.id);
+    return existingMessage?.local_client_id
+      ? { ...serverMessage, local_client_id: existingMessage.local_client_id }
+      : serverMessage;
+  });
+  const unmatchedServerMessages = [...mergedServerMessages];
+  const pendingMessages = currentMessages.filter((message) => message.id < 0);
+  const stillPendingMessages = pendingMessages.filter((pendingMessage) => {
+    const confirmedIndex = findConfirmedServerMessageIndex(pendingMessage, unmatchedServerMessages);
+    if (confirmedIndex >= 0) {
+      unmatchedServerMessages[confirmedIndex].local_client_id = pendingMessage.local_client_id;
+      unmatchedServerMessages.splice(confirmedIndex, 1);
+      return false;
+    }
+    return true;
+  });
+
+  return [...mergedServerMessages, ...stillPendingMessages];
+}
+
 export default function ConversationScreen({
   navigation,
   route,
@@ -71,7 +122,7 @@ export default function ConversationScreen({
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [messages, setMessages] = useState<LocalDirectMessage[]>([]);
   const [participantUsername, setParticipantUsername] = useState(route.params.participantUsername ?? 'Conversation');
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
@@ -119,10 +170,7 @@ export default function ConversationScreen({
         shouldScrollToEndRef.current = true;
       }
       messageCountRef.current = payload.messages.length;
-      setMessages((current) => {
-        const pendingMessages = current.filter((message) => message.id < 0);
-        return [...payload.messages, ...pendingMessages];
-      });
+      setMessages((current) => mergeServerMessages(current, payload.messages));
       setParticipantUsername(payload.conversation.participant.username);
       setError('');
     } catch (fetchError) {
@@ -192,7 +240,7 @@ export default function ConversationScreen({
       }
       items.push({
         type: 'message',
-        id: `message-${message.id}`,
+        id: `message-${message.local_client_id ?? message.id}`,
         message,
       });
     });
@@ -210,8 +258,9 @@ export default function ConversationScreen({
 
     const optimisticId = optimisticMessageIdRef.current;
     optimisticMessageIdRef.current -= 1;
-    const optimisticMessage: DirectMessage = {
+    const optimisticMessage: LocalDirectMessage = {
       id: optimisticId,
+      local_client_id: optimisticId,
       content,
       created_at: new Date().toISOString(),
       is_mine: true,
@@ -229,10 +278,16 @@ export default function ConversationScreen({
     setMessages((current) => [...current, optimisticMessage]);
 
     try {
-      await sendMessage(session.token, route.params.conversationId, { content });
-      setMessages((current) => current.filter((message) => message.id !== optimisticId));
+      const createdMessage = await sendMessage(session.token, route.params.conversationId, { content });
+      const confirmedMessage: LocalDirectMessage = {
+        ...createdMessage,
+        local_client_id: optimisticId,
+      };
+      setMessages((current) =>
+        current.map((message) => (message.id === optimisticId ? confirmedMessage : message)),
+      );
       shouldScrollToEndRef.current = true;
-      await loadConversation();
+      setError('');
     } catch (sendError) {
       setMessages((current) => current.filter((message) => message.id !== optimisticId));
       if (sendError instanceof ApiError && sendError.status === 401) {

@@ -3,6 +3,7 @@ import type {
   AuthPayload,
   DirectConversationDetails,
   DirectConversationSummary,
+  DirectMessage,
   MovieDetails,
   OnboardingPreferencesResponse,
   PlaylistSummary,
@@ -276,8 +277,8 @@ export async function sendMessage(
     movie_poster_url?: string;
     movie_rating?: number;
   },
-): Promise<void> {
-  await request<null>(
+): Promise<DirectMessage> {
+  return request<DirectMessage>(
     `/messages/conversations/${conversationId}/messages`,
     {
       method: 'POST',
