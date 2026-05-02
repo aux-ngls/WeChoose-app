@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
-  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -135,25 +134,12 @@ export default function ConversationScreen({
   const hasLoadedConversationRef = useRef(false);
   const messageCountRef = useRef(0);
   const optimisticMessageIdRef = useRef(-1);
-  const scrollTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const clearScheduledScrolls = useCallback(() => {
-    scrollTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
-    scrollTimeoutsRef.current = [];
-  }, []);
 
   const scrollToLatestMessage = useCallback((animated = false) => {
-    listRef.current?.scrollToEnd({ animated });
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated });
+    });
   }, []);
-
-  const scheduleScrollToLatestMessage = useCallback((animated = false) => {
-    clearScheduledScrolls();
-    requestAnimationFrame(() => scrollToLatestMessage(animated));
-    InteractionManager.runAfterInteractions(() => scrollToLatestMessage(animated));
-    scrollTimeoutsRef.current = [80, 180, 360, 700].map((delay) =>
-      setTimeout(() => scrollToLatestMessage(animated), delay),
-    );
-  }, [clearScheduledScrolls, scrollToLatestMessage]);
 
   const loadConversation = useCallback(async () => {
     if (!session) {
@@ -189,7 +175,7 @@ export default function ConversationScreen({
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
       setKeyboardLift(Math.max(0, event.endCoordinates.height - insets.bottom + 12));
-      scheduleScrollToLatestMessage(true);
+      scrollToLatestMessage(true);
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardLift(0));
 
@@ -210,19 +196,16 @@ export default function ConversationScreen({
       const interval = setInterval(() => {
         void loadConversation();
       }, 5000);
-      return () => {
-        clearInterval(interval);
-        clearScheduledScrolls();
-      };
-    }, [clearScheduledScrolls, loadConversation]),
+      return () => clearInterval(interval);
+    }, [loadConversation]),
   );
 
   useEffect(() => {
     if (messages.length > 0 && shouldScrollToEndRef.current) {
-      scheduleScrollToLatestMessage(false);
+      scrollToLatestMessage(false);
       shouldScrollToEndRef.current = false;
     }
-  }, [messages.length, scheduleScrollToLatestMessage]);
+  }, [messages.length, scrollToLatestMessage]);
 
   const conversationItems = useMemo<ConversationItem[]>(() => {
     const items: ConversationItem[] = [];
@@ -247,6 +230,11 @@ export default function ConversationScreen({
 
     return items;
   }, [messages]);
+
+  const displayedConversationItems = useMemo(
+    () => [...conversationItems].reverse(),
+    [conversationItems],
+  );
 
   const canSend = useMemo(() => draft.trim().length > 0, [draft]);
 
@@ -325,25 +313,25 @@ export default function ConversationScreen({
 
         <FlatList
           ref={listRef}
-          data={conversationItems}
+          data={displayedConversationItems}
+          inverted
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onScroll={(event) => {
-            const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-            isNearBottomRef.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 90;
+            isNearBottomRef.current = event.nativeEvent.contentOffset.y < 90;
           }}
           scrollEventThrottle={80}
           onContentSizeChange={() => {
             if (shouldScrollToEndRef.current) {
-              scheduleScrollToLatestMessage(false);
+              scrollToLatestMessage(false);
               shouldScrollToEndRef.current = false;
             }
           }}
           onLayout={() => {
             if (messages.length > 0 && shouldScrollToEndRef.current) {
-              scheduleScrollToLatestMessage(false);
+              scrollToLatestMessage(false);
               shouldScrollToEndRef.current = false;
             }
           }}
