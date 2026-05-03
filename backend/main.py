@@ -1408,6 +1408,14 @@ def parse_exclude_ids(raw_exclude_ids: Optional[str]) -> set[int]:
     return parsed_ids
 
 
+def is_test_ai_experiment_user(cursor, user_id: int) -> bool:
+    cursor.execute("SELECT username FROM users WHERE id = ?", (int(user_id),))
+    row = cursor.fetchone()
+    if not row:
+        return False
+    return normalize_username(str(row[0])).lower() == "test"
+
+
 @lru_cache(maxsize=256)
 def get_tmdb_related_movie_ids(movie_id: int) -> tuple[int, ...]:
     related_ids: list[int] = []
@@ -2795,6 +2803,7 @@ def compute_recommendation_feed(
         (watch_later_id,),
     )
     recent_watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
+    is_test_ai_experiment = is_test_ai_experiment_user(cursor, current_user_id)
 
     collaborative_scores = build_collaborative_candidate_scores(
         cursor,
@@ -2810,7 +2819,8 @@ def compute_recommendation_feed(
     seen_ids = rated_ids | watch_later_ids | onboarding_movie_id_set
     blocked_ids = seen_ids | request_exclude_ids
     interaction_count = len(seen_ids)
-    cold_start_mode = interaction_count < 6
+    real_interaction_count = len(rated_ids | watch_later_ids)
+    cold_start_mode = real_interaction_count < 8 if is_test_ai_experiment else interaction_count < 6
     onboarding_genre_tokens = {
         normalize_genre_token(value)
         for value in preferences["favorite_genres"]
@@ -2826,6 +2836,15 @@ def compute_recommendation_feed(
     for index, (movie_id, rating) in enumerate(rating_rows):
         recency_multiplier = max(0.42, 1.52 - (index * 0.10))
         signal_weight = get_rating_signal_weight(rating) * recency_multiplier
+        if is_test_ai_experiment:
+            if rating >= 4.5:
+                signal_weight *= 1.22
+            elif rating >= 4.0:
+                signal_weight *= 1.12
+            elif rating <= 2.0:
+                signal_weight *= 1.22
+            elif rating <= 2.5:
+                signal_weight *= 1.12
         if index < 3:
             signal_weight *= 1.46 if is_tinder_mode else 1.34
         elif index < 6:
@@ -2853,8 +2872,12 @@ def compute_recommendation_feed(
             watch_weight,
         )
 
-    onboarding_movie_weight = 1.65 if cold_start_mode else (0.42 if is_tinder_mode else 0.62)
-    people_seed_weight = 1.05 if cold_start_mode else (0.18 if is_tinder_mode else 0.42)
+    if is_test_ai_experiment:
+        onboarding_movie_weight = 2.25 if cold_start_mode else (0.78 if is_tinder_mode else 0.88)
+        people_seed_weight = 1.42 if cold_start_mode else (0.36 if is_tinder_mode else 0.62)
+    else:
+        onboarding_movie_weight = 1.65 if cold_start_mode else (0.42 if is_tinder_mode else 0.62)
+        people_seed_weight = 1.05 if cold_start_mode else (0.18 if is_tinder_mode else 0.42)
     for movie_id in onboarding_movie_ids:
         positive_signal_weights[movie_id] = max(
             positive_signal_weights.get(movie_id, 0.0),
@@ -2895,8 +2918,10 @@ def compute_recommendation_feed(
         for token in row["genre_tokens"]:
             genre_profile.add(token)
             genre_affinity_map[token] += float(weight) * 1.15
-        for token in row["keyword_tokens"][:10]:
-            keyword_affinity_map[token] += float(weight) * 0.85
+        keyword_limit = 16 if is_test_ai_experiment else 10
+        keyword_weight = 1.10 if is_test_ai_experiment else 0.85
+        for token in row["keyword_tokens"][:keyword_limit]:
+            keyword_affinity_map[token] += float(weight) * keyword_weight
 
     for movie_id, weight in negative_signal_weights.items():
         movie_index = movie_index_by_id.get(int(movie_id))
@@ -2907,10 +2932,15 @@ def compute_recommendation_feed(
         negative_vector_weights.append(abs(float(weight)))
         for token in row["genre_tokens"]:
             genre_affinity_map[token] += float(weight) * 0.95
-        for token in row["keyword_tokens"][:10]:
-            keyword_affinity_map[token] += float(weight) * 0.75
+        keyword_limit = 14 if is_test_ai_experiment else 10
+        keyword_weight = 0.92 if is_test_ai_experiment else 0.75
+        for token in row["keyword_tokens"][:keyword_limit]:
+            keyword_affinity_map[token] += float(weight) * keyword_weight
 
-    onboarding_bias = 0.95 if cold_start_mode else 0.60
+    if is_test_ai_experiment:
+        onboarding_bias = 1.35 if cold_start_mode else 0.82
+    else:
+        onboarding_bias = 0.95 if cold_start_mode else 0.60
     for token in onboarding_genre_tokens:
         genre_affinity_map[token] += onboarding_bias
 
@@ -2920,15 +2950,16 @@ def compute_recommendation_feed(
     if vectors is not None and positive_indices:
         try:
             positive_sim_matrix = cosine_similarity(vectors, vectors[positive_indices])
+            positive_max_share = 0.35 if is_test_ai_experiment else 0.45
             positive_similarity_scores = (
-                (np.max(positive_sim_matrix, axis=1) * 0.45)
+                (np.max(positive_sim_matrix, axis=1) * positive_max_share)
                 + (
                     np.average(
                         positive_sim_matrix,
                         axis=1,
                         weights=np.array(positive_vector_weights),
                     )
-                    * 0.55
+                    * (1.0 - positive_max_share)
                 )
             )
         except Exception as e:
@@ -2937,15 +2968,16 @@ def compute_recommendation_feed(
     if vectors is not None and negative_indices:
         try:
             negative_sim_matrix = cosine_similarity(vectors, vectors[negative_indices])
+            negative_max_share = 0.58 if is_test_ai_experiment else 0.45
             negative_similarity_scores = (
-                (np.max(negative_sim_matrix, axis=1) * 0.45)
+                (np.max(negative_sim_matrix, axis=1) * negative_max_share)
                 + (
                     np.average(
                         negative_sim_matrix,
                         axis=1,
                         weights=np.array(negative_vector_weights),
                     )
-                    * 0.55
+                    * (1.0 - negative_max_share)
                 )
             )
         except Exception as e:
@@ -2983,15 +3015,26 @@ def compute_recommendation_feed(
         ]
     )
 
-    positive_similarity_weight = 0.46 if is_tinder_mode else 0.34
-    negative_similarity_weight = 0.35 if is_tinder_mode else 0.22
-    genre_affinity_weight = 0.17 if is_tinder_mode else 0.15
-    keyword_affinity_weight = 0.18 if is_tinder_mode else 0.16
-    audience_rating_weight = 0.26 if is_tinder_mode else 0.08
-    audience_boost_weight = 0.34 if is_tinder_mode else 0.06
-    audience_penalty_weight = 0.20 if is_tinder_mode else 0.03
-    quality_weight = 0.03 if is_tinder_mode else 0.09
-    social_weight = 0.0 if is_tinder_mode else (0.02 if interaction_count >= 8 else 0.04)
+    if is_test_ai_experiment:
+        positive_similarity_weight = 0.56 if is_tinder_mode else 0.42
+        negative_similarity_weight = 0.44 if is_tinder_mode else 0.30
+        genre_affinity_weight = 0.14 if is_tinder_mode else 0.14
+        keyword_affinity_weight = 0.26 if is_tinder_mode else 0.20
+        audience_rating_weight = 0.35 if is_tinder_mode else 0.13
+        audience_boost_weight = 0.48 if is_tinder_mode else 0.12
+        audience_penalty_weight = 0.34 if is_tinder_mode else 0.10
+        quality_weight = 0.08 if is_tinder_mode else 0.11
+        social_weight = 0.0 if is_tinder_mode else 0.01
+    else:
+        positive_similarity_weight = 0.46 if is_tinder_mode else 0.34
+        negative_similarity_weight = 0.35 if is_tinder_mode else 0.22
+        genre_affinity_weight = 0.17 if is_tinder_mode else 0.15
+        keyword_affinity_weight = 0.18 if is_tinder_mode else 0.16
+        audience_rating_weight = 0.26 if is_tinder_mode else 0.08
+        audience_boost_weight = 0.34 if is_tinder_mode else 0.06
+        audience_penalty_weight = 0.20 if is_tinder_mode else 0.03
+        quality_weight = 0.03 if is_tinder_mode else 0.09
+        social_weight = 0.0 if is_tinder_mode else (0.02 if interaction_count >= 8 else 0.04)
 
     hybrid_scores = (
         (positive_similarity_scores * positive_similarity_weight)
@@ -3005,6 +3048,34 @@ def compute_recommendation_feed(
         + (social_scores * social_weight)
     )
 
+    if is_test_ai_experiment:
+        vote_average_values = movies_df["vote_average"].to_numpy(dtype=float)
+        vote_count_values = movies_df["vote_count"].to_numpy(dtype=float)
+        vote_confidence_scores = np.clip(
+            np.log1p(vote_count_values) / np.log1p(max(float(vote_count_values.max()), 1.0)),
+            0.0,
+            1.0,
+        )
+        public_excellence_scores = (
+            np.clip((vote_average_values - 6.8) / 1.25, 0.0, 1.0)
+            * vote_confidence_scores
+        )
+        public_weakness_scores = (
+            np.clip((6.15 - vote_average_values) / 1.05, 0.0, 1.0)
+            * (0.55 + (vote_confidence_scores * 0.45))
+        )
+        hybrid_scores = hybrid_scores + (
+            public_excellence_scores * (0.24 if is_tinder_mode else 0.12)
+        ) - (
+            public_weakness_scores * (0.36 if is_tinder_mode else 0.16)
+        )
+        if positive_signal_ids:
+            hybrid_scores = hybrid_scores + (
+                positive_similarity_scores
+                * audience_rating_scores
+                * (0.12 if is_tinder_mode else 0.06)
+            )
+
     if cold_start_mode and onboarding_genre_tokens:
         cold_start_overlap_scores = np.array(
             [
@@ -3012,9 +3083,11 @@ def compute_recommendation_feed(
                 for tokens in movies_df["genre_tokens"]
             ]
         )
+        overlap_weight = 0.34 if is_test_ai_experiment else 0.24
+        quality_cold_weight = 0.12 if is_test_ai_experiment else 0.08
         hybrid_scores = hybrid_scores + (
-            (cold_start_overlap_scores * 0.24)
-            + (quality_scores * 0.08)
+            (cold_start_overlap_scores * overlap_weight)
+            + (quality_scores * quality_cold_weight)
         )
 
     for idx, movie_id in enumerate(movie_ids_array):
@@ -3023,15 +3096,27 @@ def compute_recommendation_feed(
             continue
         candidate_scores[movie_id] = float(hybrid_scores[idx])
 
-    for seed_rank, seed_id in enumerate(positive_signal_ids[:5]):
+    seed_related_limit = 7 if is_test_ai_experiment else 5
+    for seed_rank, seed_id in enumerate(positive_signal_ids[:seed_related_limit]):
         related_ids = get_tmdb_related_movie_ids(seed_id)
         seed_strength = positive_signal_weights.get(seed_id, 1.0)
         for rank, related_id in enumerate(related_ids):
             if related_id in blocked_ids or related_id not in available_movie_ids:
                 continue
-            base_seed_score = (2.90 if is_tinder_mode else 2.95) + min(seed_strength * (0.28 if is_tinder_mode else 0.42), 0.92 if is_tinder_mode else 1.25)
+            related_index = movie_index_by_id.get(int(related_id))
+            related_quality_bonus = 0.0
+            if is_test_ai_experiment and related_index is not None:
+                related_row = movies_df.iloc[related_index]
+                related_audience_score = float(related_row.get("audience_rating_score") or 0.0)
+                if related_audience_score < 0.54:
+                    continue
+                related_quality_bonus = min(max((related_audience_score - 0.62) * 2.2, 0.0), 0.35)
+            if is_test_ai_experiment:
+                base_seed_score = (2.30 if is_tinder_mode else 2.48) + min(seed_strength * (0.34 if is_tinder_mode else 0.46), 0.95 if is_tinder_mode else 1.20)
+            else:
+                base_seed_score = (2.90 if is_tinder_mode else 2.95) + min(seed_strength * (0.28 if is_tinder_mode else 0.42), 0.92 if is_tinder_mode else 1.25)
             score = base_seed_score - (rank * 0.08) - (seed_rank * 0.18)
-            candidate_scores[related_id] = candidate_scores.get(related_id, 0.0) + max(score, 0.2)
+            candidate_scores[related_id] = candidate_scores.get(related_id, 0.0) + max(score + related_quality_bonus, 0.2)
 
     for seed_rank, seed_id in enumerate(disliked_ids[:4]):
         related_ids = get_tmdb_related_movie_ids(seed_id)
@@ -3112,9 +3197,16 @@ def compute_recommendation_feed(
             for _, row in selected_rows.iterrows()
         ]
 
-    exploration_slots = 0 if is_tinder_mode else (max(1, limit // 5) if positive_signal_ids else 0)
+    if is_test_ai_experiment:
+        if is_tinder_mode and positive_signal_ids:
+            exploration_slots = max(1, min(3, limit // 6))
+        else:
+            exploration_slots = max(1, limit // 4) if positive_signal_ids else 0
+    else:
+        exploration_slots = 0 if is_tinder_mode else (max(1, limit // 5) if positive_signal_ids else 0)
     main_slots = max(limit - exploration_slots, 0)
-    selected_ids = pick_diverse_movie_ids(ranked_candidate_ids, main_slots, per_genre_cap=3)
+    main_per_genre_cap = 2 if is_test_ai_experiment and is_tinder_mode else 3
+    selected_ids = pick_diverse_movie_ids(ranked_candidate_ids, main_slots, per_genre_cap=main_per_genre_cap)
     used_ids = blocked_ids | set(selected_ids)
 
     if len(selected_ids) < main_slots:
@@ -3135,20 +3227,39 @@ def compute_recommendation_feed(
                     for tokens in exploration_pool["genre_tokens"]
                 ]
             )
-            exploration_pool["exploration_score"] = (
-                (exploration_pool["vote_average"] / 10.0) * 0.55
-                + (exploration_pool["popularity"] / max_popularity) * 0.15
-                + (genre_distance_scores * 0.30)
-            )
-            exploration_shortlist = exploration_pool.sort_values("exploration_score", ascending=False).head(max(exploration_slots * 20, 40))
-            selected_ids.extend(
-                [
-                    int(row["id"])
-                    for _, row in exploration_shortlist.sample(
-                        n=min(exploration_slots, len(exploration_shortlist))
-                    ).iterrows()
-                ]
-            )
+            if is_test_ai_experiment:
+                exploration_similarity_scores = np.array(
+                    [
+                        positive_similarity_scores[movie_index_by_id[int(movie_id)]]
+                        if int(movie_id) in movie_index_by_id
+                        else 0.0
+                        for movie_id in exploration_pool["id"]
+                    ]
+                )
+                exploration_pool["exploration_score"] = (
+                    (exploration_pool["audience_rating_score"] * 0.36)
+                    + (exploration_pool["quality_score"] * 0.24)
+                    + (genre_distance_scores * 0.25)
+                    + (exploration_similarity_scores * 0.12)
+                    + ((exploration_pool["popularity"] / max_popularity) * 0.03)
+                )
+                exploration_shortlist = exploration_pool.sort_values("exploration_score", ascending=False).head(max(exploration_slots * 18, 36))
+                selected_ids.extend([int(row["id"]) for _, row in exploration_shortlist.head(exploration_slots).iterrows()])
+            else:
+                exploration_pool["exploration_score"] = (
+                    (exploration_pool["vote_average"] / 10.0) * 0.55
+                    + (exploration_pool["popularity"] / max_popularity) * 0.15
+                    + (genre_distance_scores * 0.30)
+                )
+                exploration_shortlist = exploration_pool.sort_values("exploration_score", ascending=False).head(max(exploration_slots * 20, 40))
+                selected_ids.extend(
+                    [
+                        int(row["id"])
+                        for _, row in exploration_shortlist.sample(
+                            n=min(exploration_slots, len(exploration_shortlist))
+                        ).iterrows()
+                    ]
+                )
             used_ids = blocked_ids | set(selected_ids)
 
     if len(selected_ids) < limit:
@@ -3251,8 +3362,9 @@ def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dic
 
 @app.get("/movies/news/highlights")
 def movie_news_highlights(current_user: dict = Depends(get_current_user)):
+    is_test_ai_experiment = normalize_username(str(current_user["username"])).lower() == "test"
     cached_payload = news_highlights_cache.get(current_user["id"])
-    if cached_payload and cached_payload[0] > time.time():
+    if not is_test_ai_experiment and cached_payload and cached_payload[0] > time.time():
         payload = cached_payload[1]
         return {
             key: [dict(movie) for movie in value]
@@ -3292,11 +3404,12 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
         "discovery_for_you": discovery,
         "friends_recent_ratings": friend_rated,
     }
-    news_highlights_cache[current_user["id"]] = (
-        time.time() + NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS,
-        payload,
-    )
-    if len(news_highlights_cache) > 256:
+    if not is_test_ai_experiment:
+        news_highlights_cache[current_user["id"]] = (
+            time.time() + NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS,
+            payload,
+        )
+    if not is_test_ai_experiment and len(news_highlights_cache) > 256:
         expired_user_ids = [
             user_id
             for user_id, value in news_highlights_cache.items()
