@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   Image,
   Pressable,
   StyleSheet,
@@ -20,6 +21,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie } from '../types';
+import { PROFILE_REFRESH_EVENT, SOCIAL_REFRESH_EVENT } from '../utils/events';
 
 export default function CreateReviewScreen({
   navigation,
@@ -127,6 +129,8 @@ export default function CreateReviewScreen({
           content: trimmedContent,
         });
       }
+      DeviceEventEmitter.emit(PROFILE_REFRESH_EVENT);
+      DeviceEventEmitter.emit(SOCIAL_REFRESH_EVENT);
       navigation.goBack();
     } catch (publishError) {
       if (publishError instanceof ApiError && publishError.status === 401) {

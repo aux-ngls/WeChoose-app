@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -42,6 +42,8 @@ const SORT_OPTIONS = [
 
 type SortMode = (typeof SORT_OPTIONS)[number]['key'];
 
+const playlistMoviesCache = new Map<number, SearchMovie[]>();
+
 function compareManualOrder(a: SearchMovie, b: SearchMovie) {
   const orderA = a.sort_index ?? Number.MAX_SAFE_INTEGER;
   const orderB = b.sort_index ?? Number.MAX_SAFE_INTEGER;
@@ -62,11 +64,17 @@ export default function PlaylistDetailsScreen({
 }: NativeStackScreenProps<RootStackParamList, 'PlaylistDetails'>) {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
-  const [movies, setMovies] = useState<SearchMovie[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialMovies = playlistMoviesCache.get(route.params.playlistId) ?? [];
+  const [movies, setMovies] = useState<SearchMovie[]>(() => initialMovies);
+  const [loading, setLoading] = useState(() => initialMovies.length === 0);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'manual');
+  const moviesRef = useRef(movies);
+
+  useEffect(() => {
+    moviesRef.current = movies;
+  }, [movies]);
 
   const canRemove = route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
   const canReorder = canRemove && sortMode === 'manual' && !query.trim();
@@ -76,8 +84,13 @@ export default function PlaylistDetailsScreen({
       return;
     }
 
+    if (moviesRef.current.length === 0) {
+      setLoading(true);
+    }
+
     try {
       const payload = await fetchPlaylistMovies(session.token, route.params.playlistId);
+      playlistMoviesCache.set(route.params.playlistId, payload);
       setMovies(payload);
       setError('');
     } catch (fetchError) {
@@ -93,7 +106,6 @@ export default function PlaylistDetailsScreen({
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       void loadPlaylist();
     }, [loadPlaylist]),
   );
@@ -134,7 +146,11 @@ export default function PlaylistDetailsScreen({
 
     try {
       await removeMovieFromPlaylist(session.token, route.params.playlistId, movieId);
-      setMovies((current) => current.filter((movie) => movie.id !== movieId));
+      setMovies((current) => {
+        const nextMovies = current.filter((movie) => movie.id !== movieId);
+        playlistMoviesCache.set(route.params.playlistId, nextMovies);
+        return nextMovies;
+      });
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 401) {
         await signOut();
@@ -163,9 +179,11 @@ export default function PlaylistDetailsScreen({
     ];
     const indexedMovies = nextOrderedMovies.map((movie, index) => ({ ...movie, sort_index: index + 1 }));
 
-    setMovies((currentMovies) =>
-      currentMovies.map((movie) => indexedMovies.find((indexedMovie) => indexedMovie.id === movie.id) ?? movie),
-    );
+    setMovies((currentMovies) => {
+      const nextMovies = currentMovies.map((movie) => indexedMovies.find((indexedMovie) => indexedMovie.id === movie.id) ?? movie);
+      playlistMoviesCache.set(route.params.playlistId, nextMovies);
+      return nextMovies;
+    });
 
     try {
       await reorderPlaylistMovies(session.token, route.params.playlistId, indexedMovies.map((movie) => movie.id));
@@ -222,7 +240,7 @@ export default function PlaylistDetailsScreen({
                 </Pressable>
               ))}
             </View>
-            {loading ? (
+            {loading && movies.length === 0 ? (
               <View style={styles.loadingState}>
                 <ActivityIndicator color={theme.colors.text} />
               </View>

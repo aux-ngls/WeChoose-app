@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -21,15 +21,26 @@ import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SocialComment, type SocialNotification, type SocialReview } from '../types';
 import { formatDate } from '../utils/format';
+import { SOCIAL_REFRESH_EVENT } from '../utils/events';
+
+interface SocialCache {
+  username: string;
+  reviews: SocialReview[];
+  notifications: SocialNotification[];
+  unreadNotifications: number;
+}
+
+let socialCache: SocialCache | null = null;
 
 export default function SocialScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [reviews, setReviews] = useState<SocialReview[]>([]);
-  const [notifications, setNotifications] = useState<SocialNotification[]>([]);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const initialCache = socialCache?.username === session?.username ? socialCache : null;
+  const [reviews, setReviews] = useState<SocialReview[]>(() => initialCache?.reviews ?? []);
+  const [notifications, setNotifications] = useState<SocialNotification[]>(() => initialCache?.notifications ?? []);
+  const [unreadNotifications, setUnreadNotifications] = useState(() => initialCache?.unreadNotifications ?? 0);
+  const [loading, setLoading] = useState(() => !initialCache);
   const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
   const [commentsByReview, setCommentsByReview] = useState<Record<number, SocialComment[]>>({});
   const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({});
@@ -37,14 +48,47 @@ export default function SocialScreen() {
   const [submittingCommentIds, setSubmittingCommentIds] = useState<number[]>([]);
   const [likingReviewIds, setLikingReviewIds] = useState<number[]>([]);
   const [error, setError] = useState('');
+  const reviewsRef = useRef(reviews);
+  const notificationsRef = useRef(notifications);
+  const unreadNotificationsRef = useRef(unreadNotifications);
+
+  useEffect(() => {
+    reviewsRef.current = reviews;
+  }, [reviews]);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
+  useEffect(() => {
+    unreadNotificationsRef.current = unreadNotifications;
+  }, [unreadNotifications]);
+
+  const updateSocialCache = useCallback((next: Partial<Omit<SocialCache, 'username'>>) => {
+    if (!session) {
+      return;
+    }
+
+    socialCache = {
+      username: session.username,
+      reviews: next.reviews ?? reviewsRef.current,
+      notifications: next.notifications ?? notificationsRef.current,
+      unreadNotifications: next.unreadNotifications ?? unreadNotificationsRef.current,
+    };
+  }, [session]);
 
   const loadFeed = useCallback(async () => {
     if (!session) {
       return;
     }
 
+    if (reviewsRef.current.length === 0) {
+      setLoading(true);
+    }
+
     try {
       const payload = await fetchSocialFeed(session.token);
+      updateSocialCache({ reviews: payload });
       setReviews(payload);
       setError('');
     } catch (fetchError) {
@@ -56,7 +100,7 @@ export default function SocialScreen() {
     } finally {
       setLoading(false);
     }
-  }, [session, signOut]);
+  }, [session, signOut, updateSocialCache]);
 
   const loadNotifications = useCallback(async () => {
     if (!session) {
@@ -65,6 +109,10 @@ export default function SocialScreen() {
 
     try {
       const payload = await fetchSocialNotifications(session.token);
+      updateSocialCache({
+        notifications: payload.items,
+        unreadNotifications: payload.unread_count,
+      });
       setNotifications(payload.items);
       setUnreadNotifications(payload.unread_count);
     } catch (notificationError) {
@@ -72,15 +120,22 @@ export default function SocialScreen() {
         await signOut();
       }
     }
-  }, [session, signOut]);
+  }, [session, signOut, updateSocialCache]);
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       void loadFeed();
       void loadNotifications();
     }, [loadFeed, loadNotifications]),
   );
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(SOCIAL_REFRESH_EVENT, () => {
+      void loadFeed();
+      void loadNotifications();
+    });
+    return () => subscription.remove();
+  }, [loadFeed, loadNotifications]);
 
   const stats = useMemo(() => ({
     reviews: reviews.length,
@@ -126,13 +181,15 @@ export default function SocialScreen() {
     setLikingReviewIds((current) => [...current, reviewId]);
     try {
       const payload = await toggleReviewLike(session.token, reviewId);
-      setReviews((current) =>
-        current.map((review) =>
+      setReviews((current) => {
+        const nextReviews = current.map((review) =>
           review.id === reviewId
             ? { ...review, liked_by_me: payload.liked, likes_count: payload.likes_count }
             : review,
-        ),
-      );
+        );
+        updateSocialCache({ reviews: nextReviews });
+        return nextReviews;
+      });
       setError('');
     } catch (likeError) {
       if (likeError instanceof ApiError && likeError.status === 401) {
@@ -143,7 +200,7 @@ export default function SocialScreen() {
     } finally {
       setLikingReviewIds((current) => current.filter((id) => id !== reviewId));
     }
-  }, [likingReviewIds, session, signOut]);
+  }, [likingReviewIds, session, signOut, updateSocialCache]);
 
   const handleSubmitComment = useCallback(async (reviewId: number) => {
     if (!session || submittingCommentIds.includes(reviewId)) {
@@ -163,13 +220,15 @@ export default function SocialScreen() {
         [reviewId]: [...(current[reviewId] ?? []), createdComment],
       }));
       setCommentDrafts((current) => ({ ...current, [reviewId]: '' }));
-      setReviews((current) =>
-        current.map((review) =>
+      setReviews((current) => {
+        const nextReviews = current.map((review) =>
           review.id === reviewId
             ? { ...review, comments_count: review.comments_count + 1 }
             : review,
-        ),
-      );
+        );
+        updateSocialCache({ reviews: nextReviews });
+        return nextReviews;
+      });
       setError('');
     } catch (commentError) {
       if (commentError instanceof ApiError && commentError.status === 401) {
@@ -180,7 +239,7 @@ export default function SocialScreen() {
     } finally {
       setSubmittingCommentIds((current) => current.filter((id) => id !== reviewId));
     }
-  }, [commentDrafts, session, signOut, submittingCommentIds]);
+  }, [commentDrafts, session, signOut, submittingCommentIds, updateSocialCache]);
 
   const handleMarkNotificationsRead = useCallback(async () => {
     if (!session) {
@@ -189,6 +248,7 @@ export default function SocialScreen() {
 
     try {
       await markSocialNotificationsRead(session.token);
+      updateSocialCache({ notifications: [], unreadNotifications: 0 });
       setNotifications([]);
       setUnreadNotifications(0);
     } catch (notificationError) {
@@ -196,7 +256,7 @@ export default function SocialScreen() {
         await signOut();
       }
     }
-  }, [session, signOut]);
+  }, [session, signOut, updateSocialCache]);
 
   return (
     <AppScreen keyboardAware>
@@ -256,7 +316,7 @@ export default function SocialScreen() {
         </View>
       </View>
 
-      {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text> : null}
+      {loading && reviews.length === 0 ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text> : null}
 
       {!loading && reviews.length === 0 ? (
         <EmptyStateCard title="Aucune critique" />

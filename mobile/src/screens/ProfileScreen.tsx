@@ -4,7 +4,7 @@ import { Audio, type AVPlaybackStatus, InterruptionModeAndroid, InterruptionMode
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, DeviceEventEmitter, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
@@ -37,11 +37,21 @@ import {
   type SocialProfile,
 } from '../types';
 import { formatDate } from '../utils/format';
+import { PROFILE_REFRESH_EVENT } from '../utils/events';
 
 interface PlaylistWithPreview extends PlaylistSummary {
   count: number;
   preview_movies: SearchMovie[];
 }
+
+const PROFILE_CACHE_TTL_MS = 45000;
+
+let profileCache: {
+  username: string;
+  profile: SocialProfile;
+  playlists: PlaylistWithPreview[];
+  fetchedAt: number;
+} | null = null;
 
 function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) {
@@ -71,9 +81,10 @@ export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [profile, setProfile] = useState<SocialProfile | null>(null);
-  const [playlists, setPlaylists] = useState<PlaylistWithPreview[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = profileCache?.username === session?.username ? profileCache : null;
+  const [profile, setProfile] = useState<SocialProfile | null>(() => initialCache?.profile ?? null);
+  const [playlists, setPlaylists] = useState<PlaylistWithPreview[]>(() => initialCache?.playlists ?? []);
+  const [loading, setLoading] = useState(() => !initialCache);
   const [error, setError] = useState('');
   const [playerMessage, setPlayerMessage] = useState('');
   const [isSoundtrackPlaying, setIsSoundtrackPlaying] = useState(false);
@@ -99,6 +110,11 @@ export default function ProfileScreen() {
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [expandedProfileReviewId, setExpandedProfileReviewId] = useState<number | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const profileRef = useRef(profile);
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
 
   useEffect(() => {
     void Audio.setAudioModeAsync({
@@ -127,9 +143,22 @@ export default function ProfileScreen() {
     return () => clearTimeout(timeout);
   }, [playerMessage]);
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async (options?: { force?: boolean }) => {
     if (!session) {
       return;
+    }
+
+    const cachedProfile = profileCache?.username === session.username ? profileCache : null;
+    const isFresh = cachedProfile && Date.now() - cachedProfile.fetchedAt < PROFILE_CACHE_TTL_MS;
+    if (cachedProfile && isFresh && !options?.force) {
+      setProfile(cachedProfile.profile);
+      setPlaylists(cachedProfile.playlists);
+      setLoading(false);
+      return;
+    }
+
+    if (!profileRef.current) {
+      setLoading(true);
     }
 
     try {
@@ -149,6 +178,12 @@ export default function ProfileScreen() {
         }),
       );
 
+      profileCache = {
+        username: session.username,
+        profile: profilePayload,
+        playlists: playlistsWithPreview,
+        fetchedAt: Date.now(),
+      };
       setProfile(profilePayload);
       setPlaylists(playlistsWithPreview);
       setError('');
@@ -165,10 +200,16 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       void loadProfile();
     }, [loadProfile]),
   );
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(PROFILE_REFRESH_EVENT, () => {
+      void loadProfile({ force: true });
+    });
+    return () => subscription.remove();
+  }, [loadProfile]);
 
   const handlePlaybackStatus = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) {
@@ -333,7 +374,7 @@ export default function ProfileScreen() {
         profile_soundtrack: draftSoundtrack,
       });
       setIsEditingShowcase(false);
-      await loadProfile();
+      await loadProfile({ force: true });
     } catch {
       setError("Impossible d'enregistrer la vitrine.");
     } finally {
@@ -371,7 +412,7 @@ export default function ProfileScreen() {
         name: asset.fileName ?? `profile-${Date.now()}.jpg`,
         type: guessImageType(asset.uri, asset.mimeType),
       });
-      await loadProfile();
+      await loadProfile({ force: true });
       setError('');
     } catch (uploadError) {
       if (uploadError instanceof ApiError && uploadError.status === 401) {
@@ -394,7 +435,7 @@ export default function ProfileScreen() {
       await createPlaylist(session.token, newPlaylistName.trim());
       setNewPlaylistName('');
       setIsCreatingPlaylist(false);
-      await loadProfile();
+      await loadProfile({ force: true });
       setError('');
     } catch (createError) {
       if (createError instanceof ApiError && createError.status === 401) {
@@ -424,7 +465,7 @@ export default function ProfileScreen() {
             void (async () => {
               try {
                 await deleteReview(session.token, reviewId);
-                await loadProfile();
+                await loadProfile({ force: true });
                 setError('');
               } catch (deleteError) {
                 if (deleteError instanceof ApiError && deleteError.status === 401) {
@@ -451,7 +492,7 @@ export default function ProfileScreen() {
     <AppScreen>
       {error ? <InlineBanner message={error} tone="error" /> : null}
       {playerMessage ? <InlineBanner message={playerMessage} tone="error" /> : null}
-      {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de ton profil...</Text> : null}
+      {loading && !profile ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de ton profil...</Text> : null}
 
       {!loading && !profile ? <EmptyStateCard title="Profil indisponible" /> : null}
 

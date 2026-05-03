@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
@@ -20,26 +20,45 @@ import { useTheme } from '../theme/ThemeContext';
 import type { DirectConversationSummary, SocialUser } from '../types';
 import { formatDate } from '../utils/format';
 
+let conversationsCache: {
+  username: string;
+  conversations: DirectConversationSummary[];
+} | null = null;
+
 export default function MessagesScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [conversations, setConversations] = useState<DirectConversationSummary[]>([]);
+  const initialCache = conversationsCache?.username === session?.username ? conversationsCache : null;
+  const [conversations, setConversations] = useState<DirectConversationSummary[]>(() => initialCache?.conversations ?? []);
   const [userQuery, setUserQuery] = useState('');
   const [isNewMessageOpen, setIsNewMessageOpen] = useState(false);
   const [userResults, setUserResults] = useState<SocialUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialCache);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [startingUserIds, setStartingUserIds] = useState<number[]>([]);
   const [error, setError] = useState('');
+  const conversationsRef = useRef(conversations);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   const loadConversations = useCallback(async () => {
     if (!session) {
       return;
     }
 
+    if (conversationsRef.current.length === 0) {
+      setLoading(true);
+    }
+
     try {
       const payload = await fetchConversations(session.token);
+      conversationsCache = {
+        username: session.username,
+        conversations: payload,
+      };
       setConversations(payload);
       setError('');
     } catch (fetchError) {
@@ -55,7 +74,6 @@ export default function MessagesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       void loadConversations();
     }, [loadConversations]),
   );
@@ -198,7 +216,7 @@ export default function MessagesScreen() {
         </View>
       ) : null}
 
-      {loading ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement des conversations...</Text> : null}
+      {loading && conversations.length === 0 ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement des conversations...</Text> : null}
 
       {!loading && unreadConversations.length === 0 && recentConversations.length === 0 ? (
         <EmptyStateCard title="Aucune conversation" />
