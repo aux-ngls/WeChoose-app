@@ -3139,6 +3139,91 @@ def compute_recommendation_feed(
         if movie_id not in blocked_ids
     ]
 
+    def build_seed_cluster_ranked_ids(seed_ids: list[int], max_seed_count: int = 8) -> list[int]:
+        if not is_test_ai_experiment or vectors is None or not seed_ids:
+            return []
+
+        seed_rankings: list[list[int]] = []
+        for seed_rank, seed_id in enumerate(seed_ids[:max_seed_count]):
+            seed_index = movie_index_by_id.get(int(seed_id))
+            if seed_index is None:
+                continue
+
+            seed_row = movies_df.iloc[seed_index]
+            seed_genres = set(seed_row.get("genre_tokens") or [])
+            seed_keywords = set((seed_row.get("keyword_tokens") or [])[:18])
+            try:
+                seed_similarity_scores = cosine_similarity(
+                    vectors,
+                    vectors[seed_index].reshape(1, -1),
+                ).ravel()
+            except Exception:
+                continue
+
+            lane_scores: list[tuple[int, float]] = []
+            seed_weight = float(positive_signal_weights.get(int(seed_id), 1.0))
+            for movie_id, base_score in candidate_scores.items():
+                movie_id = int(movie_id)
+                if movie_id in blocked_ids:
+                    continue
+                movie_index = movie_index_by_id.get(movie_id)
+                if movie_index is None:
+                    continue
+
+                row = movies_df.iloc[movie_index]
+                audience_score = float(row.get("audience_rating_score") or 0.0)
+                if audience_score < 0.53:
+                    continue
+
+                movie_genres = set(row.get("genre_tokens") or [])
+                movie_keywords = set((row.get("keyword_tokens") or [])[:18])
+                genre_overlap = len(movie_genres & seed_genres) / max(len(seed_genres), 1)
+                keyword_overlap = len(movie_keywords & seed_keywords) / max(len(seed_keywords), 1)
+                seed_similarity = float(seed_similarity_scores[movie_index])
+
+                if seed_similarity < 0.11 and keyword_overlap < 0.08 and genre_overlap < 0.34:
+                    continue
+
+                cluster_score = (
+                    (seed_similarity * 1.55)
+                    + (keyword_overlap * 0.58)
+                    + (genre_overlap * 0.32)
+                    + (audience_score * 0.44)
+                    + (float(row.get("quality_score") or 0.0) * 0.28)
+                    + (float(base_score) * 0.18)
+                    + min(seed_weight * 0.07, 0.24)
+                    - (seed_rank * 0.035)
+                )
+                lane_scores.append((movie_id, cluster_score))
+
+            lane_scores.sort(key=lambda item: item[1], reverse=True)
+            seed_rankings.append([movie_id for movie_id, _ in lane_scores[:80]])
+
+        clustered_ids: list[int] = []
+        seen_cluster_ids: set[int] = set()
+        max_lane_length = max((len(ranking) for ranking in seed_rankings), default=0)
+        for lane_index in range(max_lane_length):
+            for ranking in seed_rankings:
+                if lane_index >= len(ranking):
+                    continue
+                movie_id = ranking[lane_index]
+                if movie_id in seen_cluster_ids:
+                    continue
+                seen_cluster_ids.add(movie_id)
+                clustered_ids.append(movie_id)
+
+        return clustered_ids
+
+    if is_test_ai_experiment and positive_signal_ids:
+        clustered_candidate_ids = build_seed_cluster_ranked_ids(positive_signal_ids)
+        if clustered_candidate_ids:
+            clustered_seen_ids = set(clustered_candidate_ids)
+            ranked_candidate_ids = clustered_candidate_ids + [
+                movie_id
+                for movie_id in ranked_candidate_ids
+                if movie_id not in clustered_seen_ids
+            ]
+
     if is_explore_mode:
         exploration_pool = movies_df[~movies_df["id"].isin(blocked_ids)].copy()
         if exploration_pool.empty:
