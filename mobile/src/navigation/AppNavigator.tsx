@@ -24,21 +24,17 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const baseStackOptions = {
   headerShown: false,
   animation: 'default',
-  animationDuration: 340,
-  fullScreenGestureEnabled: true,
-  animationMatchesGesture: true,
 } as const;
 
 const softFadeOptions = {
   animation: 'fade',
-  animationDuration: 240,
+  animationDuration: 180,
 } as const;
 
 const sheetOptions = {
   animation: 'slide_from_bottom',
-  animationDuration: 380,
+  animationDuration: 300,
   gestureDirection: 'vertical',
-  fullScreenGestureEnabled: true,
   animationMatchesGesture: true,
 } as const;
 
@@ -91,7 +87,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Tutorial" component={TutorialScreen} options={softFadeOptions} />
         ) : (
           <>
-            <Stack.Screen name="MainTabs" component={MainTabs} options={{ animation: 'fade_from_bottom', animationDuration: 280 }} />
+            <Stack.Screen name="MainTabs" component={MainTabs} options={{ animation: 'fade', animationDuration: 180 }} />
             <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={sheetOptions} />
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} />
             <Stack.Screen name="ShareMovie" component={ShareMovieScreen} options={sheetOptions} />

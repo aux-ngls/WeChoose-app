@@ -1,8 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useRef, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import {
-  Animated,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -26,18 +24,6 @@ const RAIL_DOTS = Array.from({ length: 9 }, (_, index) => index);
 
 export default function AppScreen({ children, scroll = true, keyboardAware = false, contentStyle }: AppScreenProps) {
   const { theme } = useTheme();
-  const introProgress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    introProgress.setValue(0);
-    Animated.timing(introProgress, {
-      toValue: 1,
-      duration: 260,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [introProgress]);
-
   const content = scroll ? (
     <ScrollView
       automaticallyAdjustKeyboardInsets={keyboardAware}
@@ -90,40 +76,17 @@ export default function AppScreen({ children, scroll = true, keyboardAware = fal
         ))}
       </View>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.View
-          style={[
-            styles.fill,
-            {
-              opacity: introProgress,
-              transform: [
-                {
-                  translateY: introProgress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [10, 0],
-                  }),
-                },
-                {
-                  scale: introProgress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.992, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          {keyboardAware ? (
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 18}
-              style={styles.fill}
-            >
-              {content}
-            </KeyboardAvoidingView>
-          ) : (
-            content
-          )}
-        </Animated.View>
+        {keyboardAware ? (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 18}
+            style={styles.fill}
+          >
+            {content}
+          </KeyboardAvoidingView>
+        ) : (
+          content
+        )}
       </SafeAreaView>
     </LinearGradient>
   );
