@@ -22,6 +22,7 @@ import {
   addToWatchLater,
   ApiError,
   fetchMovieFeed,
+  getOnboardingPreferences,
   rateMovie,
   removeMovieFromPlaylist,
   removeMovieRating,
@@ -35,7 +36,7 @@ const TARGET_STACK_SIZE = 14;
 const REFILL_THRESHOLD = 8;
 const FEED_BATCH_SIZE = 24;
 const CACHE_MAX_SIZE = 32;
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const SWIPE_THRESHOLD = 110;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
 const OFFSCREEN_DISTANCE = 420;
@@ -98,7 +99,10 @@ export default function HomeScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const initialCache = tinderMovieCache?.username === session?.username ? tinderMovieCache : null;
+  const initialCache =
+    tinderMovieCache && tinderMovieCache.username === session?.username && tinderMovieCache.version === CACHE_VERSION
+      ? tinderMovieCache
+      : null;
   const [movies, setMovies] = useState<SearchMovie[]>(() => initialCache?.movies ?? []);
   const [loading, setLoading] = useState(() => !initialCache || initialCache.movies.length === 0);
   const [submitting, setSubmitting] = useState(false);
@@ -107,12 +111,20 @@ export default function HomeScreen() {
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
   const isFetchingRef = useRef(false);
   const locallyExcludedMovieIdsRef = useRef<Set<number>>(new Set());
+  const onboardingExcludedMovieIdsRef = useRef<Set<number>>(new Set());
+  const hasLoadedOnboardingExcludesRef = useRef(false);
   const moviesRef = useRef(movies);
   const lastFetchAtRef = useRef(initialCache?.fetchedAt ?? 0);
   const pan = useRef(new Animated.ValueXY()).current;
 
   const currentMovie = useMemo(() => movies[0] ?? null, [movies]);
   const secondMovie = useMemo(() => movies[1] ?? null, [movies]);
+
+  useEffect(() => {
+    locallyExcludedMovieIdsRef.current.clear();
+    onboardingExcludedMovieIdsRef.current.clear();
+    hasLoadedOnboardingExcludesRef.current = false;
+  }, [session?.username]);
 
   useEffect(() => {
     pan.setValue({ x: 0, y: 0 });
@@ -154,15 +166,52 @@ export default function HomeScreen() {
     locallyExcludedMovieIdsRef.current.delete(movieId);
   }, []);
 
+  const getKnownExcludedMovieIds = useCallback(
+    () => Array.from(new Set([...locallyExcludedMovieIdsRef.current, ...onboardingExcludedMovieIdsRef.current])),
+    [],
+  );
+
+  const filterExcludedMovies = useCallback((movieStack: SearchMovie[]) => {
+    const excludedMovieIds = new Set(getKnownExcludedMovieIds());
+    return movieStack.filter((movie) => !excludedMovieIds.has(movie.id));
+  }, [getKnownExcludedMovieIds]);
+
+  const loadOnboardingExcludes = useCallback(async () => {
+    if (!session || hasLoadedOnboardingExcludesRef.current) {
+      return;
+    }
+
+    try {
+      const preferences = await getOnboardingPreferences(session.token);
+      const onboardingMovieIds = preferences.favorite_movie_ids.filter((movieId) => typeof movieId === 'number');
+      hasLoadedOnboardingExcludesRef.current = true;
+      onboardingMovieIds.forEach((movieId) => onboardingExcludedMovieIdsRef.current.add(movieId));
+
+      if (onboardingMovieIds.length === 0) {
+        return;
+      }
+
+      setMovies((current) => {
+        const next = filterExcludedMovies(current);
+        moviesRef.current = next;
+        return next;
+      });
+    } catch (loadError) {
+      if (loadError instanceof ApiError && loadError.status === 401) {
+        await signOut();
+      }
+    }
+  }, [filterExcludedMovies, session, signOut]);
+
   const hydrateCachedMovies = useCallback(async () => {
     if (!session || moviesRef.current.length > 0) {
       return moviesRef.current.length > 0;
     }
 
-    const cachedMovies = parseCachedMovies(
+    const cachedMovies = filterExcludedMovies(parseCachedMovies(
       await AsyncStorage.getItem(getTinderCacheKey(session.username)),
       session.username,
-    );
+    ));
     if (cachedMovies.length === 0) {
       return false;
     }
@@ -179,7 +228,7 @@ export default function HomeScreen() {
     setMovies(cachedMovies);
     setLoading(false);
     return true;
-  }, [session]);
+  }, [filterExcludedMovies, session]);
 
   const loadFeed = useCallback(async (excludeIds: number[] = [], options?: { reset?: boolean }) => {
     if (!session || isFetchingRef.current) {
@@ -192,7 +241,7 @@ export default function HomeScreen() {
 
     isFetchingRef.current = true;
     try {
-      const effectiveExcludeIds = Array.from(new Set([...excludeIds, ...locallyExcludedMovieIdsRef.current]));
+      const effectiveExcludeIds = Array.from(new Set([...excludeIds, ...getKnownExcludedMovieIds()]));
       const payload = await fetchMovieFeed(session.token, {
         excludeIds: effectiveExcludeIds,
         limit: FEED_BATCH_SIZE,
@@ -221,7 +270,7 @@ export default function HomeScreen() {
       isFetchingRef.current = false;
       setLoading(false);
     }
-  }, [session, signOut]);
+  }, [getKnownExcludedMovieIds, session, signOut]);
 
   useFocusEffect(
     useCallback(() => {
@@ -229,6 +278,7 @@ export default function HomeScreen() {
         return;
       }
       void (async () => {
+        await loadOnboardingExcludes();
         let hasMovies = moviesRef.current.length > 0;
         if (!hasMovies) {
           hasMovies = await hydrateCachedMovies();
@@ -247,7 +297,7 @@ export default function HomeScreen() {
           void loadFeed(currentStack.map((movie) => movie.id));
         }
       })();
-    }, [hydrateCachedMovies, loadFeed, session]),
+    }, [hydrateCachedMovies, loadFeed, loadOnboardingExcludes, session]),
   );
 
   const refillIfNeeded = useCallback((nextMovies: SearchMovie[]) => {
