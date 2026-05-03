@@ -42,11 +42,12 @@ export default function SignupPage() {
         data.access_token,
         normalizedUsername,
         Boolean(data.has_completed_onboarding),
+        Boolean(data.has_completed_tutorial),
       );
 
       router.push(data.has_completed_onboarding ? "/" : "/onboarding");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Impossible de creer le compte");
     } finally {
       setLoading(false);
     }
@@ -64,7 +65,7 @@ export default function SignupPage() {
 
         <form onSubmit={handleSignup} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Nom d'utilisateur</label>
+            <label className="block text-sm text-gray-400 mb-1">Nom d&apos;utilisateur</label>
             <input 
                 type="text" 
                 required 

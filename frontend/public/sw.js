@@ -1,4 +1,4 @@
-const CACHE_NAME = "qulte-shell-v1";
+const CACHE_NAME = "qulte-shell-v2";
 const OFFLINE_URL = "/offline";
 const SHELL_ASSETS = [OFFLINE_URL, "/icon.svg", "/manifest.webmanifest"];
 
@@ -72,6 +72,59 @@ self.addEventListener("fetch", (event) => {
         .catch(() => cachedResponse);
 
       return cachedResponse || networkFetch;
+    }),
+  );
+});
+
+self.addEventListener("push", (event) => {
+  const payload = (() => {
+    if (!event.data) {
+      return {};
+    }
+
+    try {
+      return event.data.json();
+    } catch {
+      return {};
+    }
+  })();
+
+  const title = payload.title || "Qulte";
+  const route = payload.route || "/messages";
+  const options = {
+    body: payload.body || "Tu as recu un nouveau message",
+    icon: payload.icon || "/icon.svg",
+    badge: payload.badge || "/icon.svg",
+    tag: payload.tag || route,
+    data: {
+      route,
+      conversationId: payload.conversationId || null,
+    },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const route = event.notification.data?.route || "/";
+  const targetUrl = new URL(route, self.location.origin).toString();
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url.startsWith(self.location.origin)) {
+          return client.focus().then(() => {
+            if ("navigate" in client) {
+              return client.navigate(targetUrl);
+            }
+            return undefined;
+          });
+        }
+      }
+
+      return self.clients.openWindow(targetUrl);
     }),
   );
 });

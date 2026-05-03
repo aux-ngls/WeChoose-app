@@ -633,7 +633,7 @@ export default function SocialPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.22),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.16),_transparent_26%),#000] px-4 py-3 text-white md:py-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 md:gap-6">
-        <section className="md:hidden">
+        <section data-tutorial="social-entry" className="md:hidden">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-red-200/80">
@@ -717,6 +717,7 @@ export default function SocialPage() {
         <div className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
           <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
             <section
+              data-tutorial="social-compose"
               className={`rounded-[24px] border border-white/10 bg-zinc-950/90 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:rounded-[28px] md:p-5 ${
                 mobileSection === "write" ? "block" : "hidden lg:block"
               }`}

@@ -47,6 +47,9 @@ function MessagesPageContent() {
   const shouldAutoScrollNextUpdateRef = useRef(false);
   const previousConversationIdRef = useRef<number | null>(null);
   const previousMessageCountRef = useRef(0);
+  const activeConversationIdRef = useRef<number | null>(null);
+  const fetchConversationsRef = useRef<((options?: { silent?: boolean }) => Promise<void>) | null>(null);
+  const openConversationRef = useRef<((conversationId: number, options?: { silent?: boolean }) => Promise<void>) | null>(null);
 
   const [conversations, setConversations] = useState<DirectConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
@@ -70,6 +73,7 @@ function MessagesPageContent() {
   const [movieSearchLoading, setMovieSearchLoading] = useState(false);
   const [startingConversationIds, setStartingConversationIds] = useState<number[]>([]);
   const [sending, setSending] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [pageError, setPageError] = useState("");
   const [conversationError, setConversationError] = useState("");
 
@@ -152,6 +156,7 @@ function MessagesPageContent() {
     conversations.find((conversation) => conversation.id === activeConversationId)?.participant
       .username ??
     "Conversation";
+  const isMobileChatView = mobileView === "chat";
 
   const filteredConversations = useMemo(() => {
     const trimmedQuery = conversationQuery.trim().toLowerCase();
@@ -466,6 +471,15 @@ function MessagesPageContent() {
   };
 
   useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    fetchConversationsRef.current = fetchConversations;
+    openConversationRef.current = openConversation;
+  });
+
+  useEffect(() => {
     const token = getStoredToken();
     if (!token) {
       redirectToLogin();
@@ -483,6 +497,9 @@ function MessagesPageContent() {
     }
 
     const socket = new WebSocket(buildRealtimeWebSocketUrl(token));
+    socket.onopen = () => {
+      setRealtimeConnected(true);
+    };
     socket.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data) as { type?: string; conversation_id?: number };
@@ -490,19 +507,29 @@ function MessagesPageContent() {
           return;
         }
 
-        void fetchConversations({ silent: true });
-        if (payload.conversation_id && payload.conversation_id === activeConversationId) {
-          void openConversation(payload.conversation_id, { silent: true });
+        void fetchConversationsRef.current?.({ silent: true });
+        if (
+          payload.conversation_id &&
+          payload.conversation_id === activeConversationIdRef.current
+        ) {
+          void openConversationRef.current?.(payload.conversation_id, { silent: true });
         }
       } catch (error) {
         console.error(error);
       }
     };
+    socket.onerror = () => {
+      setRealtimeConnected(false);
+    };
+    socket.onclose = () => {
+      setRealtimeConnected(false);
+    };
 
     return () => {
+      setRealtimeConnected(false);
       socket.close();
     };
-  }, [activeConversationId]);
+  }, []);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -522,17 +549,23 @@ function MessagesPageContent() {
   }, [activeConversationId]);
 
   useEffect(() => {
-    if (!activeConversationId) {
+    if (realtimeConnected) {
       return;
     }
 
     const interval = window.setInterval(() => {
+      if (document.hidden) {
+        return;
+      }
+
       void fetchConversations({ silent: true });
-      void openConversation(activeConversationId, { silent: true });
-    }, 5000);
+      if (activeConversationIdRef.current) {
+        void openConversation(activeConversationIdRef.current, { silent: true });
+      }
+    }, 12000);
 
     return () => window.clearInterval(interval);
-  }, [activeConversationId]);
+  }, [realtimeConnected]);
 
   useEffect(() => {
     if (!targetUserId) {
@@ -637,19 +670,25 @@ function MessagesPageContent() {
   }, [activeConversation]);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_28%),#000] px-4 py-3 text-white md:py-6">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 md:gap-6">
-        <MobilePageHeader
-          title="Messages"
-          subtitle={mobileView === "chat" ? `@${activeConversationTitle}` : "Inbox et nouveaux DM"}
-          icon={MessageCircle}
-          accent="sky"
-          trailing={
-            <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white">
-              {conversations.length}
-            </div>
-          }
-        />
+    <main
+      className={`min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_28%),#000] text-white md:py-6 ${
+        isMobileChatView ? "px-0 pb-0 pt-0 md:px-4" : "px-4 py-3"
+      }`}
+    >
+      <div className={`mx-auto flex max-w-7xl flex-col ${isMobileChatView ? "gap-3 md:gap-6" : "gap-4 md:gap-6"}`}>
+        <div className={isMobileChatView ? "hidden md:block" : ""}>
+          <MobilePageHeader
+            title="Messages"
+            subtitle={mobileView === "chat" ? `@${activeConversationTitle}` : "Inbox et nouveaux DM"}
+            icon={MessageCircle}
+            accent="sky"
+            trailing={
+              <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold text-white">
+                {conversations.length}
+              </div>
+            }
+          />
+        </div>
 
         <section className="hidden overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md md:block">
           <div className="flex items-center justify-between gap-3 px-4 py-3 md:p-5">
@@ -677,7 +716,7 @@ function MessagesPageContent() {
           </div>
         )}
 
-        <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md lg:hidden">
+        <section className={`rounded-[24px] border border-white/10 bg-white/[0.04] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md lg:hidden ${isMobileChatView ? "hidden" : ""}`}>
           {mobileView === "chat" ? (
             <div className="flex items-center justify-between gap-3 px-2 py-1">
               <button
@@ -710,7 +749,7 @@ function MessagesPageContent() {
           )}
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className={`grid ${isMobileChatView ? "gap-0 lg:gap-6" : "gap-6"} lg:grid-cols-[360px_minmax(0,1fr)]`}>
           <div
             className={`space-y-4 lg:sticky lg:top-24 lg:flex lg:max-h-[calc(100svh-11rem)] lg:flex-col lg:self-start ${
               mobileView === "chat" ? "hidden lg:block" : ""
@@ -789,8 +828,8 @@ function MessagesPageContent() {
               )}
             </section>
 
-            <section className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-              <div className="mb-5 space-y-4">
+            <section data-tutorial="messages-inbox" className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+              <div data-tutorial="messages-inbox-header" className="mb-5 space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
                     <MessageCircle className="h-5 w-5" />
@@ -949,12 +988,16 @@ function MessagesPageContent() {
           </div>
 
           <section
-            className={`rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6 ${
+            className={`${
               mobileView === "sidebar" ? "hidden lg:block" : "block"
+            } ${
+              isMobileChatView
+                ? "-mx-0 rounded-none border-x-0 border-b-0 border-t border-white/10 bg-zinc-950/92 p-0 shadow-none"
+                : "rounded-[32px] border border-white/10 bg-zinc-950/85 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] md:p-6"
             }`}
           >
             {conversationError && (
-              <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <div className={`${isMobileChatView ? "mx-4 mt-3" : "mb-4"} rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100`}>
                 {conversationError}
               </div>
             )}
@@ -971,18 +1014,24 @@ function MessagesPageContent() {
                 </p>
               </div>
             ) : conversationLoading || !activeConversation ? (
-              <div className="flex min-h-[520px] items-center justify-center rounded-[28px] border border-white/10 bg-black/20 text-sm text-gray-400">
+              <div className={`flex ${isMobileChatView ? "min-h-[calc(100svh-8.25rem-env(safe-area-inset-bottom))]" : "min-h-[520px] rounded-[28px] border border-white/10 bg-black/20"} items-center justify-center text-sm text-gray-400`}>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Chargement de la conversation...
               </div>
             ) : (
-              <div className="flex min-h-[520px] flex-col">
-                <div className="mb-5 flex items-center justify-between gap-4 rounded-[24px] border border-white/10 bg-black/20 px-5 py-4">
+              <div className={`flex flex-col ${isMobileChatView ? "min-h-[calc(100svh-4.9rem-env(safe-area-inset-bottom))]" : "min-h-[520px]"}`}>
+                <div
+                  className={`flex items-center justify-between gap-4 ${
+                    isMobileChatView
+                      ? "sticky top-0 z-10 border-b border-white/10 bg-zinc-950/92 px-4 py-3 backdrop-blur-xl"
+                      : "mb-5 rounded-[24px] border border-white/10 bg-black/20 px-5 py-4"
+                  }`}
+                >
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] text-gray-500">Conversation privee</div>
                     <Link
                       href={`/social/${encodeURIComponent(activeConversation.conversation.participant.username)}`}
-                      className="mt-1 block text-xl font-black tracking-tight transition hover:text-sky-300 md:text-2xl"
+                      className={`mt-1 block tracking-tight transition hover:text-sky-300 ${isMobileChatView ? "text-lg font-bold" : "text-xl font-black md:text-2xl"}`}
                     >
                       @{activeConversation.conversation.participant.username}
                     </Link>
@@ -990,16 +1039,20 @@ function MessagesPageContent() {
 
                   <Link
                     href={`/social/${encodeURIComponent(activeConversation.conversation.participant.username)}`}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+                    className={`rounded-full border border-white/10 bg-white/[0.04] text-sm font-semibold text-white transition hover:bg-white/[0.08] ${isMobileChatView ? "px-3 py-2" : "px-4 py-2"}`}
                   >
-                    Voir profil
+                    {isMobileChatView ? "Profil" : "Voir profil"}
                   </Link>
                 </div>
 
                 <div
                   ref={messagesContainerRef}
                   onScroll={updateStickToBottom}
-                  className="flex-1 space-y-4 overflow-y-auto rounded-[28px] border border-white/10 bg-black/20 p-4 md:p-5"
+                  className={`flex-1 overflow-y-auto ${
+                    isMobileChatView
+                      ? "space-y-3 px-4 py-4"
+                      : "space-y-4 rounded-[28px] border border-white/10 bg-black/20 p-4 md:p-5"
+                  }`}
                 >
                   {activeConversation.messages.length === 0 ? (
                     <div className="flex min-h-[280px] flex-col items-center justify-center text-center text-sm text-gray-500">
@@ -1012,52 +1065,59 @@ function MessagesPageContent() {
                         key={message.id}
                         className={`flex ${message.is_mine ? "justify-end" : "justify-start"}`}
                       >
-                        <div
-                          className={`max-w-[92%] rounded-[26px] px-4 py-3 md:max-w-[70%] ${
-                            message.is_mine
-                              ? "bg-sky-500 text-black"
-                              : "border border-white/10 bg-white/[0.05] text-white"
-                          }`}
-                        >
-                          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] opacity-70">
-                            {message.is_mine ? "Toi" : `@${message.sender.username}`}
+                        <div className={`max-w-[88%] md:max-w-[70%]`}>
+                          {!message.is_mine ? (
+                            <div className="mb-1 px-1 text-[11px] font-medium text-gray-500">
+                              @{message.sender.username}
+                            </div>
+                          ) : null}
+
+                          <div
+                            className={`rounded-[22px] px-4 py-3 ${
+                              message.is_mine
+                                ? "border border-sky-400/20 bg-sky-500/12 text-white"
+                                : "border border-white/8 bg-white/[0.04] text-white"
+                            }`}
+                          >
+
+                            {message.movie && (
+                              <button
+                                type="button"
+                                onClick={() => void openMovieDetails(message.movie!.id)}
+                                className={`mb-2.5 block w-full overflow-hidden rounded-[18px] border text-left transition hover:scale-[1.01] ${
+                                  message.is_mine
+                                    ? "border-sky-400/15 bg-black/10 hover:bg-black/20"
+                                    : "border-white/10 bg-black/20 hover:bg-black/30"
+                                }`}
+                              >
+                                <div className="grid grid-cols-[68px_minmax(0,1fr)] gap-0">
+                                  <img
+                                    src={message.movie.poster_url || FALLBACK_POSTER}
+                                    alt={message.movie.title}
+                                    className="h-full w-full object-cover"
+                                  />
+                                  <div className="p-3">
+                                    <div className="text-[10px] uppercase tracking-[0.16em] opacity-60">
+                                      Film partage
+                                    </div>
+                                    <div className="mt-1 line-clamp-2 text-sm font-semibold">
+                                      {message.movie.title}
+                                    </div>
+                                    {message.movie.rating !== null && (
+                                      <div className="mt-2 flex items-center gap-1 text-xs text-yellow-300">
+                                        <Star className="h-3.5 w-3.5 fill-current" />
+                                        {Number(message.movie.rating).toFixed(1)}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            )}
+
+                            {message.content && <p className="text-sm leading-6">{message.content}</p>}
                           </div>
 
-                          {message.movie && (
-                            <button
-                              type="button"
-                              onClick={() => void openMovieDetails(message.movie!.id)}
-                              className={`mb-3 block w-full overflow-hidden rounded-[22px] border text-left transition hover:scale-[1.01] ${
-                                message.is_mine
-                                  ? "border-black/10 bg-black/10 hover:bg-black/15"
-                                  : "border-white/10 bg-black/20 hover:bg-black/30"
-                              }`}
-                            >
-                              <div className="grid grid-cols-[78px_minmax(0,1fr)] gap-0">
-                                <img
-                                  src={message.movie.poster_url || FALLBACK_POSTER}
-                                  alt={message.movie.title}
-                                  className="h-full w-full object-cover"
-                                />
-                                <div className="p-3">
-                                  <div className="text-[11px] uppercase tracking-[0.16em] opacity-70">
-                                    Film partage
-                                  </div>
-                                  <div className="mt-1 font-bold">{message.movie.title}</div>
-                                  {message.movie.rating !== null && (
-                                    <div className="mt-2 flex items-center gap-1 text-sm">
-                                      <Star className="h-3.5 w-3.5 fill-current" />
-                                      {Number(message.movie.rating).toFixed(1)}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </button>
-                          )}
-
-                          {message.content && <p className="text-sm leading-6">{message.content}</p>}
-
-                          <div className="mt-3 text-[11px] uppercase tracking-[0.14em] opacity-60">
+                          <div className={`mt-1.5 px-1 text-[10px] uppercase tracking-[0.14em] text-gray-500 ${message.is_mine ? "text-right" : "text-left"}`}>
                             {formatSocialDate(message.created_at)}
                           </div>
                         </div>
@@ -1067,28 +1127,40 @@ function MessagesPageContent() {
                   <div ref={bottomRef} />
                 </div>
 
-                <div className="mt-5 rounded-[28px] border border-white/10 bg-black/20 p-4 md:p-5">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-gray-200">
-                        Composer
-                      </h3>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Texte libre ou partage de film integre.
-                      </p>
-                    </div>
+                <div
+                  className={`${
+                    isMobileChatView
+                      ? "border-t border-white/10 bg-zinc-950/94 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl"
+                      : "mt-5 rounded-[28px] border border-white/10 bg-black/20 p-4 md:p-5"
+                  }`}
+                >
+                  <div className={`flex items-center justify-between gap-3 ${isMobileChatView ? "mb-3" : "mb-4"}`}>
+                    {!isMobileChatView ? (
+                      <div>
+                        <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-gray-200">
+                          Composer
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Texte libre ou partage de film integre.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
+                        Nouveau message
+                      </div>
+                    )}
 
                     <button
                       type="button"
                       onClick={() => setShowMoviePicker((current) => !current)}
-                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      className={`inline-flex items-center gap-2 rounded-full text-sm font-semibold transition ${
                         showMoviePicker
                           ? "bg-amber-500 text-black hover:bg-amber-400"
                           : "border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
-                      }`}
+                      } ${isMobileChatView ? "px-3 py-2" : "px-4 py-2"}`}
                     >
                       <Share2 className="h-4 w-4" />
-                      Partager un film
+                      {isMobileChatView ? "Film" : "Partager un film"}
                     </button>
                   </div>
 
@@ -1175,12 +1247,12 @@ function MessagesPageContent() {
                   <textarea
                     value={messageDraft}
                     onChange={(event) => setMessageDraft(event.target.value)}
-                    rows={4}
+                    rows={isMobileChatView ? 2 : 4}
                     placeholder="Ecris ton message ici"
                     className="w-full rounded-[22px] border border-white/10 bg-black/40 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-sky-500/70"
                   />
 
-                  <div className="mt-4 flex items-center justify-between gap-3">
+                  <div className={`mt-3 flex items-center justify-between gap-3 ${isMobileChatView ? "pb-0" : "mt-4"}`}>
                     <div className="text-xs text-gray-500">
                       {messageDraft.trim().length} caracteres
                     </div>
@@ -1188,10 +1260,10 @@ function MessagesPageContent() {
                       type="button"
                       onClick={() => void sendMessage()}
                       disabled={sending || (!messageDraft.trim() && !selectedMovie)}
-                      className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-bold text-black transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-sky-900/40 disabled:text-sky-100/50"
+                      className={`inline-flex items-center gap-2 rounded-full bg-sky-500 text-sm font-bold text-black transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-sky-900/40 disabled:text-sky-100/50 ${isMobileChatView ? "px-4 py-2.5" : "px-5 py-3"}`}
                     >
                       {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      Envoyer
+                      {isMobileChatView ? "Envoyer" : "Envoyer"}
                     </button>
                   </div>
                 </div>

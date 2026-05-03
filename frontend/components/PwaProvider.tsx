@@ -29,25 +29,30 @@ function isStandalone() {
   );
 }
 
+function shouldShowIosInstallHint() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+  const isSafari =
+    /^((?!chrome|android).)*safari/i.test(window.navigator.userAgent) ||
+    Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+  return isIos && isSafari && !isStandalone();
+}
+
 export default function PwaProvider() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installDismissed, setInstallDismissed] = useState(true);
-  const [standalone, setStandalone] = useState(true);
-  const [showIosHint, setShowIosHint] = useState(false);
+  const [installDismissed, setInstallDismissed] = useState(
+    () => typeof window === "undefined" || window.localStorage.getItem(DISMISS_STORAGE_KEY) === "1",
+  );
+  const [standalone, setStandalone] = useState(() => isStandalone());
+  const [showIosHint, setShowIosHint] = useState(() => shouldShowIosInstallHint());
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
-
-    setInstallDismissed(window.localStorage.getItem(DISMISS_STORAGE_KEY) === "1");
-    setStandalone(isStandalone());
-
-    const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-    const isSafari =
-      /^((?!chrome|android).)*safari/i.test(window.navigator.userAgent) ||
-      Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
-    setShowIosHint(isIos && isSafari && !isStandalone());
 
     if ("serviceWorker" in window.navigator) {
       void window.navigator.serviceWorker.register("/sw.js").catch((error) => {
@@ -138,7 +143,7 @@ export default function PwaProvider() {
           {showIosHint ? (
             <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-xs text-amber-100">
               <Share2 className="h-4 w-4 flex-none" />
-              <span>Safari: touche Partager puis "Sur l'ecran d'accueil".</span>
+              <span>Safari: touche Partager puis &quot;Sur l&apos;ecran d&apos;accueil&quot;.</span>
             </div>
           ) : (
             <button

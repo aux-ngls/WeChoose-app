@@ -8,6 +8,8 @@ import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth
 import MobilePageHeader from "@/components/MobilePageHeader";
 import MovieDetailsModal from "@/components/MovieDetailsModal";
 
+const HIGHLIGHTS_CACHE_TTL_MS = 90_000;
+
 interface MovieCardData {
   id: number;
   title: string;
@@ -144,6 +146,28 @@ export default function NewsPage() {
         return;
       }
 
+      const cacheKey = `news-highlights:${localStorage.getItem("username") ?? "guest"}`;
+      const cachedValue = sessionStorage.getItem(cacheKey);
+      if (cachedValue) {
+        try {
+          const parsed = JSON.parse(cachedValue) as {
+            expiresAt?: number;
+            payload?: HighlightsPayload;
+          };
+          if (
+            parsed.expiresAt &&
+            parsed.expiresAt > Date.now() &&
+            parsed.payload
+          ) {
+            setPayload(parsed.payload);
+            setLoading(false);
+          }
+        } catch (cacheError) {
+          console.error(cacheError);
+          sessionStorage.removeItem(cacheKey);
+        }
+      }
+
       try {
         const res = await fetch(`${API_URL}/movies/news/highlights`, {
           headers: buildAuthHeaders(token),
@@ -160,6 +184,13 @@ export default function NewsPage() {
         }
 
         setPayload(data);
+        sessionStorage.setItem(
+          cacheKey,
+          JSON.stringify({
+            expiresAt: Date.now() + HIGHLIGHTS_CACHE_TTL_MS,
+            payload: data,
+          }),
+        );
         setError("");
       } catch (fetchError) {
         console.error(fetchError);

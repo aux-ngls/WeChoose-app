@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <title>Qulte Trailer Player</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+      }
+
+      #player, #empty {
+        width: 100%;
+        height: 100%;
+      }
+
+      #empty {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        color: rgba(255,255,255,0.86);
+        text-align: center;
+        line-height: 1.5;
+        background:
+          radial-gradient(circle at top, rgba(244,114,182,0.18), transparent 42%),
+          #050507;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="player"></div>
+    <div id="empty">Bande-annonce indisponible.</div>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const rawVideoId = params.get('videoId') || '';
+      const videoId = rawVideoId.replace(/[^a-zA-Z0-9_-]/g, '');
+      const playerHost = document.getElementById('player');
+      const empty = document.getElementById('empty');
+
+      function showEmpty() {
+        playerHost.style.display = 'none';
+        empty.style.display = 'flex';
+      }
+
+      if (!videoId) {
+        showEmpty();
+      } else {
+        window.onYouTubeIframeAPIReady = function onYouTubeIframeAPIReady() {
+          new window.YT.Player('player', {
+            width: '100%',
+            height: '100%',
+            videoId,
+            host: 'https://www.youtube.com',
+            playerVars: {
+              autoplay: 1,
+              playsinline: 1,
+              rel: 0,
+              origin: window.location.origin,
+              widget_referrer: window.location.href,
+            },
+            events: {
+              onError: showEmpty,
+            },
+          });
+        };
+
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.async = true;
+        script.onerror = showEmpty;
+        document.head.appendChild(script);
+      }
+    </script>
+  </body>
+</html>

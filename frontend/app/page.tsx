@@ -11,10 +11,13 @@ import {
 } from "framer-motion";
 import { Clock, Loader2, Sparkles, Star, X } from "lucide-react";
 import { API_URL } from "@/config";
-import { buildAuthHeaders, clearStoredSession, getStoredToken } from "@/lib/auth";
 import {
-  WATCH_LATER_PLAYLIST_ID,
-} from "@/lib/playlists";
+  buildAuthHeaders,
+  clearStoredSession,
+  getStoredOnboardingCompleted,
+  getStoredToken,
+} from "@/lib/auth";
+import { WATCH_LATER_PLAYLIST_ID } from "@/lib/playlists";
 import MovieDetailsModal from "@/components/MovieDetailsModal";
 
 interface CastMember {
@@ -37,6 +40,12 @@ interface Movie {
 
 type SwipeDirection = "left" | "right";
 
+interface UndoableAction {
+  type: "swipe-left" | "swipe-right" | "rating";
+  movie: Movie;
+  rating?: number;
+}
+
 export default function Home() {
   const TARGET_STACK_SIZE = 12;
   const REFILL_THRESHOLD = 7;
@@ -46,6 +55,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [exitDirection, setExitDirection] = useState(0);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
+  const [undoing, setUndoing] = useState(false);
   const isFetchingRef = useRef(false);
   const isSwipingRef = useRef(false);
   const bufferedMovieIdsRef = useRef<number[]>([]);
@@ -125,6 +136,12 @@ export default function Home() {
       const token = getStoredToken();
       if (!token) {
         redirectToLogin();
+        return;
+      }
+
+      const storedOnboardingCompleted = getStoredOnboardingCompleted();
+      if (storedOnboardingCompleted) {
+        void fetchMovies();
         return;
       }
 
@@ -217,6 +234,31 @@ export default function Home() {
     return true;
   };
 
+  const removeRating = async (movieId: number) => {
+    const token = getStoredToken();
+    if (!token) {
+      redirectToLogin();
+      return false;
+    }
+
+    const res = await fetch(`${API_URL}/movies/rate/${movieId}`, {
+      method: "DELETE",
+      headers: buildAuthHeaders(token),
+    });
+
+    if (res.status === 401) {
+      redirectToLogin();
+      return false;
+    }
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      throw new Error(payload?.detail ?? "Impossible d'annuler cette note");
+    }
+
+    return true;
+  };
+
   const addToPlaylist = async (playlistId: number, movieId: number) => {
     const token = getStoredToken();
     if (!token) {
@@ -268,6 +310,39 @@ export default function Home() {
     }
   };
 
+  const undoSwipeAction = async (action: UndoableAction) => {
+    if (action.type === "swipe-right") {
+      const token = getStoredToken();
+      if (!token) {
+        redirectToLogin();
+        return false;
+      }
+
+      const res = await fetch(`${API_URL}/playlists/${WATCH_LATER_PLAYLIST_ID}/remove/${action.movie.id}`, {
+        method: "DELETE",
+        headers: buildAuthHeaders(token),
+      });
+
+      if (res.status === 401) {
+        redirectToLogin();
+        return false;
+      }
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.detail ?? "Impossible d'annuler ce swipe");
+      }
+
+      return true;
+    }
+
+    const removed = await removeRating(action.movie.id);
+    if (!removed) {
+      return false;
+    }
+    return true;
+  };
+
   const triggerSwipe = (direction: SwipeDirection, movie: Movie) => {
     if (isSwipingRef.current) {
       return;
@@ -280,6 +355,10 @@ export default function Home() {
     void persistSwipeAction(direction, movie)
       .then(() => {
         setError("");
+        setLastUndoableAction({
+          type: direction === "right" ? "swipe-right" : "swipe-left",
+          movie,
+        });
       })
       .catch((swipeError) => {
         console.error(swipeError);
@@ -304,6 +383,11 @@ export default function Home() {
       setExitDirection(rating >= 4 ? 1000 : -1000);
       window.setTimeout(() => removeFrontCard(), 60);
       setError("");
+      setLastUndoableAction({
+        type: "rating",
+        movie,
+        rating,
+      });
     } catch (rateError) {
       console.error(rateError);
       setError("Impossible d'enregistrer cette note.");
@@ -317,6 +401,29 @@ export default function Home() {
       return;
     }
     triggerSwipe(direction, frontMovie);
+  };
+
+  const handleUndo = async () => {
+    if (!lastUndoableAction || undoing) {
+      return;
+    }
+
+    setUndoing(true);
+    try {
+      const reverted = await undoSwipeAction(lastUndoableAction);
+      if (!reverted) {
+        return;
+      }
+
+      restoreMovieToFront(lastUndoableAction.movie);
+      setLastUndoableAction(null);
+      setError("");
+    } catch (undoError) {
+      console.error(undoError);
+      setError("Impossible d'annuler cette action.");
+    } finally {
+      setUndoing(false);
+    }
   };
 
   const openDetails = async (id: number) => {
@@ -362,7 +469,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="relative flex min-h-0 flex-1 w-full max-w-sm items-center justify-center md:max-w-md">
+        <div data-tutorial="home-stack" className="relative flex min-h-0 flex-1 w-full max-w-sm items-center justify-center md:max-w-md">
           {movies.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-3xl border border-gray-800 bg-gray-950 px-8 py-10 text-center text-gray-400">
               <p>Chargement de nouveaux films...</p>
@@ -397,7 +504,19 @@ export default function Home() {
         </div>
 
         {movies.length > 0 && !selectedMovie && (
-          <div className="grid w-full max-w-sm grid-cols-2 items-center gap-2 md:max-w-md md:gap-3">
+          <div data-tutorial="home-actions" className="w-full max-w-sm space-y-2 md:max-w-md md:space-y-3">
+            {lastUndoableAction ? (
+              <button
+                onClick={() => void handleUndo()}
+                disabled={undoing}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.09] disabled:opacity-60"
+              >
+                {undoing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowCounterClockwiseIcon />}
+                Revenir en arrière
+              </button>
+            ) : null}
+
+            <div className="grid grid-cols-2 items-center gap-2 md:gap-3">
             <button
               onClick={() => manualSwipe("left")}
               className="flex items-center justify-center gap-2 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-3 text-red-500 transition hover:scale-105 hover:border-red-700 md:py-4"
@@ -414,6 +533,7 @@ export default function Home() {
               <Clock size={22} />
               <span className="text-xs font-semibold md:text-sm">Plus tard</span>
             </button>
+            </div>
           </div>
         )}
       </section>
@@ -421,7 +541,7 @@ export default function Home() {
       <MovieDetailsModal
         movie={selectedMovie}
         onClose={() => setSelectedMovie(null)}
-        onLikeSuccess={() => void fetchMovies()}
+        onRateSuccess={() => void fetchMovies()}
       />
     </main>
   );
@@ -444,6 +564,7 @@ function MovieCard({
   onRate,
   onSwipe,
 }: MovieCardProps) {
+  const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-180, 180], [-18, 18]);
   const opacity = useTransform(x, [-200, -120, 0, 120, 200], [0.15, 1, 1, 1, 0.15]);
@@ -459,6 +580,13 @@ function MovieCard({
     if (info.offset.x < -78 || info.velocity.x < -520) {
       onSwipe("left");
     }
+  };
+
+  const commitRating = (rating: number) => {
+    setSelectedRating(rating);
+    window.setTimeout(() => {
+      onRate(rating);
+    }, 90);
   };
 
   return (
@@ -505,21 +633,39 @@ function MovieCard({
         <div className="flex h-[21%] flex-col justify-between px-3 py-3 md:h-[24%] md:px-4 md:py-4">
           <div>
             <p className="text-[10px] uppercase tracking-[0.18em] text-gray-500 md:text-[11px] md:tracking-[0.22em]">
-              Deja vu ? Note-le pour affiner l&apos;IA
+              Note
             </p>
           </div>
 
-          <div className="flex justify-between gap-1">
-            {[1, 2, 3, 4, 5].map((rating) => (
-              <button
-                key={rating}
-                onClick={() => onRate(rating)}
-                className="rounded-full p-1.5 text-gray-600 transition hover:scale-110 hover:text-yellow-400 md:p-2"
-                aria-label={`Noter ${rating} sur 5`}
-              >
-                <Star className="h-5 w-5 fill-current md:h-6 md:w-6" />
-              </button>
-            ))}
+          <div className="flex justify-between gap-1.5 md:gap-2">
+            {[1, 2, 3, 4, 5].map((starIndex) => {
+              const activeRating = selectedRating ?? 0;
+              const fillRatio = Math.max(0, Math.min(1, activeRating - (starIndex - 1)));
+
+              return (
+                <div key={starIndex} className="relative h-9 w-9 md:h-11 md:w-11">
+                  <Star className="h-9 w-9 text-gray-700 md:h-11 md:w-11" />
+                  <div
+                    className="pointer-events-none absolute inset-0 overflow-hidden"
+                    style={{ width: `${fillRatio * 100}%` }}
+                  >
+                    <Star className="h-9 w-9 fill-current text-yellow-400 md:h-11 md:w-11" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => commitRating(starIndex - 0.5)}
+                    className="absolute inset-y-0 left-0 w-1/2"
+                    aria-label={`Noter ${starIndex - 0.5} sur 5`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => commitRating(starIndex)}
+                    className="absolute inset-y-0 right-0 w-1/2"
+                    aria-label={`Noter ${starIndex} sur 5`}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -537,5 +683,14 @@ function MovieCard({
         </>
       )}
     </motion.div>
+  );
+}
+
+function ArrowCounterClockwiseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2">
+      <path d="M9 5H5v4" />
+      <path d="M5 9a8 8 0 1 0 2.34-5.66L5 5" />
+    </svg>
   );
 }

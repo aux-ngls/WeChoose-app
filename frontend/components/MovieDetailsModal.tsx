@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Clock,
-  Heart,
   ListPlus,
   Loader2,
   PlaySquare,
@@ -57,7 +56,7 @@ interface MovieDetailsModalProps {
   movie: MovieDetails | null;
   loading?: boolean;
   onClose: () => void;
-  onLikeSuccess?: () => void;
+  onRateSuccess?: (movieId: number, rating: number) => void | Promise<void>;
 }
 
 const FALLBACK_POSTER = "https://via.placeholder.com/500x750?text=No+Image";
@@ -127,19 +126,67 @@ export default function MovieDetailsModal({
   movie,
   loading = false,
   onClose,
-  onLikeSuccess,
+  onRateSuccess,
 }: MovieDetailsModalProps) {
   const router = useRouter();
   const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [selectedRating, setSelectedRating] = useState<number | null>(null);
 
   useEffect(() => {
     setShowPlaylistSelector(false);
     setPlaylists([]);
     setError("");
     setSubmitting(false);
+    setSelectedRating(null);
+  }, [movie?.id]);
+
+  useEffect(() => {
+    if (!movie?.id) {
+      setSelectedRating(null);
+      return;
+    }
+
+    const token = getStoredToken();
+    if (!token) {
+      setSelectedRating(null);
+      return;
+    }
+
+    let isActive = true;
+
+    void fetch(`${API_URL}/movies/user-rating/${movie.id}`, {
+      headers: buildAuthHeaders(token),
+    })
+      .then(async (res) => {
+        if (res.status === 401) {
+          return { rating: null };
+        }
+        if (!res.ok) {
+          throw new Error("Impossible de relire la note");
+        }
+        return res.json();
+      })
+      .then((payload) => {
+        if (!isActive) {
+          return;
+        }
+        const nextRating =
+          typeof payload?.rating === "number" ? Number(payload.rating) : null;
+        setSelectedRating(nextRating);
+      })
+      .catch(() => {
+        if (!isActive) {
+          return;
+        }
+        setSelectedRating(null);
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, [movie?.id]);
 
   const redirectToLogin = () => {
@@ -225,7 +272,7 @@ export default function MovieDetailsModal({
     }
   };
 
-  const rateAsLiked = async () => {
+  const submitRating = async (rating: number) => {
     if (!movie || submitting) {
       return;
     }
@@ -238,7 +285,7 @@ export default function MovieDetailsModal({
     setSubmitting(true);
 
     try {
-      const res = await fetch(`${API_URL}/movies/rate/${movie.id}/5`, {
+      const res = await fetch(`${API_URL}/movies/rate/${movie.id}/${rating}`, {
         method: "POST",
         headers: buildAuthHeaders(token),
       });
@@ -250,12 +297,12 @@ export default function MovieDetailsModal({
 
       if (!res.ok) {
         const payload = await res.json().catch(() => null);
-        throw new Error(payload?.detail ?? "Impossible d'enregistrer ce like");
+        throw new Error(payload?.detail ?? "Impossible d'enregistrer cette note");
       }
 
+      setSelectedRating(rating);
       setError("");
-      onLikeSuccess?.();
-      onClose();
+      await Promise.resolve(onRateSuccess?.(movie.id, rating));
     } catch (rateError) {
       console.error(rateError);
       setError(rateError instanceof Error ? rateError.message : "Note impossible.");
@@ -363,20 +410,58 @@ export default function MovieDetailsModal({
                     Playlist
                   </button>
                   <button
-                    onClick={() => void rateAsLiked()}
-                    disabled={submitting}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-emerald-950/60 py-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-700 disabled:opacity-60"
-                  >
-                    <Heart className="h-4 w-4" />
-                    J&apos;adore
-                  </button>
-                  <button
                     onClick={() => router.push(buildMessageShareHref(movie))}
                     className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-amber-700 bg-amber-950/60 py-3 text-sm font-bold text-amber-100 transition hover:bg-amber-700"
                   >
                     <Share2 className="h-4 w-4" />
                     Partager
                   </button>
+                </div>
+
+                <div className="space-y-3 rounded-[26px] border border-white/8 bg-white/[0.03] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Ta note</p>
+                      <p className="text-xs text-gray-400">Même système que sur le Tinder</p>
+                    </div>
+                    {selectedRating ? (
+                      <div className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
+                        {selectedRating.toFixed(1)} / 5
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex justify-between gap-1.5 sm:gap-2">
+                    {[1, 2, 3, 4, 5].map((starIndex) => {
+                      const activeRating = selectedRating ?? 0;
+                      const fillRatio = Math.max(0, Math.min(1, activeRating - (starIndex - 1)));
+
+                      return (
+                        <div key={starIndex} className="relative h-11 w-11 sm:h-12 sm:w-12">
+                          <Star className="h-11 w-11 text-gray-700 sm:h-12 sm:w-12" />
+                          <div
+                            className="pointer-events-none absolute inset-0 overflow-hidden"
+                            style={{ width: `${fillRatio * 100}%` }}
+                          >
+                            <Star className="h-11 w-11 fill-current text-yellow-400 sm:h-12 sm:w-12" />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void submitRating(starIndex - 0.5)}
+                            disabled={submitting}
+                            className="absolute inset-y-0 left-0 w-1/2"
+                            aria-label={`Noter ${starIndex - 0.5} sur 5`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void submitRating(starIndex)}
+                            disabled={submitting}
+                            className="absolute inset-y-0 right-0 w-1/2"
+                            aria-label={`Noter ${starIndex} sur 5`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <p className="text-sm leading-relaxed text-gray-300">{movie.overview}</p>

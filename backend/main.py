@@ -1,13 +1,17 @@
 import ast
+import base64
 from collections import defaultdict
 import json
 import os
 import sqlite3
 import datetime
+import time
+import uuid
 from functools import lru_cache
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pandas as pd
 import pickle
@@ -19,6 +23,16 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 
+try:
+    from cryptography.hazmat.primitives import serialization
+    from py_vapid import Vapid02
+    from pywebpush import WebPushException, webpush
+except Exception:
+    serialization = None
+    Vapid02 = None
+    WebPushException = Exception
+    webpush = None
+
 # --- CONFIGURATION SÉCURITÉ ---
 SECRET_KEY = "votre_super_cle_secrete_a_changer_en_prod"
 ALGORITHM = "HS256"
@@ -29,12 +43,27 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "").strip()
+WEB_PUSH_SUBJECT = os.getenv("WEB_PUSH_SUBJECT", "").strip() or "mailto:notifications@qulte.app"
 app = FastAPI(title="Qulte API")
 
 WATCH_LATER_SYSTEM_ID = -1
 FAVORITES_SYSTEM_ID = -2
 HISTORY_SYSTEM_ID = -3
 WATCH_LATER_NAME = "À regarder plus tard"
+NOW_PLAYING_CACHE_TTL_SECONDS = 300
+NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
+now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
+news_highlights_cache: dict[int, tuple[float, dict]] = {}
+MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.tar.gz"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
+AVATAR_PUBLIC_PREFIX = "/uploads/avatars"
+MAX_AVATAR_BYTES = 5 * 1024 * 1024
+AVATAR_CONTENT_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
 
 class RealtimeConnectionManager:
@@ -162,15 +191,36 @@ def normalize_tmdb_movie(movie: dict) -> Optional[dict]:
     }
 
 
+@lru_cache(maxsize=2048)
+def get_tmdb_movie_summary(movie_id: int) -> Optional[dict]:
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR"
+        data = requests.get(url, timeout=2).json()
+    except Exception:
+        return None
+
+    return normalize_tmdb_movie(data if isinstance(data, dict) else {})
+
+
 def init_db():
+    os.makedirs(AVATAR_UPLOAD_DIR, exist_ok=True)
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    def ensure_column(table_name: str, column_name: str, column_definition: str):
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if column_name not in existing_columns:
+            cursor.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+            )
     
     # Table USERS
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
                         id INTEGER PRIMARY KEY AUTOINCREMENT, 
                         username TEXT UNIQUE, 
                         password_hash TEXT)''')
+    ensure_column("users", "avatar_url", "TEXT")
 
     # Table USER_PREFERENCES
     cursor.execute('''CREATE TABLE IF NOT EXISTS user_preferences (
@@ -181,6 +231,13 @@ def init_db():
                         people_seed_movie_ids TEXT DEFAULT '[]',
                         onboarding_completed_at TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    ensure_column("user_preferences", "profile_genres", "TEXT DEFAULT '[]'")
+    ensure_column("user_preferences", "profile_people", "TEXT DEFAULT '[]'")
+    ensure_column("user_preferences", "profile_people_data", "TEXT DEFAULT '[]'")
+    ensure_column("user_preferences", "profile_movie_ids", "TEXT DEFAULT '[]'")
+    ensure_column("user_preferences", "profile_soundtrack", "TEXT DEFAULT '{}'")
+    ensure_column("user_preferences", "profile_description", "TEXT DEFAULT ''")
+    ensure_column("user_preferences", "tutorial_completed_at", "TIMESTAMP")
     
     # Table USER_RATINGS (PK composite)
     cursor.execute('''CREATE TABLE IF NOT EXISTS user_ratings (
@@ -295,6 +352,26 @@ def init_db():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_mobile_devices_user_id ON mobile_devices(user_id)"
     )
+
+    # Table WEB_PUSH_SUBSCRIPTIONS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        endpoint TEXT UNIQUE,
+                        subscription_json TEXT,
+                        user_agent TEXT,
+                        is_active INTEGER DEFAULT 1,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_user_id ON web_push_subscriptions(user_id)"
+    )
+
+    # Table APP_SETTINGS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS app_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     
     conn.commit()
     conn.close()
@@ -330,10 +407,25 @@ try:
     )
     max_popularity = max(float(movies_df["popularity"].max()), 1.0)
     max_vote_count = max(float(movies_df["vote_count"].max()), 1.0)
+    global_vote_average = float(movies_df["vote_average"].mean() or 6.2)
+    rating_confidence_threshold = max(
+        60.0,
+        float(movies_df["vote_count"].quantile(0.60) or 0.0),
+    )
+    movies_df["audience_rating_score"] = (
+        (
+            (movies_df["vote_count"] / (movies_df["vote_count"] + rating_confidence_threshold))
+            * (movies_df["vote_average"] / 10.0)
+        )
+        + (
+            (rating_confidence_threshold / (movies_df["vote_count"] + rating_confidence_threshold))
+            * (global_vote_average / 10.0)
+        )
+    )
     movies_df["quality_score"] = (
-        ((movies_df["vote_average"] / 10.0) * 0.55)
-        + ((np.log1p(movies_df["popularity"]) / np.log1p(max_popularity)) * 0.20)
-        + ((np.log1p(movies_df["vote_count"]) / np.log1p(max_vote_count)) * 0.25)
+        (movies_df["audience_rating_score"] * 0.68)
+        + ((np.log1p(movies_df["popularity"]) / np.log1p(max_popularity)) * 0.12)
+        + ((np.log1p(movies_df["vote_count"]) / np.log1p(max_vote_count)) * 0.20)
     )
     cv = CountVectorizer(max_features=5000, stop_words='english')
     vectors = cv.fit_transform(movies_df['soup']).toarray()
@@ -364,6 +456,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     has_completed_onboarding: bool = False
+    has_completed_tutorial: bool = False
 
 
 class OnboardingPreferencesPayload(BaseModel):
@@ -372,8 +465,40 @@ class OnboardingPreferencesPayload(BaseModel):
     favorite_movie_ids: list[int] = []
 
 
+class ProfilePreferencesPayload(BaseModel):
+    profile_description: str = ""
+    profile_genres: list[str] = []
+    profile_people: list[dict] = []
+    profile_movie_ids: list[int] = []
+    profile_soundtrack: Optional[dict] = None
+
+
 def normalize_username(username: str) -> str:
     return username.strip()
+
+
+def normalize_profile_description(value: Optional[str]) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())[:180]
+
+
+def avatar_media_type(filename: str) -> str:
+    extension = os.path.splitext(filename)[1].lower()
+    if extension == ".png":
+        return "image/png"
+    if extension == ".webp":
+        return "image/webp"
+    return "image/jpeg"
+
+
+def local_avatar_path_from_url(avatar_url: Optional[str]) -> Optional[str]:
+    if not avatar_url or not avatar_url.startswith(f"{AVATAR_PUBLIC_PREFIX}/"):
+        return None
+    filename = os.path.basename(avatar_url)
+    if not filename:
+        return None
+    return os.path.join(AVATAR_UPLOAD_DIR, filename)
 
 
 def normalize_preference_label(value: str) -> str:
@@ -388,6 +513,10 @@ def dump_json_list(values: list) -> str:
     return json.dumps(values, ensure_ascii=False)
 
 
+def dump_json_dict(value: dict) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
 def load_json_list(raw_value: Optional[str]) -> list:
     if not raw_value:
         return []
@@ -400,8 +529,208 @@ def load_json_list(raw_value: Optional[str]) -> list:
     return parsed_value if isinstance(parsed_value, list) else []
 
 
+def load_json_dict(raw_value: Optional[str]) -> dict:
+    if not raw_value:
+        return {}
+
+    try:
+        parsed_value = json.loads(raw_value)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+    return parsed_value if isinstance(parsed_value, dict) else {}
+
+
 def dedupe_list(values: list) -> list:
     return list(dict.fromkeys(values))
+
+
+def serialize_tmdb_person(person: dict) -> Optional[dict]:
+    person_id = person.get("id")
+    name = normalize_preference_label(str(person.get("name") or ""))
+    if not name:
+        return None
+
+    return {
+        "id": int(person_id) if isinstance(person_id, int) else None,
+        "name": name,
+        "photo_url": (
+            f"https://image.tmdb.org/t/p/w300{person.get('profile_path')}"
+            if person.get("profile_path")
+            else None
+        ),
+        "known_for_department": normalize_preference_label(
+            str(person.get("known_for_department") or "")
+        )
+        or None,
+    }
+
+
+@lru_cache(maxsize=256)
+def search_tmdb_people(query: str) -> tuple[dict, ...]:
+    normalized_query = normalize_preference_label(query)
+    if len(normalized_query) < 2:
+        return ()
+
+    try:
+        response = requests.get(
+            "https://api.themoviedb.org/3/search/person",
+            params={
+                "api_key": TMDB_API_KEY,
+                "language": "fr-FR",
+                "query": normalized_query,
+                "include_adult": "false",
+                "page": 1,
+            },
+            timeout=3,
+        )
+        results = response.json().get("results", [])[:10]
+    except Exception:
+        results = []
+
+    serialized_people = [
+        serialized
+        for serialized in (serialize_tmdb_person(person) for person in results)
+        if serialized
+    ]
+    return tuple(serialized_people)
+
+
+@lru_cache(maxsize=256)
+def resolve_tmdb_person_from_name(name: str) -> Optional[dict]:
+    results = search_tmdb_people(name)
+    if results:
+        return dict(results[0])
+
+    normalized_name = normalize_preference_label(name)
+    if not normalized_name:
+        return None
+
+    return {
+        "id": None,
+        "name": normalized_name,
+        "photo_url": None,
+        "known_for_department": None,
+    }
+
+
+def normalize_profile_person_entry(value) -> Optional[dict]:
+    if isinstance(value, str):
+        return resolve_tmdb_person_from_name(value)
+
+    if not isinstance(value, dict):
+        return None
+
+    name = normalize_preference_label(str(value.get("name") or ""))
+    if not name:
+        return None
+
+    person_id = value.get("id")
+    photo_url = str(value.get("photo_url") or "").strip() or None
+    known_for_department = normalize_preference_label(
+        str(value.get("known_for_department") or "")
+    ) or None
+
+    return {
+        "id": int(person_id) if isinstance(person_id, int) else None,
+        "name": name,
+        "photo_url": photo_url,
+        "known_for_department": known_for_department,
+    }
+
+
+def dedupe_profile_people(values: list) -> list[dict]:
+    deduped: list[dict] = []
+    seen_keys: set[str] = set()
+    for value in values:
+        normalized = normalize_profile_person_entry(value)
+        if not normalized:
+            continue
+        dedupe_key = (
+            f"id:{normalized['id']}"
+            if normalized.get("id") is not None
+            else f"name:{normalized['name'].lower()}"
+        )
+        if dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+        deduped.append(normalized)
+    return deduped
+
+
+def normalize_profile_soundtrack_entry(value) -> Optional[dict]:
+    if not isinstance(value, dict):
+        return None
+
+    track_name = normalize_preference_label(str(value.get("track_name") or ""))
+    artist_name = normalize_preference_label(str(value.get("artist_name") or ""))
+    preview_url = str(value.get("preview_url") or "").strip()
+    if not track_name or not artist_name or not preview_url:
+        return None
+
+    return {
+        "track_name": track_name,
+        "artist_name": artist_name,
+        "preview_url": preview_url,
+        "artwork_url": str(value.get("artwork_url") or "").strip() or None,
+        "source_url": str(value.get("source_url") or "").strip() or None,
+        "collection_name": normalize_preference_label(
+            str(value.get("collection_name") or "")
+        )
+        or None,
+    }
+
+
+@lru_cache(maxsize=256)
+def search_soundtracks(query: str) -> tuple[dict, ...]:
+    normalized_query = normalize_preference_label(query)
+    if len(normalized_query) < 2:
+        return ()
+
+    try:
+        response = requests.get(
+            "https://itunes.apple.com/search",
+            params={
+                "term": normalized_query,
+                "media": "music",
+                "entity": "song",
+                "limit": 12,
+                "country": "FR",
+            },
+            timeout=3,
+        )
+        results = response.json().get("results", [])
+    except Exception:
+        results = []
+
+    serialized_tracks: list[dict] = []
+    seen_preview_urls: set[str] = set()
+    for track in results:
+        preview_url = str(track.get("previewUrl") or "").strip()
+        track_name = normalize_preference_label(str(track.get("trackName") or ""))
+        artist_name = normalize_preference_label(str(track.get("artistName") or ""))
+        if not preview_url or not track_name or not artist_name:
+            continue
+        if preview_url in seen_preview_urls:
+            continue
+        seen_preview_urls.add(preview_url)
+        artwork_url = str(track.get("artworkUrl100") or "").strip()
+        if artwork_url:
+            artwork_url = artwork_url.replace("100x100bb", "600x600bb")
+        serialized_tracks.append(
+            {
+                "track_name": track_name,
+                "artist_name": artist_name,
+                "preview_url": preview_url,
+                "artwork_url": artwork_url or None,
+                "source_url": str(track.get("trackViewUrl") or "").strip() or None,
+                "collection_name": normalize_preference_label(
+                    str(track.get("collectionName") or "")
+                )
+                or None,
+            }
+        )
+    return tuple(serialized_tracks)
 
 
 def has_existing_taste_signals(cursor, user_id: int) -> bool:
@@ -423,7 +752,19 @@ def has_existing_taste_signals(cursor, user_id: int) -> bool:
 def get_user_preferences(cursor, user_id: int) -> dict:
     cursor.execute(
         """
-        SELECT favorite_genres, favorite_people, favorite_movie_ids, people_seed_movie_ids, onboarding_completed_at
+        SELECT
+            favorite_genres,
+            favorite_people,
+            favorite_movie_ids,
+            people_seed_movie_ids,
+            onboarding_completed_at,
+            profile_genres,
+            profile_people,
+            profile_people_data,
+            profile_movie_ids,
+            profile_soundtrack,
+            profile_description,
+            tutorial_completed_at
         FROM user_preferences
         WHERE user_id = ?
         """,
@@ -436,23 +777,84 @@ def get_user_preferences(cursor, user_id: int) -> dict:
             "favorite_people": [],
             "favorite_movie_ids": [],
             "people_seed_movie_ids": [],
+            "profile_genres": [],
+            "profile_people": [],
+            "profile_people_data": [],
+            "profile_movie_ids": [],
+            "profile_soundtrack": None,
+            "profile_description": "",
             "has_completed_onboarding": has_existing_taste_signals(cursor, user_id),
+            "has_completed_tutorial": False,
         }
 
+    favorite_genres = [
+        value for value in load_json_list(row[0]) if isinstance(value, str) and value.strip()
+    ]
+    favorite_people = [
+        value for value in load_json_list(row[1]) if isinstance(value, str) and value.strip()
+    ]
+    favorite_movie_ids = [
+        int(value) for value in load_json_list(row[2]) if isinstance(value, int)
+    ]
+    profile_genres = [
+        value for value in load_json_list(row[5]) if isinstance(value, str) and value.strip()
+    ]
+    profile_people = [
+        value for value in load_json_list(row[6]) if isinstance(value, str) and value.strip()
+    ]
+    profile_people_data = dedupe_profile_people(load_json_list(row[7]))[:6]
+    profile_movie_ids = [
+        int(value) for value in load_json_list(row[8]) if isinstance(value, int)
+    ]
+    profile_soundtrack = normalize_profile_soundtrack_entry(load_json_dict(row[9]))
+    profile_description = normalize_profile_description(row[10])
+
+    if not profile_people_data and profile_people:
+        profile_people_data = dedupe_profile_people(profile_people)[:6]
+
     return {
-        "favorite_genres": [
-            value for value in load_json_list(row[0]) if isinstance(value, str) and value.strip()
-        ],
-        "favorite_people": [
-            value for value in load_json_list(row[1]) if isinstance(value, str) and value.strip()
-        ],
-        "favorite_movie_ids": [
-            int(value) for value in load_json_list(row[2]) if isinstance(value, int)
-        ],
+        "favorite_genres": favorite_genres,
+        "favorite_people": favorite_people,
+        "favorite_movie_ids": favorite_movie_ids,
         "people_seed_movie_ids": [
             int(value) for value in load_json_list(row[3]) if isinstance(value, int)
         ],
+        "profile_genres": profile_genres,
+        "profile_people": profile_people,
+        "profile_people_data": profile_people_data,
+        "profile_movie_ids": profile_movie_ids,
+        "profile_soundtrack": profile_soundtrack,
+        "profile_description": profile_description,
         "has_completed_onboarding": bool(row[4]) or has_existing_taste_signals(cursor, user_id),
+        "has_completed_tutorial": bool(row[11]),
+    }
+
+
+def serialize_profile_preferences(preferences: dict) -> dict:
+    profile_movie_ids = [
+        int(movie_id) for movie_id in preferences.get("profile_movie_ids", []) if isinstance(movie_id, int)
+    ][:6]
+    profile_movies = [
+        movie
+        for movie in (get_tmdb_movie_summary(movie_id) for movie_id in profile_movie_ids)
+        if movie
+    ]
+
+    return {
+        "profile_genres": [
+            value
+            for value in preferences.get("profile_genres", [])
+            if isinstance(value, str) and value.strip()
+        ][:5],
+        "profile_people": dedupe_profile_people(preferences.get("profile_people_data", []))[:6],
+        "profile_movie_ids": profile_movie_ids,
+        "profile_movies": profile_movies,
+        "profile_soundtrack": normalize_profile_soundtrack_entry(
+            preferences.get("profile_soundtrack")
+        ),
+        "profile_description": normalize_profile_description(
+            preferences.get("profile_description")
+        ),
     }
 
 def verify_password(plain_password, hashed_password):
@@ -477,7 +879,7 @@ def get_user_from_token(token: str) -> dict:
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username FROM users WHERE username = ?", (username,))
+    cursor.execute("SELECT id, username, avatar_url FROM users WHERE username = ?", (username,))
     user = cursor.fetchone()
     if user is None:
         conn.close()
@@ -488,7 +890,9 @@ def get_user_from_token(token: str) -> dict:
     return {
         "id": int(user[0]),
         "username": user[1],
+        "avatar_url": user[2],
         "has_completed_onboarding": preferences["has_completed_onboarding"],
+        "has_completed_tutorial": preferences["has_completed_tutorial"],
     }
 
 
@@ -524,6 +928,7 @@ def signup(user: UserCreate):
         "access_token": access_token,
         "token_type": "bearer",
         "has_completed_onboarding": False,
+        "has_completed_tutorial": False,
     }
 
 @app.post("/auth/login", response_model=Token)
@@ -548,11 +953,86 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         "access_token": access_token,
         "token_type": "bearer",
         "has_completed_onboarding": preferences["has_completed_onboarding"],
+        "has_completed_tutorial": preferences["has_completed_tutorial"],
     }
 
 @app.get("/users/me")
 def read_users_me(current_user: dict = Depends(get_current_user)):
     return current_user
+
+
+@app.get("/uploads/avatars/{filename}")
+def get_uploaded_avatar(filename: str):
+    safe_filename = os.path.basename(filename)
+    if safe_filename != filename:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+
+    path = os.path.join(AVATAR_UPLOAD_DIR, safe_filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Avatar introuvable")
+
+    return FileResponse(path, media_type=avatar_media_type(safe_filename))
+
+
+@app.post("/profile/avatar")
+async def upload_profile_avatar(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    content_type = (file.content_type or "").split(";")[0].lower()
+    extension = AVATAR_CONTENT_TYPES.get(content_type)
+    if not extension:
+        raise HTTPException(status_code=400, detail="Format image non supporte")
+
+    content = await file.read(MAX_AVATAR_BYTES + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="Image vide")
+    if len(content) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=400, detail="Image trop volumineuse")
+
+    os.makedirs(AVATAR_UPLOAD_DIR, exist_ok=True)
+    filename = f"user-{current_user['id']}-{int(time.time())}-{uuid.uuid4().hex[:10]}{extension}"
+    avatar_path = os.path.join(AVATAR_UPLOAD_DIR, filename)
+    with open(avatar_path, "wb") as avatar_file:
+        avatar_file.write(content)
+
+    avatar_url = f"{AVATAR_PUBLIC_PREFIX}/{filename}"
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute("SELECT avatar_url FROM users WHERE id = ?", (current_user["id"],))
+    row = cursor.fetchone()
+    previous_avatar_url = row["avatar_url"] if row else None
+    cursor.execute("UPDATE users SET avatar_url = ? WHERE id = ?", (avatar_url, current_user["id"]))
+    conn.commit()
+    conn.close()
+
+    previous_path = local_avatar_path_from_url(previous_avatar_url)
+    if previous_path and previous_path != avatar_path and os.path.exists(previous_path):
+        try:
+            os.remove(previous_path)
+        except OSError:
+            pass
+
+    return {"avatar_url": avatar_url}
+
+
+@app.post("/tutorial/complete")
+def complete_tutorial(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO user_preferences (user_id, tutorial_completed_at, updated_at)
+        VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+            tutorial_completed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (current_user["id"],),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "completed"}
 
 
 @app.get("/onboarding/preferences")
@@ -628,6 +1108,74 @@ def save_onboarding_preferences(
     preferences = get_user_preferences(cursor, current_user["id"])
     conn.close()
     return preferences
+
+
+@app.get("/profile/preferences")
+def get_profile_preferences(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    preferences = get_user_preferences(cursor, current_user["id"])
+    conn.close()
+    return serialize_profile_preferences(preferences)
+
+
+@app.post("/profile/preferences")
+def save_profile_preferences(
+    payload: ProfilePreferencesPayload,
+    current_user: dict = Depends(get_current_user),
+):
+    profile_genres = dedupe_list(
+        [
+            normalize_preference_label(value)
+            for value in payload.profile_genres
+            if isinstance(value, str) and normalize_preference_label(value)
+        ]
+    )[:5]
+    profile_people_data = dedupe_profile_people(payload.profile_people)[:6]
+    profile_people = [person["name"] for person in profile_people_data][:6]
+    profile_movie_ids = dedupe_list(
+        [int(value) for value in payload.profile_movie_ids if isinstance(value, int)]
+    )[:6]
+    profile_soundtrack = normalize_profile_soundtrack_entry(payload.profile_soundtrack)
+    profile_description = normalize_profile_description(payload.profile_description)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO user_preferences (
+            user_id,
+            profile_genres,
+            profile_people,
+            profile_people_data,
+            profile_movie_ids,
+            profile_soundtrack,
+            profile_description,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+            profile_genres = excluded.profile_genres,
+            profile_people = excluded.profile_people,
+            profile_people_data = excluded.profile_people_data,
+            profile_movie_ids = excluded.profile_movie_ids,
+            profile_soundtrack = excluded.profile_soundtrack,
+            profile_description = excluded.profile_description,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            current_user["id"],
+            dump_json_list(profile_genres),
+            dump_json_list(profile_people),
+            dump_json_list(profile_people_data),
+            dump_json_list(profile_movie_ids),
+            dump_json_dict(profile_soundtrack or {}),
+            profile_description,
+        ),
+    )
+    conn.commit()
+    preferences = get_user_preferences(cursor, current_user["id"])
+    conn.close()
+    return serialize_profile_preferences(preferences)
 
 # --- 5. OUTILS TMDB (Inchangé) ---
 @lru_cache(maxsize=2048)
@@ -846,14 +1394,20 @@ def get_movie_primary_genre(movie_id: int) -> str:
     return movie_primary_genre_by_id.get(int(movie_id), "Autres")
 
 
-def get_rating_signal_weight(rating: int) -> float:
+def get_rating_signal_weight(rating: float) -> float:
+    rounded_rating = round(float(rating) * 2) / 2
     return {
-        5: 1.45,
-        4: 1.05,
-        3: 0.12,
-        2: -0.70,
-        1: -1.10,
-    }.get(int(rating), 0.0)
+        5.0: 1.95,
+        4.5: 1.62,
+        4.0: 1.28,
+        3.5: 0.54,
+        3.0: 0.14,
+        2.5: -0.24,
+        2.0: -0.96,
+        1.5: -1.24,
+        1.0: -1.48,
+        0.5: -1.72,
+    }.get(rounded_rating, 0.0)
 
 
 def squash_affinity(value: float) -> float:
@@ -1054,6 +1608,7 @@ def serialize_review_row(row: sqlite3.Row) -> dict:
         "author": {
             "id": row["user_id"],
             "username": row["username"],
+            "avatar_url": row["avatar_url"] if "avatar_url" in row_keys else None,
         },
         "likes_count": row["likes_count"],
         "liked_by_me": bool(row["liked_by_me"]),
@@ -1062,9 +1617,11 @@ def serialize_review_row(row: sqlite3.Row) -> dict:
 
 
 def serialize_user_row(row: sqlite3.Row) -> dict:
+    row_keys = set(row.keys())
     return {
         "id": row["id"],
         "username": row["username"],
+        "avatar_url": row["avatar_url"] if "avatar_url" in row_keys else None,
         "followers_count": row["followers_count"],
         "following_count": row["following_count"],
         "reviews_count": row["reviews_count"],
@@ -1083,6 +1640,7 @@ def serialize_comment_row(row: sqlite3.Row) -> dict:
         "author": {
             "id": row["user_id"],
             "username": row["username"],
+            "avatar_url": row["avatar_url"] if "avatar_url" in row_keys else None,
         },
         "reply_to_username": row["reply_to_username"] if "reply_to_username" in row_keys else None,
     }
@@ -1187,6 +1745,107 @@ def fetch_active_mobile_tokens(cursor, user_ids: list[int]) -> list[str]:
     return tokens
 
 
+def get_app_setting(cursor, key: str) -> Optional[str]:
+    cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return str(row["value"] if isinstance(row, sqlite3.Row) else row[0])
+
+
+def set_app_setting(cursor, key: str, value: str):
+    cursor.execute(
+        """
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (key, value),
+    )
+
+
+def encode_base64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def get_or_create_web_push_vapid_config(cursor) -> tuple[Optional[str], Optional[str]]:
+    env_private_key = os.getenv("WEB_PUSH_VAPID_PRIVATE_KEY", "").strip()
+    env_public_key = os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY", "").strip()
+    if env_private_key and env_public_key:
+        return env_private_key.replace("\\n", "\n"), env_public_key
+
+    stored_private_key = get_app_setting(cursor, "web_push_vapid_private_key")
+    stored_public_key = get_app_setting(cursor, "web_push_vapid_public_key")
+    if stored_private_key and stored_public_key:
+        return stored_private_key, stored_public_key
+
+    if Vapid02 is None or serialization is None:
+        return None, None
+
+    vapid = Vapid02()
+    vapid.generate_keys()
+    private_key = vapid.private_pem().decode("utf-8")
+    public_key = encode_base64url(
+        vapid.public_key.public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint,
+        )
+    )
+    set_app_setting(cursor, "web_push_vapid_private_key", private_key)
+    set_app_setting(cursor, "web_push_vapid_public_key", public_key)
+    return private_key, public_key
+
+
+def load_web_push_vapid_private_key(cursor):
+    private_key, _ = get_or_create_web_push_vapid_config(cursor)
+    if not private_key or Vapid02 is None:
+        return None
+
+    try:
+        return Vapid02.from_pem(private_key.encode("utf-8"))
+    except Exception:
+        return None
+
+
+def fetch_active_web_push_subscriptions(cursor, user_ids: list[int]) -> list[dict]:
+    unique_user_ids = list(dict.fromkeys(user_ids))
+    if not unique_user_ids:
+        return []
+
+    placeholders = ",".join("?" for _ in unique_user_ids)
+    cursor.execute(
+        f"""
+        SELECT id, endpoint, subscription_json
+        FROM web_push_subscriptions
+        WHERE is_active = 1
+        AND user_id IN ({placeholders})
+        """,
+        tuple(unique_user_ids),
+    )
+
+    subscriptions: list[dict] = []
+    for row in cursor.fetchall():
+        row_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+        endpoint = row["endpoint"] if isinstance(row, sqlite3.Row) else row[1]
+        raw_subscription = row["subscription_json"] if isinstance(row, sqlite3.Row) else row[2]
+        try:
+            subscription_info = json.loads(raw_subscription or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(subscription_info, dict) or not subscription_info.get("endpoint"):
+            continue
+        subscriptions.append(
+            {
+                "id": int(row_id),
+                "endpoint": str(endpoint),
+                "subscription_info": subscription_info,
+            }
+        )
+    return subscriptions
+
+
 def send_native_push_notifications(
     cursor,
     user_ids: list[int],
@@ -1196,9 +1855,6 @@ def send_native_push_notifications(
     route: str,
     extra_data: Optional[dict] = None,
 ):
-    if not FCM_SERVER_KEY:
-        return
-
     device_tokens = fetch_active_mobile_tokens(cursor, user_ids)
     if not device_tokens:
         return
@@ -1209,12 +1865,73 @@ def send_native_push_notifications(
             {key: str(value) for key, value in extra_data.items() if value is not None}
         )
 
+    expo_tokens = [
+        token
+        for token in device_tokens
+        if token.startswith("ExpoPushToken[") or token.startswith("ExponentPushToken[")
+    ]
+    fcm_tokens = [token for token in device_tokens if token not in expo_tokens]
+
+    if expo_tokens:
+        for index in range(0, len(expo_tokens), 100):
+            chunk = expo_tokens[index : index + 100]
+            try:
+                response = requests.post(
+                    "https://exp.host/--/api/v2/push/send",
+                    headers={
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    json=[
+                        {
+                            "to": token,
+                            "sound": "default",
+                            "title": title,
+                            "body": body,
+                            "data": serialized_data,
+                        }
+                        for token in chunk
+                    ],
+                    timeout=8,
+                )
+            except requests.RequestException:
+                continue
+
+            if response.status_code != 200:
+                continue
+
+            try:
+                response_payload = response.json()
+            except ValueError:
+                continue
+
+            tickets = response_payload.get("data") or []
+            if isinstance(tickets, dict):
+                tickets = [tickets]
+
+            for token, ticket in zip(chunk, tickets):
+                if not isinstance(ticket, dict):
+                    continue
+                details = ticket.get("details") or {}
+                if ticket.get("status") == "error" and details.get("error") == "DeviceNotRegistered":
+                    cursor.execute(
+                        """
+                        UPDATE mobile_devices
+                        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+                        WHERE token = ?
+                        """,
+                        (token,),
+                    )
+
+    if not FCM_SERVER_KEY or not fcm_tokens:
+        return
+
     headers = {
         "Authorization": f"key={FCM_SERVER_KEY}",
         "Content-Type": "application/json",
     }
 
-    for device_token in device_tokens:
+    for device_token in fcm_tokens:
         try:
             response = requests.post(
                 "https://fcm.googleapis.com/fcm/send",
@@ -1259,12 +1976,71 @@ def send_native_push_notifications(
             )
 
 
+def send_web_push_notifications(
+    cursor,
+    user_ids: list[int],
+    *,
+    title: str,
+    body: str,
+    route: str,
+    extra_data: Optional[dict] = None,
+):
+    if webpush is None:
+        return
+
+    vapid_private_key = load_web_push_vapid_private_key(cursor)
+    if not vapid_private_key:
+        return
+
+    subscriptions = fetch_active_web_push_subscriptions(cursor, user_ids)
+    if not subscriptions:
+        return
+
+    payload = {
+        "title": title,
+        "body": body,
+        "route": route,
+        "tag": extra_data.get("tag") if extra_data else None,
+        "icon": "/icon.svg",
+        "badge": "/icon.svg",
+    }
+    if extra_data:
+        payload.update({key: value for key, value in extra_data.items() if value is not None})
+    serialized_payload = json.dumps(payload, ensure_ascii=False)
+
+    for subscription in subscriptions:
+        try:
+            webpush(
+                subscription_info=subscription["subscription_info"],
+                data=serialized_payload,
+                vapid_private_key=vapid_private_key,
+                vapid_claims={"sub": WEB_PUSH_SUBJECT},
+                ttl=120,
+                headers={"Urgency": "high"},
+            )
+        except WebPushException as exc:
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
+            if status_code in {404, 410}:
+                cursor.execute(
+                    """
+                    UPDATE web_push_subscriptions
+                    SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (subscription["id"],),
+                )
+        except Exception:
+            continue
+
+
 def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, params=(), limit: Optional[int] = None) -> list[dict]:
     query = f"""
         SELECT
             r.id,
             r.user_id,
             u.username,
+            u.avatar_url,
             r.movie_id,
             r.title,
             r.poster_url,
@@ -1304,6 +2080,7 @@ def fetch_review_comments(cursor, review_id: int) -> list[dict]:
             c.created_at,
             u.id AS user_id,
             u.username,
+            u.avatar_url,
             parent_user.username AS reply_to_username
         FROM comments c
         JOIN users u ON u.id = c.user_id
@@ -1394,6 +2171,7 @@ def build_message_preview(content: Optional[str], movie_title: Optional[str]) ->
 
 
 def serialize_direct_conversation_row(row: sqlite3.Row) -> dict:
+    row_keys = set(row.keys())
     return {
         "id": row["id"],
         "created_at": row["created_at"],
@@ -1401,6 +2179,7 @@ def serialize_direct_conversation_row(row: sqlite3.Row) -> dict:
         "participant": {
             "id": row["participant_id"],
             "username": row["participant_username"],
+            "avatar_url": row["participant_avatar_url"] if "participant_avatar_url" in row_keys else None,
         },
         "last_message": (
             {
@@ -1463,7 +2242,8 @@ def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_
                 WHEN c.user_one_id = ? THEN c.user_two_id
                 ELSE c.user_one_id
             END AS participant_id,
-            participant.username AS participant_username
+            participant.username AS participant_username,
+            participant.avatar_url AS participant_avatar_url
         FROM direct_conversations c
         JOIN users participant
             ON participant.id = CASE
@@ -1512,6 +2292,7 @@ def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
                 ELSE c.user_one_id
             END AS participant_id,
             participant.username AS participant_username,
+            participant.avatar_url AS participant_avatar_url,
             last_message.id AS last_message_id,
             last_message.content AS last_message_content,
             last_message.sender_id AS last_sender_id,
@@ -1619,6 +2400,21 @@ class MobileDeviceRegister(BaseModel):
 
 class MobileDeviceUnregister(BaseModel):
     token: str
+
+
+class WebPushSubscriptionKeysPayload(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class WebPushSubscribePayload(BaseModel):
+    endpoint: str
+    keys: WebPushSubscriptionKeysPayload
+    expirationTime: Optional[str | int | float] = None
+
+
+class WebPushUnsubscribePayload(BaseModel):
+    endpoint: str
 
 @app.get("/playlists")
 def get_all_playlists(current_user: dict = Depends(get_current_user)):
@@ -1802,12 +2598,14 @@ def reorder_playlist(
     return {"status": "reordered"}
 
 @app.post("/movies/rate/{movie_id}/{rating}")
-def rate_movie(movie_id: int, rating: int, current_user: dict = Depends(get_current_user)):
-    if rating < 1 or rating > 5:
-        raise HTTPException(status_code=400, detail="La note doit être comprise entre 1 et 5")
+def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_current_user)):
+    rounded_rating = round(float(rating) * 2) / 2
+    if rounded_rating < 0.5 or rounded_rating > 5:
+        raise HTTPException(status_code=400, detail="La note doit être comprise entre 0.5 et 5")
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    watch_later_id = get_or_create_watch_later_id(cursor, current_user["id"])
     movie_row = movies_df[movies_df['id'] == movie_id] if not movies_df.empty else pd.DataFrame()
     title = str(movie_row.iloc[0]["title"]) if not movie_row.empty else "Inconnu"
     poster = fetch_poster_from_tmdb(movie_id)
@@ -1820,11 +2618,41 @@ def rate_movie(movie_id: int, rating: int, current_user: dict = Depends(get_curr
     
     cursor.execute(
         "INSERT OR REPLACE INTO user_ratings (user_id, movie_id, rating, title, poster_url) VALUES (?, ?, ?, ?, ?)",
-        (current_user["id"], movie_id, rating, title, poster),
+        (current_user["id"], movie_id, rounded_rating, title, poster),
+    )
+    cursor.execute(
+        "DELETE FROM playlist_items WHERE playlist_id = ? AND movie_id = ?",
+        (watch_later_id, movie_id),
     )
     conn.commit()
     conn.close()
     return {"status": "rated"}
+
+
+@app.delete("/movies/rate/{movie_id}")
+def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM user_ratings WHERE user_id = ? AND movie_id = ?",
+        (current_user["id"], movie_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "removed"}
+
+
+@app.get("/movies/user-rating/{movie_id}")
+def get_user_movie_rating(movie_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT rating FROM user_ratings WHERE user_id = ? AND movie_id = ?",
+        (current_user["id"], movie_id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return {"rating": float(row[0]) if row else None}
 
 # --- 7. RECOMMANDATIONS ---
 def compute_recommendation_feed(
@@ -1852,9 +2680,9 @@ def compute_recommendation_feed(
         "SELECT movie_id, rating FROM user_ratings WHERE user_id = ? ORDER BY added_at DESC",
         (current_user_id,),
     )
-    rating_rows = [(int(row[0]), int(row[1])) for row in cursor.fetchall()]
+    rating_rows = [(int(row[0]), float(row[1])) for row in cursor.fetchall()]
     rated_ids = {movie_id for movie_id, _ in rating_rows}
-    disliked_ids = [movie_id for movie_id, rating in rating_rows if rating <= 2][:12]
+    disliked_ids = [movie_id for movie_id, rating in rating_rows if rating <= 2.5][:12]
 
     cursor.execute(
         "SELECT movie_id FROM playlist_items WHERE playlist_id = ?",
@@ -1896,12 +2724,14 @@ def compute_recommendation_feed(
     negative_signal_weights: dict[int, float] = {}
 
     for index, (movie_id, rating) in enumerate(rating_rows):
-        recency_multiplier = max(0.35, 1.34 - (index * 0.08))
+        recency_multiplier = max(0.42, 1.52 - (index * 0.10))
         signal_weight = get_rating_signal_weight(rating) * recency_multiplier
-        if index < 4:
-            signal_weight *= 1.28
-        elif index < 8:
-            signal_weight *= 1.12
+        if index < 3:
+            signal_weight *= 1.46 if is_tinder_mode else 1.34
+        elif index < 6:
+            signal_weight *= 1.24 if is_tinder_mode else 1.14
+        elif index < 10:
+            signal_weight *= 1.10 if is_tinder_mode else 1.04
         if signal_weight > 0:
             positive_signal_weights[movie_id] = max(
                 positive_signal_weights.get(movie_id, 0.0),
@@ -1914,9 +2744,10 @@ def compute_recommendation_feed(
             )
 
     for index, movie_id in enumerate(recent_watch_later_ids):
-        watch_weight = max(0.38, 1.18 - (index * 0.10))
-        if index < 4:
-            watch_weight *= 1.18
+        base_watch_weight = 1.18 if cold_start_mode else (0.78 if is_tinder_mode else 0.96)
+        watch_weight = max(0.28, base_watch_weight - (index * 0.09))
+        if index < 3:
+            watch_weight *= 1.10 if is_tinder_mode else 1.14
         positive_signal_weights[movie_id] = max(
             positive_signal_weights.get(movie_id, 0.0),
             watch_weight,
@@ -1935,7 +2766,14 @@ def compute_recommendation_feed(
             people_seed_weight,
         )
 
-    positive_signal_ids = list(positive_signal_weights.keys())[:18]
+    positive_signal_ids = [
+        movie_id
+        for movie_id, _ in sorted(
+            positive_signal_weights.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    ][:18]
     candidate_scores: dict[int, float] = {}
     available_movie_ids = set(int(movie_id) for movie_id in movie_ids_array.tolist())
     genre_profile: set[str] = set(onboarding_genre_tokens)
@@ -2029,6 +2867,9 @@ def compute_recommendation_feed(
     genre_affinity_scores = compute_token_affinity_scores("genre_tokens", genre_affinity_map)
     keyword_affinity_scores = compute_token_affinity_scores("keyword_tokens", keyword_affinity_map)
     quality_scores = movies_df["quality_score"].to_numpy()
+    audience_rating_scores = movies_df["audience_rating_score"].to_numpy()
+    audience_rating_boost_scores = np.clip((audience_rating_scores - 0.62) / 0.11, 0.0, 1.0)
+    audience_rating_penalty_scores = np.clip((0.60 - audience_rating_scores) / 0.08, 0.0, 1.0)
 
     social_scores = np.array(
         [
@@ -2042,11 +2883,14 @@ def compute_recommendation_feed(
         ]
     )
 
-    positive_similarity_weight = 0.38 if is_tinder_mode else 0.34
-    negative_similarity_weight = 0.28 if is_tinder_mode else 0.22
-    genre_affinity_weight = 0.19 if is_tinder_mode else 0.15
-    keyword_affinity_weight = 0.20 if is_tinder_mode else 0.16
-    quality_weight = 0.07 if is_tinder_mode else 0.11
+    positive_similarity_weight = 0.46 if is_tinder_mode else 0.34
+    negative_similarity_weight = 0.35 if is_tinder_mode else 0.22
+    genre_affinity_weight = 0.17 if is_tinder_mode else 0.15
+    keyword_affinity_weight = 0.18 if is_tinder_mode else 0.16
+    audience_rating_weight = 0.26 if is_tinder_mode else 0.08
+    audience_boost_weight = 0.34 if is_tinder_mode else 0.06
+    audience_penalty_weight = 0.20 if is_tinder_mode else 0.03
+    quality_weight = 0.03 if is_tinder_mode else 0.09
     social_weight = 0.0 if is_tinder_mode else (0.02 if interaction_count >= 8 else 0.04)
 
     hybrid_scores = (
@@ -2054,6 +2898,9 @@ def compute_recommendation_feed(
         - (negative_similarity_scores * negative_similarity_weight)
         + (genre_affinity_scores * genre_affinity_weight)
         + (keyword_affinity_scores * keyword_affinity_weight)
+        + (audience_rating_scores * audience_rating_weight)
+        + (audience_rating_boost_scores * audience_boost_weight)
+        - (audience_rating_penalty_scores * audience_penalty_weight)
         + (quality_scores * quality_weight)
         + (social_scores * social_weight)
     )
@@ -2076,21 +2923,24 @@ def compute_recommendation_feed(
             continue
         candidate_scores[movie_id] = float(hybrid_scores[idx])
 
-    for seed_rank, seed_id in enumerate(positive_signal_ids[:4]):
+    for seed_rank, seed_id in enumerate(positive_signal_ids[:5]):
         related_ids = get_tmdb_related_movie_ids(seed_id)
+        seed_strength = positive_signal_weights.get(seed_id, 1.0)
         for rank, related_id in enumerate(related_ids):
             if related_id in blocked_ids or related_id not in available_movie_ids:
                 continue
-            base_seed_score = 3.35 if is_tinder_mode else 2.95
+            base_seed_score = (2.90 if is_tinder_mode else 2.95) + min(seed_strength * (0.28 if is_tinder_mode else 0.42), 0.92 if is_tinder_mode else 1.25)
             score = base_seed_score - (rank * 0.08) - (seed_rank * 0.18)
             candidate_scores[related_id] = candidate_scores.get(related_id, 0.0) + max(score, 0.2)
 
     for seed_rank, seed_id in enumerate(disliked_ids[:4]):
         related_ids = get_tmdb_related_movie_ids(seed_id)
+        seed_penalty_strength = abs(negative_signal_weights.get(seed_id, -1.0))
         for rank, related_id in enumerate(related_ids):
             if related_id in blocked_ids or related_id not in available_movie_ids:
                 continue
-            penalty = 1.15 - (rank * 0.05) - (seed_rank * 0.12)
+            penalty = (1.35 if is_tinder_mode else 1.15) + min(seed_penalty_strength * 0.20, 0.45)
+            penalty = penalty - (rank * 0.05) - (seed_rank * 0.12)
             candidate_scores[related_id] = candidate_scores.get(related_id, 0.0) - max(penalty, 0.10)
 
     for movie_id, score in collaborative_scores.items():
@@ -2247,13 +3097,18 @@ def get_movie_feed(
 
 
 def fetch_now_playing_movies(limit: int = 18) -> list[dict]:
+    cached_items = now_playing_cache.get("items", [])
+    cached_expiration = float(now_playing_cache.get("expires_at") or 0.0)
+    if cached_items and cached_expiration > time.time():
+        return [dict(movie) for movie in list(cached_items)[:limit]]
+
     try:
         url = f"https://api.themoviedb.org/3/movie/now_playing?api_key={TMDB_API_KEY}&language=fr-FR&page=1"
         results = requests.get(url, timeout=3).json().get("results", [])[:limit]
     except Exception:
         results = []
 
-    return [
+    movies = [
         {
             "id": int(movie["id"]),
             "title": str(movie.get("title") or ""),
@@ -2263,6 +3118,9 @@ def fetch_now_playing_movies(limit: int = 18) -> list[dict]:
         }
         for movie in results
     ]
+    now_playing_cache["items"] = movies
+    now_playing_cache["expires_at"] = time.time() + NOW_PLAYING_CACHE_TTL_SECONDS
+    return [dict(movie) for movie in movies[:limit]]
 
 
 def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dict]:
@@ -2293,6 +3151,14 @@ def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dic
 
 @app.get("/movies/news/highlights")
 def movie_news_highlights(current_user: dict = Depends(get_current_user)):
+    cached_payload = news_highlights_cache.get(current_user["id"])
+    if cached_payload and cached_payload[0] > time.time():
+        payload = cached_payload[1]
+        return {
+            key: [dict(movie) for movie in value]
+            for key, value in payload.items()
+        }
+
     popular_now = fetch_now_playing_movies(limit=18)
     popular_ids = {movie["id"] for movie in popular_now}
     tinder_preview = compute_recommendation_feed(
@@ -2320,11 +3186,28 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
 
     friend_rated = fetch_friend_rated_movies(current_user["id"], limit=18)
 
-    return {
+    payload = {
         "popular_now": popular_now,
         "tailored_for_you": tailored,
         "discovery_for_you": discovery,
         "friends_recent_ratings": friend_rated,
+    }
+    news_highlights_cache[current_user["id"]] = (
+        time.time() + NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS,
+        payload,
+    )
+    if len(news_highlights_cache) > 256:
+        expired_user_ids = [
+            user_id
+            for user_id, value in news_highlights_cache.items()
+            if value[0] <= time.time()
+        ]
+        for user_id in expired_user_ids:
+            news_highlights_cache.pop(user_id, None)
+
+    return {
+        key: [dict(movie) for movie in value]
+        for key, value in payload.items()
     }
 
 # --- 8. ROUTES SOCIALES ---
@@ -2344,6 +3227,7 @@ def social_users(
         SELECT
             u.id,
             u.username,
+            u.avatar_url,
             (SELECT COUNT(*) FROM follows f WHERE f.followed_id = u.id) AS followers_count,
             (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
             (SELECT COUNT(*) FROM reviews r WHERE r.user_id = u.id) AS reviews_count,
@@ -2387,6 +3271,7 @@ def social_profile(
         SELECT
             u.id,
             u.username,
+            u.avatar_url,
             (SELECT COUNT(*) FROM follows f WHERE f.followed_id = u.id) AS followers_count,
             (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
             (SELECT COUNT(*) FROM reviews r WHERE r.user_id = u.id) AS reviews_count,
@@ -2413,17 +3298,20 @@ def social_profile(
         (profile_row["id"],),
         safe_limit,
     )
+    preferences = get_user_preferences(cursor, int(profile_row["id"]))
     conn.close()
 
     return {
         "id": profile_row["id"],
         "username": profile_row["username"],
+        "avatar_url": profile_row["avatar_url"],
         "followers_count": profile_row["followers_count"],
         "following_count": profile_row["following_count"],
         "reviews_count": profile_row["reviews_count"],
         "favorites_count": profile_row["favorites_count"],
         "is_following": bool(profile_row["is_following"]),
         "is_self": profile_row["id"] == current_user["id"],
+        **serialize_profile_preferences(preferences),
         "reviews": reviews,
     }
 
@@ -2531,6 +3419,100 @@ def unregister_mobile_device(
     conn.commit()
     conn.close()
     return {"status": "unregistered"}
+
+
+@app.get("/webpush/public-key")
+def get_web_push_public_key(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    _, public_key = get_or_create_web_push_vapid_config(cursor)
+    conn.commit()
+    conn.close()
+
+    if not public_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Les notifications web ne sont pas disponibles pour le moment",
+        )
+
+    return {"public_key": public_key}
+
+
+@app.post("/webpush/subscribe")
+def register_web_push_subscription(
+    payload: WebPushSubscribePayload,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    endpoint = payload.endpoint.strip()
+    p256dh = payload.keys.p256dh.strip()
+    auth_secret = payload.keys.auth.strip()
+
+    if not endpoint or not p256dh or not auth_secret:
+        raise HTTPException(status_code=400, detail="Souscription Web Push invalide")
+
+    subscription_payload = {
+        "endpoint": endpoint,
+        "expirationTime": payload.expirationTime,
+        "keys": {
+            "p256dh": p256dh,
+            "auth": auth_secret,
+        },
+    }
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO web_push_subscriptions (
+            user_id,
+            endpoint,
+            subscription_json,
+            user_agent,
+            is_active
+        )
+        VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT(endpoint) DO UPDATE SET
+            user_id = excluded.user_id,
+            subscription_json = excluded.subscription_json,
+            user_agent = excluded.user_agent,
+            is_active = 1,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            current_user["id"],
+            endpoint,
+            json.dumps(subscription_payload, ensure_ascii=False),
+            request.headers.get("user-agent"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "subscribed"}
+
+
+@app.post("/webpush/unsubscribe")
+def unregister_web_push_subscription(
+    payload: WebPushUnsubscribePayload,
+    current_user: dict = Depends(get_current_user),
+):
+    endpoint = payload.endpoint.strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Endpoint Web Push requis")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE web_push_subscriptions
+        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND endpoint = ?
+        """,
+        (current_user["id"], endpoint),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "unsubscribed"}
 
 
 @app.get("/social/feed")
@@ -2829,6 +3811,7 @@ def create_review_comment(
             c.created_at,
             u.id AS user_id,
             u.username,
+            u.avatar_url,
             parent_user.username AS reply_to_username
         FROM comments c
         JOIN users u ON u.id = c.user_id
@@ -2951,6 +3934,7 @@ def start_direct_conversation(target_user_id: int, current_user: dict = Depends(
         "participant": {
             "id": conversation_row["participant_id"],
             "username": conversation_row["participant_username"],
+            "avatar_url": conversation_row["participant_avatar_url"],
         },
     }
 
@@ -2995,6 +3979,7 @@ def get_direct_conversation_messages(conversation_id: int, current_user: dict = 
             "participant": {
                 "id": conversation_row["participant_id"],
                 "username": conversation_row["participant_username"],
+                "avatar_url": conversation_row["participant_avatar_url"],
             },
         },
         "messages": messages,
@@ -3102,6 +4087,19 @@ async def create_direct_message(
             "conversationId": conversation_id,
         },
     )
+    send_web_push_notifications(
+        cursor,
+        [recipient_user_id],
+        title=f"Message de @{current_user['username']}",
+        body=build_direct_message_push_body(current_user["username"], content, movie_title),
+        route=f"/messages?conversationId={conversation_id}",
+        extra_data={
+            "type": "dm",
+            "conversationId": conversation_id,
+            "senderUsername": current_user["username"],
+            "tag": f"conversation-{conversation_id}",
+        },
+    )
     conn.commit()
     conn.close()
     await realtime_manager.broadcast_to_users(
@@ -3110,6 +4108,10 @@ async def create_direct_message(
             "type": "messages.updated",
             "conversation_id": conversation_id,
             "message_id": message_id,
+            "sender_id": current_user["id"],
+            "sender_username": current_user["username"],
+            "preview": build_message_preview(content, movie_title),
+            "movie_title": movie_title or None,
         },
     )
     return serialized_message
@@ -3148,6 +4150,27 @@ def search(query: str):
     url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&language=fr-FR&query={query}"
     res = requests.get(url).json().get('results', [])[:10]
     return [{"id": m['id'], "title": m['title'], "poster_url": "https://image.tmdb.org/t/p/w500"+m['poster_path'] if m.get('poster_path') else "", "rating": m['vote_average']} for m in res]
+
+
+@app.get("/downloads/mobile")
+def download_mobile_archive():
+    if not os.path.exists(MOBILE_ARCHIVE_PATH):
+        raise HTTPException(status_code=404, detail="Archive mobile introuvable")
+    return FileResponse(
+        MOBILE_ARCHIVE_PATH,
+        media_type="application/gzip",
+        filename="wechoose-mobile.tar.gz",
+    )
+
+
+@app.get("/search/people")
+def search_people(query: str):
+    return list(search_tmdb_people(query))[:8]
+
+
+@app.get("/search/soundtracks")
+def search_soundtracks_endpoint(query: str):
+    return list(search_soundtracks(query))[:8]
 
 @app.get("/movie/{id}")
 def movie_detail(id: int):

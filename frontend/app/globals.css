@@ -34,6 +34,11 @@ body {
   min-height: 100dvh;
 }
 
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
 body::before {
   content: "";
   pointer-events: none;
@@ -43,6 +48,62 @@ body::before {
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%),
     linear-gradient(0deg, rgba(255, 255, 255, 0.015), transparent 22%);
   z-index: -1;
+}
+
+html[data-account-theme="isa-love"] {
+  background-color: #17070e;
+}
+
+html[data-account-theme="isa-love"] body {
+  background:
+    radial-gradient(circle at top left, rgba(255, 133, 194, 0.24), transparent 24%),
+    radial-gradient(circle at 78% 12%, rgba(255, 169, 211, 0.22), transparent 22%),
+    radial-gradient(circle at bottom right, rgba(244, 114, 182, 0.18), transparent 28%),
+    linear-gradient(180deg, #17070e 0%, #10030a 42%, #070206 100%);
+}
+
+html[data-account-theme="isa-love"] body::before {
+  background:
+    linear-gradient(180deg, rgba(255, 244, 250, 0.08), transparent 20%),
+    radial-gradient(circle at 20% 18%, rgba(255, 185, 220, 0.12), transparent 20%),
+    radial-gradient(circle at 82% 26%, rgba(255, 132, 193, 0.12), transparent 22%);
+}
+
+html[data-account-theme="isa-love"] .app-shell::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(145deg, rgba(255, 170, 215, 0.07), transparent 26%),
+    linear-gradient(325deg, rgba(255, 110, 177, 0.06), transparent 28%);
+  z-index: -1;
+}
+
+.isa-love-hearts {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.isa-love-heart {
+  position: absolute;
+  color: rgba(255, 180, 218, 0.9);
+  filter: drop-shadow(0 0 18px rgba(255, 110, 177, 0.28));
+  animation-name: isa-love-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes isa-love-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0) scale(1.08);
+  }
 }
 
 * {

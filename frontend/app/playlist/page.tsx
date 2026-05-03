@@ -221,6 +221,13 @@ export default function PlaylistsPage() {
     }
   };
 
+  const refreshPlaylistsAfterRating = async () => {
+    await fetchPlaylists();
+    if (selectedPlaylist) {
+      await openPlaylist(selectedPlaylist);
+    }
+  };
+
   const getIcon = (playlist: PlaylistSummary) => {
     if (playlist.id === WATCH_LATER_PLAYLIST_ID) {
       return <Clock className="text-blue-500" />;
@@ -764,6 +771,7 @@ export default function PlaylistsPage() {
       <MovieDetailsModal
         movie={selectedMovie}
         onClose={() => setSelectedMovie(null)}
+        onRateSuccess={() => void refreshPlaylistsAfterRating()}
       />
     </main>
   );

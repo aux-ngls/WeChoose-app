@@ -83,6 +83,7 @@ export default function SearchPage() {
 
       <div className="sticky top-0 z-10 mb-3 bg-black/90 py-2 backdrop-blur md:hidden">
         <form
+          data-tutorial="search-form"
           onSubmit={handleSearch}
           className="relative overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] px-3 py-3 shadow-[0_18px_42px_rgba(0,0,0,0.32)]"
         >
@@ -98,7 +99,7 @@ export default function SearchPage() {
       </div>
 
       <div className="sticky top-0 z-10 mb-2 hidden bg-black/95 py-2 md:block">
-        <form onSubmit={handleSearch} className="relative mx-auto max-w-lg">
+        <form data-tutorial="search-form" onSubmit={handleSearch} className="relative mx-auto max-w-lg">
           <input
             type="text"
             placeholder="Rechercher un film..."

@@ -5,6 +5,29 @@ export interface SearchMovie {
   rating: number;
 }
 
+export interface ProfileShowcaseMovie {
+  id: number;
+  title: string;
+  poster_url: string;
+  rating: number;
+}
+
+export interface ProfileShowcasePerson {
+  id: number | null;
+  name: string;
+  photo_url: string | null;
+  known_for_department: string | null;
+}
+
+export interface ProfileShowcaseSoundtrack {
+  track_name: string;
+  artist_name: string;
+  preview_url: string;
+  artwork_url: string | null;
+  source_url: string | null;
+  collection_name: string | null;
+}
+
 export interface SocialUser {
   id: number;
   username: string;
@@ -71,6 +94,11 @@ export interface SocialProfile {
   favorites_count: number;
   is_following: boolean;
   is_self: boolean;
+  profile_genres: string[];
+  profile_people: ProfileShowcasePerson[];
+  profile_movie_ids: number[];
+  profile_movies: ProfileShowcaseMovie[];
+  profile_soundtrack: ProfileShowcaseSoundtrack | null;
   reviews: SocialReview[];
 }
 

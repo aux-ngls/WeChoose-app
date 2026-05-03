@@ -4,6 +4,9 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import NativeBridge from "@/components/NativeBridge";
 import PwaProvider from "@/components/PwaProvider";
+import WebPushPrompt from "@/components/WebPushPrompt";
+import AccountTheme from "@/components/AccountTheme";
+import WelcomeTutorial from "@/components/WelcomeTutorial";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -34,6 +37,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   themeColor: "#09090b",
   colorScheme: "dark",
   viewportFit: "cover",
@@ -47,10 +52,13 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={`${inter.className} bg-black text-white`}>
+        <AccountTheme />
+        <WelcomeTutorial />
         <NativeBridge />
         <PwaProvider />
+        <WebPushPrompt />
         <Navbar />
-        <div className="min-h-screen pb-[calc(5.85rem+env(safe-area-inset-bottom))] pt-[calc(0.45rem+env(safe-area-inset-top))] md:pb-0 md:pt-20">
+        <div className="app-shell min-h-screen pb-[calc(5.85rem+env(safe-area-inset-bottom))] pt-[calc(0.45rem+env(safe-area-inset-top))] md:pb-0 md:pt-20">
           {children}
         </div>
       </body>

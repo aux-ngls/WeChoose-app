@@ -6,3 +6,16 @@ __pycache__/
 .DS_Store
 *.csv
 *.db
+*.db-*
+
+# Runtime data generated on the server
+backend/uploads/
+backend/wechoose.db
+frontend/public/downloads/
+
+# Framework/build outputs in nested apps
+frontend/.next/
+frontend/out/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
