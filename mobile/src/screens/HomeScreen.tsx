@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -30,8 +31,11 @@ import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
 
-const TARGET_STACK_SIZE = 8;
-const REFILL_THRESHOLD = 4;
+const TARGET_STACK_SIZE = 14;
+const REFILL_THRESHOLD = 8;
+const FEED_BATCH_SIZE = 24;
+const CACHE_MAX_SIZE = 32;
+const CACHE_VERSION = 1;
 const SWIPE_THRESHOLD = 110;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
 const OFFSCREEN_DISTANCE = 420;
@@ -45,18 +49,66 @@ interface UndoableAction {
   rating?: number;
 }
 
+interface TinderMovieCache {
+  version: number;
+  username: string;
+  movies: SearchMovie[];
+  fetchedAt: number;
+}
+
+let tinderMovieCache: TinderMovieCache | null = null;
+
+function getTinderCacheKey(username: string) {
+  return `qulte:tinder-stack:${username}:v${CACHE_VERSION}`;
+}
+
+function isSearchMovie(value: unknown): value is SearchMovie {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const movie = value as Partial<SearchMovie>;
+  return typeof movie.id === 'number' && typeof movie.title === 'string' && typeof movie.rating === 'number';
+}
+
+function parseCachedMovies(rawValue: string | null, username: string): SearchMovie[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const payload = JSON.parse(rawValue) as Partial<TinderMovieCache>;
+    if (payload.version !== CACHE_VERSION || payload.username !== username || !Array.isArray(payload.movies)) {
+      return [];
+    }
+    return payload.movies.filter(isSearchMovie).slice(0, CACHE_MAX_SIZE);
+  } catch {
+    return [];
+  }
+}
+
+function prefetchMoviePosters(movies: SearchMovie[]) {
+  movies.slice(0, 12).forEach((movie) => {
+    if (movie.poster_url) {
+      void Image.prefetch(movie.poster_url);
+    }
+  });
+}
+
 export default function HomeScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [movies, setMovies] = useState<SearchMovie[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = tinderMovieCache?.username === session?.username ? tinderMovieCache : null;
+  const [movies, setMovies] = useState<SearchMovie[]>(() => initialCache?.movies ?? []);
+  const [loading, setLoading] = useState(() => !initialCache || initialCache.movies.length === 0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [selectedRating, setSelectedRating] = useState(0);
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
   const isFetchingRef = useRef(false);
   const locallyExcludedMovieIdsRef = useRef<Set<number>>(new Set());
+  const moviesRef = useRef(movies);
+  const lastFetchAtRef = useRef(initialCache?.fetchedAt ?? 0);
   const pan = useRef(new Animated.ValueXY()).current;
 
   const currentMovie = useMemo(() => movies[0] ?? null, [movies]);
@@ -66,6 +118,24 @@ export default function HomeScreen() {
     pan.setValue({ x: 0, y: 0 });
     setSelectedRating(0);
   }, [currentMovie?.id, pan]);
+
+  useEffect(() => {
+    moviesRef.current = movies;
+    prefetchMoviePosters(movies);
+
+    if (!session || movies.length === 0) {
+      return;
+    }
+
+    const payload: TinderMovieCache = {
+      version: CACHE_VERSION,
+      username: session.username,
+      movies: movies.slice(0, CACHE_MAX_SIZE),
+      fetchedAt: lastFetchAtRef.current || Date.now(),
+    };
+    tinderMovieCache = payload;
+    void AsyncStorage.setItem(getTinderCacheKey(session.username), JSON.stringify(payload));
+  }, [movies, session]);
 
   const rememberExcludedMovieIds = useCallback((movieIds: number[]) => {
     const excludedMovieIds = locallyExcludedMovieIdsRef.current;
@@ -84,9 +154,40 @@ export default function HomeScreen() {
     locallyExcludedMovieIdsRef.current.delete(movieId);
   }, []);
 
+  const hydrateCachedMovies = useCallback(async () => {
+    if (!session || moviesRef.current.length > 0) {
+      return moviesRef.current.length > 0;
+    }
+
+    const cachedMovies = parseCachedMovies(
+      await AsyncStorage.getItem(getTinderCacheKey(session.username)),
+      session.username,
+    );
+    if (cachedMovies.length === 0) {
+      return false;
+    }
+
+    tinderMovieCache = {
+      version: CACHE_VERSION,
+      username: session.username,
+      movies: cachedMovies,
+      fetchedAt: Date.now(),
+    };
+    lastFetchAtRef.current = Date.now();
+    moviesRef.current = cachedMovies;
+    prefetchMoviePosters(cachedMovies);
+    setMovies(cachedMovies);
+    setLoading(false);
+    return true;
+  }, [session]);
+
   const loadFeed = useCallback(async (excludeIds: number[] = [], options?: { reset?: boolean }) => {
     if (!session || isFetchingRef.current) {
       return;
+    }
+
+    if (moviesRef.current.length === 0 && !options?.reset) {
+      setLoading(true);
     }
 
     isFetchingRef.current = true;
@@ -94,7 +195,7 @@ export default function HomeScreen() {
       const effectiveExcludeIds = Array.from(new Set([...excludeIds, ...locallyExcludedMovieIdsRef.current]));
       const payload = await fetchMovieFeed(session.token, {
         excludeIds: effectiveExcludeIds,
-        limit: TARGET_STACK_SIZE + REFILL_THRESHOLD,
+        limit: FEED_BATCH_SIZE,
         mode: 'tinder',
       });
 
@@ -103,8 +204,12 @@ export default function HomeScreen() {
         const existingIds = new Set(base.map((movie) => movie.id));
         const excludedIds = new Set(effectiveExcludeIds);
         const next = payload.filter((movie) => !existingIds.has(movie.id) && !excludedIds.has(movie.id));
-        return [...base, ...next];
+        const nextStack = [...base, ...next].slice(0, CACHE_MAX_SIZE);
+        moviesRef.current = nextStack;
+        prefetchMoviePosters(nextStack);
+        return nextStack;
       });
+      lastFetchAtRef.current = Date.now();
       setError('');
     } catch (fetchError) {
       if (fetchError instanceof ApiError && fetchError.status === 401) {
@@ -123,11 +228,26 @@ export default function HomeScreen() {
       if (!session) {
         return;
       }
-      if (movies.length === 0) {
-        setLoading(true);
-        void loadFeed([], { reset: true });
-      }
-    }, [loadFeed, movies.length, session]),
+      void (async () => {
+        let hasMovies = moviesRef.current.length > 0;
+        if (!hasMovies) {
+          hasMovies = await hydrateCachedMovies();
+        }
+
+        const currentStack = moviesRef.current;
+        if (!hasMovies || currentStack.length === 0) {
+          setLoading(true);
+          void loadFeed([], { reset: true });
+          return;
+        }
+
+        const shouldTopUp = currentStack.length < TARGET_STACK_SIZE;
+        const shouldRefreshQuietly = Date.now() - lastFetchAtRef.current > 60000;
+        if (shouldTopUp || shouldRefreshQuietly) {
+          void loadFeed(currentStack.map((movie) => movie.id));
+        }
+      })();
+    }, [hydrateCachedMovies, loadFeed, session]),
   );
 
   const refillIfNeeded = useCallback((nextMovies: SearchMovie[]) => {
@@ -153,6 +273,7 @@ export default function HomeScreen() {
           }
 
           const next = current.slice(1);
+          moviesRef.current = next;
           refillIfNeeded(next);
           setLastUndoableAction({ type: 'swipe-right', movie: activeMovie });
           return next;
@@ -166,6 +287,7 @@ export default function HomeScreen() {
   const consumeMovie = useCallback(() => {
     setMovies((current) => {
       const next = current.slice(1);
+      moviesRef.current = next;
       refillIfNeeded(next);
       return next;
     });
@@ -176,7 +298,9 @@ export default function HomeScreen() {
       if (current.some((entry) => entry.id === movie.id)) {
         return current;
       }
-      return [movie, ...current];
+      const next = [movie, ...current].slice(0, CACHE_MAX_SIZE);
+      moviesRef.current = next;
+      return next;
     });
   }, []);
 
