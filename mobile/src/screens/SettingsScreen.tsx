@@ -1,9 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ApiError, resetTestUserData } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import AppScreen from '../components/AppScreen';
+import InlineBanner from '../components/InlineBanner';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme, type ThemePreference } from '../theme/ThemeContext';
 
@@ -15,8 +19,13 @@ const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: 
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { session, refreshOnboardingState, signOut } = useAuth();
   const { theme, themePreference, resolvedThemeName, setThemePreference } = useTheme();
   const [savingThemePreference, setSavingThemePreference] = useState(false);
+  const [resettingTestData, setResettingTestData] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  const isTestAccount = session?.username.trim().toLowerCase() === 'test';
 
   const handleThemePreferenceChange = async (preference: ThemePreference) => {
     if (savingThemePreference || preference === themePreference) {
@@ -29,6 +38,60 @@ export default function SettingsScreen() {
     } finally {
       setSavingThemePreference(false);
     }
+  };
+
+  const clearTestLocalCaches = async () => {
+    if (!session) {
+      return;
+    }
+
+    const keys = await AsyncStorage.getAllKeys();
+    const cacheKeys = keys.filter((key) => key.startsWith(`qulte:tinder-stack:${session.username}:`));
+    if (cacheKeys.length > 0) {
+      await AsyncStorage.multiRemove(cacheKeys);
+    }
+  };
+
+  const executeTestReset = async () => {
+    if (!session || resettingTestData) {
+      return;
+    }
+
+    setResettingTestData(true);
+    setResetError('');
+
+    try {
+      await resetTestUserData(session.token);
+      await clearTestLocalCaches();
+      Alert.alert(
+        'Compte test remis a zero',
+        "Les donnees de test ont ete effacees. Tu vas repasser par l'onboarding.",
+      );
+      await refreshOnboardingState();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setResetError(error instanceof Error ? error.message : 'Impossible de reinitialiser le compte test.');
+    } finally {
+      setResettingTestData(false);
+    }
+  };
+
+  const confirmTestReset = () => {
+    Alert.alert(
+      'Reinitialiser test ?',
+      "Cela efface les notes, playlists, critiques, preferences IA, profil, follows et messages du compte test. Le compte reste utilisable.",
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Reinitialiser',
+          style: 'destructive',
+          onPress: () => void executeTestReset(),
+        },
+      ],
+    );
   };
 
   return (
@@ -94,6 +157,38 @@ export default function SettingsScreen() {
           Le choix est sauvegarde sur ce telephone et s applique aux ecrans principaux de l app.
         </Text>
       </View>
+
+      {isTestAccount ? (
+        <View style={[styles.sectionCard, styles.dangerCard, { borderColor: theme.colors.danger, backgroundColor: theme.rgba.card }]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="flask-outline" size={18} color={theme.colors.danger} />
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Compte test</Text>
+            </View>
+          </View>
+
+          {resetError ? <InlineBanner message={resetError} tone="error" /> : null}
+
+          <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
+            Remet ce compte a zero pour retester l IA depuis un profil vierge.
+          </Text>
+
+          <Pressable
+            style={[styles.resetButton, { backgroundColor: '#dc2626' }]}
+            onPress={confirmTestReset}
+            disabled={resettingTestData}
+          >
+            {resettingTestData ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <>
+                <Ionicons name="refresh-circle-outline" size={20} color="#ffffff" />
+                <Text style={styles.resetButtonLabel}>Reinitialiser les donnees</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
     </AppScreen>
   );
 }
@@ -229,5 +324,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '700',
+  },
+  dangerCard: {
+    marginTop: 4,
+  },
+  resetButton: {
+    minHeight: 50,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  resetButtonLabel: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });

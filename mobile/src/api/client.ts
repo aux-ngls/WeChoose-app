@@ -109,6 +109,20 @@ export async function completeTutorial(token: string): Promise<void> {
   await request<null>('/tutorial/complete', { method: 'POST' }, token);
 }
 
+export async function resetTestUserData(token: string): Promise<{
+  status: string;
+  counts: Record<string, number>;
+  has_completed_onboarding: boolean;
+  has_completed_tutorial: boolean;
+}> {
+  return request<{
+    status: string;
+    counts: Record<string, number>;
+    has_completed_onboarding: boolean;
+    has_completed_tutorial: boolean;
+  }>('/users/me/reset-test-data', { method: 'POST' }, token);
+}
+
 export async function getOnboardingPreferences(token: string): Promise<OnboardingPreferencesResponse> {
   return request<OnboardingPreferencesResponse>('/onboarding/preferences', undefined, token);
 }

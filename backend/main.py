@@ -1035,6 +1035,106 @@ def complete_tutorial(current_user: dict = Depends(get_current_user)):
     return {"status": "completed"}
 
 
+def delete_many_by_ids(cursor, table_name: str, column_name: str, values: list[int]) -> int:
+    ids = [int(value) for value in dict.fromkeys(values)]
+    if not ids:
+        return 0
+
+    placeholders = ",".join("?" for _ in ids)
+    cursor.execute(
+        f"DELETE FROM {table_name} WHERE {column_name} IN ({placeholders})",
+        ids,
+    )
+    return max(cursor.rowcount, 0)
+
+
+@app.post("/users/me/reset-test-data")
+def reset_test_user_data(current_user: dict = Depends(get_current_user)):
+    if str(current_user["username"]).strip().lower() != "test":
+        raise HTTPException(status_code=403, detail="Reset reserve au compte test.")
+
+    user_id = int(current_user["id"])
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    reset_counts: dict[str, int] = {}
+
+    cursor.execute("SELECT id FROM reviews WHERE user_id = ?", (user_id,))
+    review_ids = [int(row["id"]) for row in cursor.fetchall()]
+    cursor.execute("SELECT id FROM comments WHERE user_id = ?", (user_id,))
+    comment_ids = [int(row["id"]) for row in cursor.fetchall()]
+    cursor.execute("SELECT id FROM playlists WHERE user_id = ?", (user_id,))
+    playlist_ids = [int(row["id"]) for row in cursor.fetchall()]
+    cursor.execute(
+        "SELECT id FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?",
+        (user_id, user_id),
+    )
+    conversation_ids = [int(row["id"]) for row in cursor.fetchall()]
+
+    reset_counts["notifications"] = 0
+    cursor.execute(
+        "DELETE FROM notifications WHERE user_id = ? OR actor_user_id = ?",
+        (user_id, user_id),
+    )
+    reset_counts["notifications"] += max(cursor.rowcount, 0)
+    reset_counts["notifications"] += delete_many_by_ids(cursor, "notifications", "review_id", review_ids)
+    reset_counts["notifications"] += delete_many_by_ids(cursor, "notifications", "comment_id", comment_ids)
+
+    reset_counts["comments"] = 0
+    reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "review_id", review_ids)
+    reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "parent_id", comment_ids)
+    cursor.execute("DELETE FROM comments WHERE user_id = ?", (user_id,))
+    reset_counts["comments"] += max(cursor.rowcount, 0)
+
+    reset_counts["review_likes"] = 0
+    reset_counts["review_likes"] += delete_many_by_ids(cursor, "review_likes", "review_id", review_ids)
+    cursor.execute("DELETE FROM review_likes WHERE user_id = ?", (user_id,))
+    reset_counts["review_likes"] += max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM reviews WHERE user_id = ?", (user_id,))
+    reset_counts["reviews"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM follows WHERE follower_id = ? OR followed_id = ?", (user_id, user_id))
+    reset_counts["follows"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM user_ratings WHERE user_id = ?", (user_id,))
+    reset_counts["ratings"] = max(cursor.rowcount, 0)
+
+    reset_counts["playlist_items"] = delete_many_by_ids(cursor, "playlist_items", "playlist_id", playlist_ids)
+    cursor.execute("DELETE FROM playlists WHERE user_id = ?", (user_id,))
+    reset_counts["playlists"] = max(cursor.rowcount, 0)
+
+    reset_counts["direct_messages"] = delete_many_by_ids(cursor, "direct_messages", "conversation_id", conversation_ids)
+    cursor.execute("DELETE FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?", (user_id, user_id))
+    reset_counts["direct_conversations"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM user_preferences WHERE user_id = ?", (user_id,))
+    reset_counts["preferences"] = max(cursor.rowcount, 0)
+
+    cursor.execute("SELECT avatar_url FROM users WHERE id = ?", (user_id,))
+    avatar_row = cursor.fetchone()
+    previous_avatar_url = avatar_row["avatar_url"] if avatar_row else None
+    cursor.execute("UPDATE users SET avatar_url = NULL WHERE id = ?", (user_id,))
+    reset_counts["avatar"] = 1 if previous_avatar_url else 0
+
+    get_or_create_watch_later_id(cursor, user_id)
+    conn.commit()
+    conn.close()
+
+    previous_avatar_path = local_avatar_path_from_url(previous_avatar_url)
+    if previous_avatar_path and os.path.exists(previous_avatar_path):
+        try:
+            os.remove(previous_avatar_path)
+        except OSError:
+            pass
+
+    return {
+        "status": "reset",
+        "counts": reset_counts,
+        "has_completed_onboarding": False,
+        "has_completed_tutorial": False,
+    }
+
+
 @app.get("/onboarding/preferences")
 def get_onboarding_preferences(current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
