@@ -1,7 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, StyleSheet } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -21,6 +21,64 @@ const icons: Record<keyof MainTabParamList, string> = {
   Messages: 'chatbubble-ellipses-outline',
   Profile: 'person-circle-outline',
 };
+
+interface AnimatedTabIconProps {
+  focused: boolean;
+  iconName: keyof typeof Ionicons.glyphMap;
+  activeColor: string;
+  inactiveColor: string;
+  activeBackground: string;
+}
+
+function AnimatedTabIcon({
+  focused,
+  iconName,
+  activeColor,
+  inactiveColor,
+  activeBackground,
+}: AnimatedTabIconProps) {
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(progress, {
+      toValue: focused ? 1 : 0,
+      friction: 7,
+      tension: 135,
+      useNativeDriver: true,
+    }).start();
+  }, [focused, progress]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.tabIconWrap,
+        focused && { backgroundColor: activeBackground },
+        {
+          transform: [
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -3],
+              }),
+            },
+            {
+              scale: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, 1.08],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      <Ionicons
+        name={iconName}
+        size={21}
+        color={focused ? activeColor : inactiveColor}
+      />
+    </Animated.View>
+  );
+}
 
 export default function MainTabs() {
   const { session, signOut } = useAuth();
@@ -61,7 +119,38 @@ export default function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        animation: 'shift',
+        transitionSpec: {
+          animation: 'timing',
+          config: {
+            duration: 230,
+            easing: Easing.out(Easing.cubic),
+          },
+        },
+        sceneStyleInterpolator: ({ current }) => ({
+          sceneStyle: {
+            opacity: current.progress.interpolate({
+              inputRange: [-1, 0, 1],
+              outputRange: [0.72, 1, 0.72],
+            }),
+            transform: [
+              {
+                translateX: current.progress.interpolate({
+                  inputRange: [-1, 0, 1],
+                  outputRange: [-22, 0, 22],
+                }),
+              },
+              {
+                scale: current.progress.interpolate({
+                  inputRange: [-1, 0, 1],
+                  outputRange: [0.985, 1, 0.985],
+                }),
+              },
+            ],
+          },
+        }),
         tabBarShowLabel: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
@@ -79,18 +168,13 @@ export default function MainTabs() {
         tabBarIcon: ({ focused }) => {
           const iconName = (focused ? icons[route.name].replace('-outline', '') : icons[route.name]) as keyof typeof Ionicons.glyphMap;
           return (
-            <View
-              style={[
-                styles.tabIconWrap,
-                focused && { backgroundColor: theme.colors.accent },
-              ]}
-            >
-              <Ionicons
-                name={iconName}
-                size={21}
-                color={focused ? theme.colors.accentText : theme.colors.textMuted}
-              />
-            </View>
+            <AnimatedTabIcon
+              focused={focused}
+              iconName={iconName}
+              activeColor={theme.colors.accentText}
+              inactiveColor={theme.colors.textMuted}
+              activeBackground={theme.colors.accent}
+            />
           );
         },
         tabBarBadge:

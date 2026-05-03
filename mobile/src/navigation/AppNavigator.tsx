@@ -21,6 +21,27 @@ import { useTheme } from '../theme/ThemeContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const baseStackOptions = {
+  headerShown: false,
+  animation: 'default',
+  animationDuration: 340,
+  fullScreenGestureEnabled: true,
+  animationMatchesGesture: true,
+} as const;
+
+const softFadeOptions = {
+  animation: 'fade',
+  animationDuration: 240,
+} as const;
+
+const sheetOptions = {
+  animation: 'slide_from_bottom',
+  animationDuration: 380,
+  gestureDirection: 'vertical',
+  fullScreenGestureEnabled: true,
+  animationMatchesGesture: true,
+} as const;
+
 export default function AppNavigator() {
   const { isBootstrapping, session } = useAuth();
   const { theme } = useTheme();
@@ -61,22 +82,22 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer ref={navigationRef} theme={navigationTheme} onReady={flushPendingNotificationNavigation}>
-      <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+      <Stack.Navigator screenOptions={baseStackOptions}>
         {!session ? (
-          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen name="Auth" component={AuthScreen} options={softFadeOptions} />
         ) : !session.hasCompletedOnboarding ? (
-          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+          <Stack.Screen name="Onboarding" component={OnboardingScreen} options={softFadeOptions} />
         ) : !session.hasCompletedTutorial ? (
-          <Stack.Screen name="Tutorial" component={TutorialScreen} />
+          <Stack.Screen name="Tutorial" component={TutorialScreen} options={softFadeOptions} />
         ) : (
           <>
-            <Stack.Screen name="MainTabs" component={MainTabs} />
-            <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} />
+            <Stack.Screen name="MainTabs" component={MainTabs} options={{ animation: 'fade_from_bottom', animationDuration: 280 }} />
+            <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={sheetOptions} />
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} />
-            <Stack.Screen name="ShareMovie" component={ShareMovieScreen} />
+            <Stack.Screen name="ShareMovie" component={ShareMovieScreen} options={sheetOptions} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="UserProfile" component={UserProfileScreen} />
-            <Stack.Screen name="CreateReview" component={CreateReviewScreen} />
+            <Stack.Screen name="CreateReview" component={CreateReviewScreen} options={sheetOptions} />
             <Stack.Screen name="Conversation" component={ConversationScreen} />
           </>
         )}
