@@ -1589,7 +1589,12 @@ class ReviewCreate(BaseModel):
     movie_id: int
     title: str
     poster_url: str
-    rating: int
+    rating: float
+    content: str
+
+
+class ReviewUpdate(BaseModel):
+    rating: float
     content: str
 
 
@@ -2630,6 +2635,93 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         raise HTTPException(status_code=500, detail="Impossible de relire la critique créée")
 
     return created_reviews[0]
+
+
+@app.put("/social/reviews/{review_id}")
+def update_review(
+    review_id: int,
+    payload: ReviewUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    review_content = payload.content.strip()
+
+    if payload.rating < 1 or payload.rating > 5:
+        raise HTTPException(status_code=400, detail="La note doit être comprise entre 1 et 5")
+    if len(review_content) < 10:
+        raise HTTPException(status_code=400, detail="La critique doit contenir au moins 10 caractères")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT movie_id, title, poster_url
+        FROM reviews
+        WHERE id = ? AND user_id = ?
+        """,
+        (review_id, current_user["id"]),
+    )
+    review_row = cursor.fetchone()
+    if not review_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+
+    cursor.execute(
+        """
+        UPDATE reviews
+        SET rating = ?, content = ?
+        WHERE id = ? AND user_id = ?
+        """,
+        (payload.rating, review_content, review_id, current_user["id"]),
+    )
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO user_ratings (user_id, movie_id, rating, title, poster_url)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            current_user["id"],
+            review_row["movie_id"],
+            payload.rating,
+            review_row["title"],
+            review_row["poster_url"],
+        ),
+    )
+    conn.commit()
+
+    updated_reviews = fetch_serialized_reviews(
+        cursor,
+        current_user["id"],
+        "r.id = ?",
+        (review_id,),
+        1,
+    )
+    conn.close()
+
+    if not updated_reviews:
+        raise HTTPException(status_code=500, detail="Impossible de relire la critique modifiée")
+
+    return updated_reviews[0]
+
+
+@app.delete("/social/reviews/{review_id}")
+def delete_review(review_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM reviews WHERE id = ? AND user_id = ?",
+        (review_id, current_user["id"]),
+    )
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+
+    cursor.execute("DELETE FROM notifications WHERE review_id = ?", (review_id,))
+    cursor.execute("DELETE FROM comments WHERE review_id = ?", (review_id,))
+    cursor.execute("DELETE FROM review_likes WHERE review_id = ?", (review_id,))
+    cursor.execute("DELETE FROM reviews WHERE id = ? AND user_id = ?", (review_id, current_user["id"]))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
 
 
 @app.get("/social/reviews/{review_id}/comments")

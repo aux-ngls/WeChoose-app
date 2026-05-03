@@ -26,10 +26,13 @@ export type RootStackParamList = {
     username: string;
   };
   CreateReview: {
+    reviewId?: number;
     movieId?: number;
     title?: string;
     posterUrl?: string;
     rating?: number;
+    reviewRating?: number;
+    content?: string;
   } | undefined;
   Conversation: {
     conversationId: number;

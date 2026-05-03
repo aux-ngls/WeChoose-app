@@ -4,7 +4,7 @@ import { Audio, type AVPlaybackStatus, InterruptionModeAndroid, InterruptionMode
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
@@ -14,6 +14,7 @@ import MoviePosterTile from '../components/MoviePosterTile';
 import {
   ApiError,
   createPlaylist,
+  deleteReview,
   fetchPlaylistMovies,
   fetchPlaylists,
   fetchSocialProfile,
@@ -403,6 +404,39 @@ export default function ProfileScreen() {
     } finally {
       setSavingPlaylist(false);
     }
+  };
+
+  const handleDeleteReview = (reviewId: number) => {
+    if (!session) {
+      return;
+    }
+
+    Alert.alert(
+      'Supprimer cette critique ?',
+      'Cette action retirera la critique de ton profil et du feed social.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await deleteReview(session.token, reviewId);
+                await loadProfile();
+                setError('');
+              } catch (deleteError) {
+                if (deleteError instanceof ApiError && deleteError.status === 401) {
+                  await signOut();
+                  return;
+                }
+                setError('Impossible de supprimer cette critique.');
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   const profileAvatarUrl = resolveMediaUrl(profile?.avatar_url);
@@ -812,7 +846,36 @@ export default function ProfileScreen() {
                   >
                     <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
                     <View style={styles.reviewBody}>
-                      <Text style={[styles.reviewTitle, { color: theme.colors.text }]} numberOfLines={1}>{review.title}</Text>
+                      <View style={styles.reviewHeaderRow}>
+                        <Text style={[styles.reviewTitle, { color: theme.colors.text }]} numberOfLines={1}>{review.title}</Text>
+                        <View style={styles.reviewActions}>
+                          <Pressable
+                            style={[styles.reviewActionButton, { backgroundColor: theme.rgba.card }]}
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              navigation.navigate('CreateReview', {
+                                reviewId: review.id,
+                                movieId: review.movie_id,
+                                title: review.title,
+                                posterUrl: review.poster_url,
+                                reviewRating: review.rating,
+                                content: review.content,
+                              });
+                            }}
+                          >
+                            <Ionicons name="create-outline" size={14} color={theme.colors.secondaryAccent} />
+                          </Pressable>
+                          <Pressable
+                            style={[styles.reviewActionButton, { backgroundColor: theme.rgba.card }]}
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              handleDeleteReview(review.id);
+                            }}
+                          >
+                            <Ionicons name="trash-outline" size={14} color="#fca5a5" />
+                          </Pressable>
+                        </View>
+                      </View>
                       <View style={styles.reviewMetaRow}>
                         <View style={[styles.reviewRatingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                           <Text style={[styles.reviewRatingLabel, { color: theme.colors.ratingText }]}>{review.rating.toFixed(1)} / 5</Text>
@@ -1399,6 +1462,25 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '900',
+    flex: 1,
+  },
+  reviewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reviewActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reviewActionButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   reviewMetaRow: {
     flexDirection: 'row',

@@ -51,6 +51,11 @@ function compareManualOrder(a: SearchMovie, b: SearchMovie) {
   return a.title.localeCompare(b.title);
 }
 
+function formatPlaylistRating(rating: number, playlistId: number) {
+  const scale = playlistId === FAVORITES_PLAYLIST_ID || playlistId === HISTORY_PLAYLIST_ID ? 5 : 10;
+  return `${rating.toFixed(1)} / ${scale}`;
+}
+
 export default function PlaylistDetailsScreen({
   navigation,
   route,
@@ -269,7 +274,7 @@ export default function PlaylistDetailsScreen({
             <View style={styles.overlay}>
               <Text style={styles.movieTitle} numberOfLines={2}>{item.title}</Text>
               <Text style={styles.movieMeta} numberOfLines={1}>
-                {sortMode === 'genre' ? item.primary_genre ?? 'Autres' : `${item.rating.toFixed(1)} / 10`}
+                {sortMode === 'genre' ? item.primary_genre ?? 'Autres' : formatPlaylistRating(item.rating, route.params.playlistId)}
               </Text>
             </View>
           </Pressable>

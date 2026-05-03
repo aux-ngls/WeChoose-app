@@ -199,6 +199,29 @@ export async function createReview(
   );
 }
 
+export async function updateReview(
+  token: string,
+  reviewId: number,
+  payload: {
+    rating: number;
+    content: string;
+  },
+): Promise<SocialReview> {
+  return request<SocialReview>(
+    `/social/reviews/${reviewId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export async function deleteReview(token: string, reviewId: number): Promise<void> {
+  await request<null>(`/social/reviews/${reviewId}`, { method: 'DELETE' }, token);
+}
+
 export async function fetchReviewComments(token: string, reviewId: number): Promise<SocialComment[]> {
   return request<SocialComment[]>(`/social/reviews/${reviewId}/comments`, undefined, token);
 }

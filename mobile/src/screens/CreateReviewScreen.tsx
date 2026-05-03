@@ -15,7 +15,7 @@ import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
 import StarRatingInput from '../components/StarRatingInput';
-import { ApiError, createReview, searchMovies } from '../api/client';
+import { ApiError, createReview, searchMovies, updateReview } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
@@ -27,6 +27,8 @@ export default function CreateReviewScreen({
 }: NativeStackScreenProps<RootStackParamList, 'CreateReview'>) {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const reviewId = route.params?.reviewId;
+  const isEditMode = Boolean(reviewId);
   const initialMovie = route.params?.movieId
     ? {
         id: route.params.movieId,
@@ -38,8 +40,8 @@ export default function CreateReviewScreen({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchMovie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<SearchMovie | null>(initialMovie);
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewContent, setReviewContent] = useState('');
+  const [reviewRating, setReviewRating] = useState(route.params?.reviewRating ?? 0);
+  const [reviewContent, setReviewContent] = useState(route.params?.content ?? '');
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
@@ -111,13 +113,20 @@ export default function CreateReviewScreen({
 
     setPublishing(true);
     try {
-      await createReview(session.token, {
-        movie_id: selectedMovie.id,
-        title: selectedMovie.title,
-        poster_url: selectedMovie.poster_url || FALLBACK_POSTER,
-        rating: reviewRating,
-        content: trimmedContent,
-      });
+      if (isEditMode && reviewId) {
+        await updateReview(session.token, reviewId, {
+          rating: reviewRating,
+          content: trimmedContent,
+        });
+      } else {
+        await createReview(session.token, {
+          movie_id: selectedMovie.id,
+          title: selectedMovie.title,
+          poster_url: selectedMovie.poster_url || FALLBACK_POSTER,
+          rating: reviewRating,
+          content: trimmedContent,
+        });
+      }
       navigation.goBack();
     } catch (publishError) {
       if (publishError instanceof ApiError && publishError.status === 401) {
@@ -127,7 +136,7 @@ export default function CreateReviewScreen({
       setError(
         publishError instanceof Error
           ? publishError.message
-          : 'Impossible de publier cette critique.',
+          : isEditMode ? 'Impossible de modifier cette critique.' : 'Impossible de publier cette critique.',
       );
     } finally {
       setPublishing(false);
@@ -149,8 +158,8 @@ export default function CreateReviewScreen({
         </Pressable>
         <View style={styles.headerBody}>
           <Text style={[styles.headerEyebrow, { color: theme.colors.accent }]}>Social</Text>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Nouvelle critique</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Note. Ecris. Publie.</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>{isEditMode ? 'Modifier la critique' : 'Nouvelle critique'}</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>{isEditMode ? 'Ajuste ta note et ton avis.' : 'Note. Ecris. Publie.'}</Text>
         </View>
       </View>
 
@@ -161,11 +170,13 @@ export default function CreateReviewScreen({
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Film</Text>
           {resultsLabel ? <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>{resultsLabel}</Text> : null}
         </View>
-        <SearchField
-          value={query}
-          onChangeText={setQuery}
-          placeholder={selectedMovie ? 'Choisir un autre film' : 'Chercher un film'}
-        />
+        {!isEditMode ? (
+          <SearchField
+            value={query}
+            onChangeText={setQuery}
+            placeholder={selectedMovie ? 'Choisir un autre film' : 'Chercher un film'}
+          />
+        ) : null}
 
         {selectedMovie ? (
           <View style={[styles.selectedMovieCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
@@ -175,20 +186,24 @@ export default function CreateReviewScreen({
             />
             <View style={styles.selectedMovieBody}>
               <Text style={[styles.selectedMovieTitle, { color: theme.colors.text }]}>{selectedMovie.title}</Text>
-              <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
-                <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{selectedMovie.rating.toFixed(1)} / 10</Text>
-              </View>
+              {!isEditMode ? (
+                <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                  <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{selectedMovie.rating.toFixed(1)} / 10</Text>
+                </View>
+              ) : null}
             </View>
-            <Pressable
-              style={styles.clearButton}
-              onPress={() => {
-                setSelectedMovie(null);
-                setQuery('');
-                setResults([]);
-              }}
-            >
-              <Ionicons name="refresh-outline" size={16} color={theme.colors.accent} />
-            </Pressable>
+            {!isEditMode ? (
+              <Pressable
+                style={styles.clearButton}
+                onPress={() => {
+                  setSelectedMovie(null);
+                  setQuery('');
+                  setResults([]);
+                }}
+              >
+                <Ionicons name="refresh-outline" size={16} color={theme.colors.accent} />
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -253,7 +268,7 @@ export default function CreateReviewScreen({
       >
         <Ionicons name="send" size={17} color={canPublish ? theme.colors.secondaryAccentText : theme.colors.textMuted} />
         <Text style={[styles.publishButtonLabel, { color: theme.colors.secondaryAccentText }, !canPublish && { color: theme.colors.textMuted }]}>
-          {publishing ? 'Publication...' : 'Publier la critique'}
+          {publishing ? (isEditMode ? 'Enregistrement...' : 'Publication...') : (isEditMode ? 'Enregistrer' : 'Publier la critique')}
         </Text>
       </Pressable>
     </AppScreen>
