@@ -268,7 +268,14 @@ export default function SocialScreen() {
               style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
               onPress={() => void toggleReview(item.id)}
             >
-              <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation();
+                  navigation.navigate('MovieDetails', { movieId: item.movie_id, title: item.title });
+                }}
+              >
+                <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+              </Pressable>
               <View style={styles.reviewBody}>
                 <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{item.title}</Text>
                 <Pressable
@@ -305,14 +312,6 @@ export default function SocialScreen() {
                 </Text>
                 {expandedReviewId === item.id ? (
                   <View style={styles.expandedArea}>
-                    <Pressable
-                      style={styles.movieLink}
-                      onPress={() => navigation.navigate('MovieDetails', { movieId: item.movie_id, title: item.title })}
-                    >
-                      <Ionicons name="film-outline" size={15} color={theme.colors.secondaryAccent} />
-                      <Text style={[styles.movieLinkLabel, { color: theme.colors.secondaryAccent }]}>Fiche film</Text>
-                    </Pressable>
-
                     <View style={[styles.commentsBox, { borderTopColor: theme.rgba.border }]}>
                       <Text style={[styles.commentsTitle, { color: theme.colors.text }]}>Commentaires</Text>
                       {loadingComments[item.id] ? (
@@ -542,23 +541,6 @@ const styles = StyleSheet.create({
   expandedArea: {
     gap: 12,
     paddingTop: 4,
-  },
-  movieLink: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(125,211,252,0.22)',
-    backgroundColor: 'rgba(14,165,233,0.10)',
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-  },
-  movieLinkLabel: {
-    color: '#7dd3fc',
-    fontSize: 12,
-    fontWeight: '800',
   },
   commentsBox: {
     gap: 10,

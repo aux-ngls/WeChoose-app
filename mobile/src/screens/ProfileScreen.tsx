@@ -97,6 +97,7 @@ export default function ProfileScreen() {
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [showAllPlaylists, setShowAllPlaylists] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [expandedProfileReviewId, setExpandedProfileReviewId] = useState<number | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
@@ -842,9 +843,16 @@ export default function ProfileScreen() {
                   <Pressable
                     key={review.id}
                     style={[styles.profileReviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
-                    onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}
+                    onPress={() => setExpandedProfileReviewId((current) => (current === review.id ? null : review.id))}
                   >
-                    <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title });
+                      }}
+                    >
+                      <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
+                    </Pressable>
                     <View style={styles.reviewBody}>
                       <View style={styles.reviewHeaderRow}>
                         <Text style={[styles.reviewTitle, { color: theme.colors.text }]} numberOfLines={1}>{review.title}</Text>
@@ -882,7 +890,12 @@ export default function ProfileScreen() {
                         </View>
                         <Text style={[styles.reviewDate, { color: theme.colors.textMuted }]}>{formatDate(review.created_at)}</Text>
                       </View>
-                      <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={3}>{review.content}</Text>
+                      <Text
+                        style={[styles.reviewContent, { color: theme.colors.textSoft }]}
+                        numberOfLines={expandedProfileReviewId === review.id ? undefined : 3}
+                      >
+                        {review.content}
+                      </Text>
                     </View>
                   </Pressable>
                 ))}
