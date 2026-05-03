@@ -1875,13 +1875,14 @@ def compute_recommendation_feed(
     ) if not is_tinder_mode else {}
     conn.close()
 
+    onboarding_movie_ids = preferences["favorite_movie_ids"]
+    people_seed_movie_ids = preferences["people_seed_movie_ids"]
+    onboarding_movie_id_set = {int(movie_id) for movie_id in onboarding_movie_ids}
     request_exclude_ids = parse_exclude_ids(exclude_ids)
-    seen_ids = rated_ids | watch_later_ids
+    seen_ids = rated_ids | watch_later_ids | onboarding_movie_id_set
     blocked_ids = seen_ids | request_exclude_ids
     interaction_count = len(seen_ids)
     cold_start_mode = interaction_count < 6
-    onboarding_movie_ids = preferences["favorite_movie_ids"]
-    people_seed_movie_ids = preferences["people_seed_movie_ids"]
     onboarding_genre_tokens = {
         normalize_genre_token(value)
         for value in preferences["favorite_genres"]
@@ -1921,8 +1922,8 @@ def compute_recommendation_feed(
             watch_weight,
         )
 
-    onboarding_movie_weight = 1.15 if cold_start_mode else 0.55
-    people_seed_weight = 0.82 if cold_start_mode else 0.35
+    onboarding_movie_weight = 1.65 if cold_start_mode else (0.42 if is_tinder_mode else 0.62)
+    people_seed_weight = 1.05 if cold_start_mode else (0.18 if is_tinder_mode else 0.42)
     for movie_id in onboarding_movie_ids:
         positive_signal_weights[movie_id] = max(
             positive_signal_weights.get(movie_id, 0.0),
