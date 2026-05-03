@@ -24,6 +24,7 @@ import {
   fetchMovieFeed,
   getOnboardingPreferences,
   rateMovie,
+  recordRecommendationImpression,
   removeMovieFromPlaylist,
   removeMovieRating,
 } from '../api/client';
@@ -115,6 +116,7 @@ export default function HomeScreen() {
   const hasLoadedOnboardingExcludesRef = useRef(false);
   const moviesRef = useRef(movies);
   const lastFetchAtRef = useRef(initialCache?.fetchedAt ?? 0);
+  const lastRecordedImpressionMovieIdRef = useRef<number | null>(null);
   const pan = useRef(new Animated.ValueXY()).current;
 
   const currentMovie = useMemo(() => movies[0] ?? null, [movies]);
@@ -124,12 +126,26 @@ export default function HomeScreen() {
     locallyExcludedMovieIdsRef.current.clear();
     onboardingExcludedMovieIdsRef.current.clear();
     hasLoadedOnboardingExcludesRef.current = false;
+    lastRecordedImpressionMovieIdRef.current = null;
   }, [session?.username]);
 
   useEffect(() => {
     pan.setValue({ x: 0, y: 0 });
     setSelectedRating(0);
   }, [currentMovie?.id, pan]);
+
+  useEffect(() => {
+    if (!session || !currentMovie || lastRecordedImpressionMovieIdRef.current === currentMovie.id) {
+      return;
+    }
+
+    lastRecordedImpressionMovieIdRef.current = currentMovie.id;
+    void recordRecommendationImpression(session.token, currentMovie).catch((impressionError) => {
+      if (impressionError instanceof ApiError && impressionError.status === 401) {
+        void signOut();
+      }
+    });
+  }, [currentMovie, session, signOut]);
 
   useEffect(() => {
     moviesRef.current = movies;

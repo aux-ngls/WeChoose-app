@@ -4,6 +4,10 @@ export interface SearchMovie {
   poster_url: string;
   rating: number;
   recommendation_reason?: string;
+  recommendation_variant?: string;
+  recommendation_seed_movie_id?: number | null;
+  recommendation_seed_title?: string | null;
+  recommendation_similarity?: number | null;
   overview?: string;
   release_date?: string;
   added_at?: string;

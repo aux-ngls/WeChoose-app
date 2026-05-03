@@ -160,6 +160,27 @@ export async function fetchMovieFeed(
   return request<SearchMovie[]>(`/movies/feed?${params.toString()}`, undefined, token);
 }
 
+export async function recordRecommendationImpression(token: string, movie: SearchMovie, mode = 'tinder'): Promise<void> {
+  await request<null>(
+    '/recommendations/impressions',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        movie_id: movie.id,
+        mode,
+        rank: 1,
+        reason: movie.recommendation_reason ?? '',
+        algorithm_variant: movie.recommendation_variant ?? 'seed_cluster_feedback_v1',
+        seed_movie_id: movie.recommendation_seed_movie_id ?? null,
+        seed_title: movie.recommendation_seed_title ?? null,
+        seed_similarity: movie.recommendation_similarity ?? null,
+      }),
+    },
+    token,
+  );
+}
+
 export async function fetchMovieDetails(token: string, movieId: number): Promise<MovieDetails> {
   return request<MovieDetails>(`/movie/${movieId}`, undefined, token);
 }

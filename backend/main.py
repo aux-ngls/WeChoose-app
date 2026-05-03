@@ -54,6 +54,7 @@ NOW_PLAYING_CACHE_TTL_SECONDS = 300
 NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
+TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
 MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.tar.gz"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
@@ -372,6 +373,30 @@ def init_db():
                         key TEXT PRIMARY KEY,
                         value TEXT,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+    # Table RECOMMENDATION_IMPRESSIONS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS recommendation_impressions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        request_id TEXT,
+                        user_id INTEGER,
+                        movie_id INTEGER,
+                        mode TEXT,
+                        algorithm_variant TEXT,
+                        rank INTEGER,
+                        reason TEXT,
+                        seed_movie_id INTEGER,
+                        seed_title TEXT,
+                        seed_similarity REAL,
+                        shown_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        responded_at TIMESTAMP,
+                        reaction_type TEXT,
+                        reaction_rating REAL)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_user_movie ON recommendation_impressions(user_id, movie_id, shown_at)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_feedback ON recommendation_impressions(user_id, responded_at, algorithm_variant)"
+    )
     
     conn.commit()
     conn.close()
@@ -471,6 +496,17 @@ class ProfilePreferencesPayload(BaseModel):
     profile_people: list[dict] = []
     profile_movie_ids: list[int] = []
     profile_soundtrack: Optional[dict] = None
+
+
+class RecommendationImpressionPayload(BaseModel):
+    movie_id: int
+    mode: str = "tinder"
+    rank: int = 1
+    reason: str = ""
+    algorithm_variant: str = TEST_AI_ALGORITHM_VARIANT
+    seed_movie_id: Optional[int] = None
+    seed_title: Optional[str] = None
+    seed_similarity: Optional[float] = None
 
 
 def normalize_username(username: str) -> str:
@@ -1099,6 +1135,9 @@ def reset_test_user_data(current_user: dict = Depends(get_current_user)):
     cursor.execute("DELETE FROM user_ratings WHERE user_id = ?", (user_id,))
     reset_counts["ratings"] = max(cursor.rowcount, 0)
 
+    cursor.execute("DELETE FROM recommendation_impressions WHERE user_id = ?", (user_id,))
+    reset_counts["recommendation_impressions"] = max(cursor.rowcount, 0)
+
     reset_counts["playlist_items"] = delete_many_by_ids(cursor, "playlist_items", "playlist_id", playlist_ids)
     cursor.execute("DELETE FROM playlists WHERE user_id = ?", (user_id,))
     reset_counts["playlists"] = max(cursor.rowcount, 0)
@@ -1416,6 +1455,211 @@ def is_test_ai_experiment_user(cursor, user_id: int) -> bool:
     return normalize_username(str(row[0])).lower() == "test"
 
 
+def get_test_ai_feedback_profile(cursor, user_id: int) -> dict[str, object]:
+    cursor.execute(
+        """
+        SELECT movie_id, reaction_type, reaction_rating
+        FROM recommendation_impressions
+        WHERE user_id = ?
+          AND responded_at IS NOT NULL
+          AND COALESCE(reaction_type, '') NOT LIKE 'undo%'
+        ORDER BY responded_at DESC
+        LIMIT 160
+        """,
+        (int(user_id),),
+    )
+    feedback_rows = cursor.fetchall()
+    genre_biases: dict[str, float] = defaultdict(float)
+    keyword_biases: dict[str, float] = defaultdict(float)
+    positive_count = 0
+    negative_count = 0
+
+    for index, row in enumerate(feedback_rows):
+        movie_id = int(row[0])
+        reaction_type = str(row[1] or "")
+        reaction_rating = row[2]
+        movie_index = movie_index_by_id.get(movie_id)
+        if movie_index is None:
+            continue
+
+        if reaction_rating is not None:
+            feedback_value = max(-1.0, min(1.0, (float(reaction_rating) - 3.0) / 2.0))
+        elif reaction_type in {"watch_later", "playlist_add"}:
+            feedback_value = 0.62
+        else:
+            feedback_value = 0.0
+
+        if abs(feedback_value) < 0.18:
+            continue
+
+        if feedback_value > 0:
+            positive_count += 1
+        else:
+            negative_count += 1
+
+        decay = max(0.42, 1.0 - (index * 0.006))
+        movie_row = movies_df.iloc[movie_index]
+        for token in movie_row.get("genre_tokens") or []:
+            genre_biases[token] += feedback_value * decay * 0.42
+        for token in (movie_row.get("keyword_tokens") or [])[:14]:
+            keyword_biases[token] += feedback_value * decay * 0.34
+
+    return {
+        "genre_biases": dict(genre_biases),
+        "keyword_biases": dict(keyword_biases),
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "total_feedback_count": positive_count + negative_count,
+    }
+
+
+def mark_recommendation_reaction(
+    cursor,
+    user_id: int,
+    movie_id: int,
+    reaction_type: str,
+    reaction_rating: Optional[float] = None,
+):
+    if not is_test_ai_experiment_user(cursor, user_id):
+        return
+
+    cursor.execute(
+        """
+        SELECT id
+        FROM recommendation_impressions
+        WHERE user_id = ? AND movie_id = ?
+        ORDER BY shown_at DESC
+        LIMIT 1
+        """,
+        (int(user_id), int(movie_id)),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return
+
+    cursor.execute(
+        """
+        UPDATE recommendation_impressions
+        SET responded_at = CURRENT_TIMESTAMP,
+            reaction_type = ?,
+            reaction_rating = ?
+        WHERE id = ?
+        """,
+        (reaction_type, reaction_rating, int(row[0])),
+    )
+
+
+def insert_recommendation_impression(
+    cursor,
+    *,
+    request_id: str,
+    user_id: int,
+    movie_id: int,
+    mode: str,
+    algorithm_variant: str,
+    rank: int,
+    reason: str,
+    seed_movie_id: Optional[int] = None,
+    seed_title: Optional[str] = None,
+    seed_similarity: Optional[float] = None,
+):
+    cursor.execute(
+        """
+        INSERT INTO recommendation_impressions (
+            request_id,
+            user_id,
+            movie_id,
+            mode,
+            algorithm_variant,
+            rank,
+            reason,
+            seed_movie_id,
+            seed_title,
+            seed_similarity
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            request_id,
+            int(user_id),
+            int(movie_id),
+            mode,
+            algorithm_variant,
+            int(rank),
+            reason,
+            seed_movie_id,
+            seed_title,
+            seed_similarity,
+        ),
+    )
+
+
+def record_recommendation_impression(
+    user_id: int,
+    movie_id: int,
+    mode: str,
+    rank: int = 1,
+    reason: str = "",
+    algorithm_variant: str = TEST_AI_ALGORITHM_VARIANT,
+    seed_movie_id: Optional[int] = None,
+    seed_title: Optional[str] = None,
+    seed_similarity: Optional[float] = None,
+) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if not is_test_ai_experiment_user(cursor, user_id):
+            return False
+
+        insert_recommendation_impression(
+            cursor,
+            request_id=str(uuid.uuid4()),
+            user_id=user_id,
+            movie_id=movie_id,
+            mode=mode,
+            algorithm_variant=algorithm_variant,
+            rank=rank,
+            reason=reason,
+            seed_movie_id=seed_movie_id,
+            seed_title=seed_title,
+            seed_similarity=seed_similarity,
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def log_recommendation_impressions(user_id: int, mode: str, recommendations: list[dict]):
+    if not recommendations:
+        return
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if not is_test_ai_experiment_user(cursor, user_id):
+            return
+
+        request_id = str(uuid.uuid4())
+        for rank, movie in enumerate(recommendations, start=1):
+            insert_recommendation_impression(
+                cursor,
+                request_id=request_id,
+                user_id=user_id,
+                movie_id=int(movie["id"]),
+                mode=mode,
+                algorithm_variant=str(movie.get("recommendation_variant") or TEST_AI_ALGORITHM_VARIANT),
+                rank=rank,
+                reason=str(movie.get("recommendation_reason") or ""),
+                seed_movie_id=movie.get("recommendation_seed_movie_id"),
+                seed_title=movie.get("recommendation_seed_title"),
+                seed_similarity=movie.get("recommendation_similarity"),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @lru_cache(maxsize=256)
 def get_tmdb_related_movie_ids(movie_id: int) -> tuple[int, ...]:
     related_ids: list[int] = []
@@ -1621,6 +1865,8 @@ def build_recommendation_reason(
     onboarding_genre_tokens: set[str],
     genre_profile: set[str],
     mode: str,
+    seed_context: Optional[dict[str, object]] = None,
+    is_test_experiment: bool = False,
 ) -> str:
     movie_index = movie_index_by_id.get(int(movie_id))
     if movie_index is None:
@@ -1629,6 +1875,14 @@ def build_recommendation_reason(
     row = movies_df.iloc[movie_index]
     primary_genre = str(row.get("primary_genre") or "ce registre")
     primary_genre_token = normalize_genre_token(primary_genre)
+    vote_average = float(row.get("vote_average") or 0.0)
+    quality_fragment = f", bien noté ({vote_average:.1f}/10)" if vote_average >= 7.0 else ""
+
+    if is_test_experiment and seed_context:
+        seed_title = str(seed_context.get("seed_title") or "")
+        seed_similarity = float(seed_context.get("seed_similarity") or 0.0)
+        if seed_title and seed_similarity >= 0.18:
+            return f"Proche de {seed_title}, dans une veine {primary_genre}{quality_fragment}"
 
     closest_reference_title = ""
     closest_similarity = 0.0
@@ -2651,6 +2905,13 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
                 "INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating, added_at, sort_index) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)",
                 (target_id, info["id"], info["title"], info["poster_url"], info["rating"], next_sort_index),
             )
+            reaction_type = "watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "playlist_add"
+            mark_recommendation_reaction(
+                cursor,
+                current_user["id"],
+                movie_id,
+                reaction_type,
+            )
             conn.commit()
         except sqlite3.IntegrityError:
             pass
@@ -2667,6 +2928,13 @@ def remove_from_specific_playlist(playlist_id: int, movie_id: int, current_user:
     cursor.execute(
         "DELETE FROM playlist_items WHERE playlist_id = ? AND movie_id = ?",
         (target_id, movie_id),
+    )
+    reaction_type = "undo_watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "undo_playlist_add"
+    mark_recommendation_reaction(
+        cursor,
+        current_user["id"],
+        movie_id,
+        reaction_type,
     )
     conn.commit()
     conn.close()
@@ -2732,6 +3000,13 @@ def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_cu
         "DELETE FROM playlist_items WHERE playlist_id = ? AND movie_id = ?",
         (watch_later_id, movie_id),
     )
+    mark_recommendation_reaction(
+        cursor,
+        current_user["id"],
+        movie_id,
+        "rated",
+        rounded_rating,
+    )
     conn.commit()
     conn.close()
     return {"status": "rated"}
@@ -2744,6 +3019,12 @@ def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_
     cursor.execute(
         "DELETE FROM user_ratings WHERE user_id = ? AND movie_id = ?",
         (current_user["id"], movie_id),
+    )
+    mark_recommendation_reaction(
+        cursor,
+        current_user["id"],
+        movie_id,
+        "undo_rating",
     )
     conn.commit()
     conn.close()
@@ -2804,6 +3085,17 @@ def compute_recommendation_feed(
     )
     recent_watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
     is_test_ai_experiment = is_test_ai_experiment_user(cursor, current_user_id)
+    test_feedback_profile = (
+        get_test_ai_feedback_profile(cursor, current_user_id)
+        if is_test_ai_experiment
+        else {
+            "genre_biases": {},
+            "keyword_biases": {},
+            "positive_count": 0,
+            "negative_count": 0,
+            "total_feedback_count": 0,
+        }
+    )
 
     collaborative_scores = build_collaborative_candidate_scores(
         cursor,
@@ -2943,6 +3235,12 @@ def compute_recommendation_feed(
         onboarding_bias = 0.95 if cold_start_mode else 0.60
     for token in onboarding_genre_tokens:
         genre_affinity_map[token] += onboarding_bias
+
+    if is_test_ai_experiment:
+        for token, bias in dict(test_feedback_profile.get("genre_biases") or {}).items():
+            genre_affinity_map[str(token)] += float(bias)
+        for token, bias in dict(test_feedback_profile.get("keyword_biases") or {}).items():
+            keyword_affinity_map[str(token)] += float(bias)
 
     positive_similarity_scores = np.zeros(len(movies_df))
     negative_similarity_scores = np.zeros(len(movies_df))
@@ -3138,6 +3436,7 @@ def compute_recommendation_feed(
         for movie_id, _ in sorted(candidate_scores.items(), key=lambda item: item[1], reverse=True)
         if movie_id not in blocked_ids
     ]
+    seed_context_by_movie_id: dict[int, dict[str, object]] = {}
 
     def build_seed_cluster_ranked_ids(seed_ids: list[int], max_seed_count: int = 8) -> list[int]:
         if not is_test_ai_experiment or vectors is None or not seed_ids:
@@ -3150,6 +3449,7 @@ def compute_recommendation_feed(
                 continue
 
             seed_row = movies_df.iloc[seed_index]
+            seed_title = str(seed_row.get("title") or "")
             seed_genres = set(seed_row.get("genre_tokens") or [])
             seed_keywords = set((seed_row.get("keyword_tokens") or [])[:18])
             try:
@@ -3194,6 +3494,14 @@ def compute_recommendation_feed(
                     + min(seed_weight * 0.07, 0.24)
                     - (seed_rank * 0.035)
                 )
+                current_context = seed_context_by_movie_id.get(movie_id)
+                if not current_context or cluster_score > float(current_context.get("cluster_score") or 0.0):
+                    seed_context_by_movie_id[movie_id] = {
+                        "seed_movie_id": int(seed_id),
+                        "seed_title": seed_title,
+                        "seed_similarity": round(seed_similarity, 4),
+                        "cluster_score": float(cluster_score),
+                    }
                 lane_scores.append((movie_id, cluster_score))
 
             lane_scores.sort(key=lambda item: item[1], reverse=True)
@@ -3223,6 +3531,37 @@ def compute_recommendation_feed(
                 for movie_id in ranked_candidate_ids
                 if movie_id not in clustered_seen_ids
             ]
+
+    def build_recommendation_payload(row, reason_mode: str) -> dict:
+        movie_id = int(row["id"])
+        seed_context = seed_context_by_movie_id.get(movie_id, {})
+        payload = {
+            "id": movie_id,
+            "title": str(row["title"]),
+            "poster_url": fetch_poster_from_tmdb(movie_id),
+            "rating": float(row["vote_average"]),
+            "recommendation_reason": build_recommendation_reason(
+                movie_id=movie_id,
+                positive_indices=positive_indices,
+                positive_signal_weights=positive_signal_weights,
+                positive_similarity_scores=positive_similarity_scores,
+                onboarding_genre_tokens=onboarding_genre_tokens,
+                genre_profile=genre_profile,
+                mode=reason_mode,
+                seed_context=seed_context,
+                is_test_experiment=is_test_ai_experiment,
+            ),
+        }
+        if is_test_ai_experiment:
+            payload.update(
+                {
+                    "recommendation_variant": TEST_AI_ALGORITHM_VARIANT,
+                    "recommendation_seed_movie_id": seed_context.get("seed_movie_id") if seed_context else None,
+                    "recommendation_seed_title": seed_context.get("seed_title") if seed_context else None,
+                    "recommendation_similarity": seed_context.get("seed_similarity") if seed_context else None,
+                }
+            )
+        return payload
 
     if is_explore_mode:
         exploration_pool = movies_df[~movies_df["id"].isin(blocked_ids)].copy()
@@ -3264,21 +3603,7 @@ def compute_recommendation_feed(
         )
         selected_rows = selected_rows.sort_values("selection_rank")
         return [
-            {
-                "id": int(row["id"]),
-                "title": str(row["title"]),
-                "poster_url": fetch_poster_from_tmdb(int(row["id"])),
-                "rating": float(row["vote_average"]),
-                "recommendation_reason": build_recommendation_reason(
-                    movie_id=int(row["id"]),
-                    positive_indices=positive_indices,
-                    positive_signal_weights=positive_signal_weights,
-                    positive_similarity_scores=positive_similarity_scores,
-                    onboarding_genre_tokens=onboarding_genre_tokens,
-                    genre_profile=genre_profile,
-                    mode="explore",
-                ),
-            }
+            build_recommendation_payload(row, "explore")
             for _, row in selected_rows.iterrows()
         ]
 
@@ -3359,21 +3684,7 @@ def compute_recommendation_feed(
     selected_rows = selected_rows.sort_values("selection_rank")
 
     return [
-        {
-            "id": int(row["id"]),
-            "title": str(row["title"]),
-            "poster_url": fetch_poster_from_tmdb(int(row["id"])),
-            "rating": float(row["vote_average"]),
-            "recommendation_reason": build_recommendation_reason(
-                movie_id=int(row["id"]),
-                positive_indices=positive_indices,
-                positive_signal_weights=positive_signal_weights,
-                positive_similarity_scores=positive_similarity_scores,
-                onboarding_genre_tokens=onboarding_genre_tokens,
-                genre_profile=genre_profile,
-                mode="tinder" if is_tinder_mode else "spotlight",
-            ),
-        }
+        build_recommendation_payload(row, "tinder" if is_tinder_mode else "spotlight")
         for _, row in selected_rows.head(limit).iterrows()
     ]
 
@@ -3390,6 +3701,90 @@ def get_movie_feed(
         exclude_ids=exclude_ids,
         mode=mode,
     )
+
+
+@app.post("/recommendations/impressions")
+def create_recommendation_impression(
+    payload: RecommendationImpressionPayload,
+    current_user: dict = Depends(get_current_user),
+):
+    recorded = record_recommendation_impression(
+        user_id=current_user["id"],
+        movie_id=payload.movie_id,
+        mode=payload.mode,
+        rank=payload.rank,
+        reason=payload.reason,
+        algorithm_variant=payload.algorithm_variant,
+        seed_movie_id=payload.seed_movie_id,
+        seed_title=payload.seed_title,
+        seed_similarity=payload.seed_similarity,
+    )
+    return {"recorded": recorded}
+
+
+@app.get("/ai/test/metrics")
+def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    if not is_test_ai_experiment_user(cursor, current_user["id"]):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Reserve au compte test.")
+
+    cursor.execute(
+        """
+        SELECT
+            algorithm_variant,
+            mode,
+            COUNT(*) AS shown_count,
+            SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) AS response_count,
+            SUM(CASE WHEN reaction_rating >= 4 OR reaction_type IN ('watch_later', 'playlist_add') THEN 1 ELSE 0 END) AS positive_count,
+            SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
+            AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
+        FROM recommendation_impressions
+        WHERE user_id = ?
+        GROUP BY algorithm_variant, mode
+        ORDER BY shown_count DESC
+        """,
+        (current_user["id"],),
+    )
+    grouped_rows = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute(
+        """
+        SELECT movie_id, mode, algorithm_variant, reason, reaction_type, reaction_rating, shown_at, responded_at
+        FROM recommendation_impressions
+        WHERE user_id = ?
+        ORDER BY shown_at DESC
+        LIMIT 24
+        """,
+        (current_user["id"],),
+    )
+    recent_rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    metrics = []
+    for row in grouped_rows:
+        shown_count = int(row["shown_count"] or 0)
+        response_count = int(row["response_count"] or 0)
+        positive_count = int(row["positive_count"] or 0)
+        negative_count = int(row["negative_count"] or 0)
+        metrics.append(
+            {
+                **row,
+                "shown_count": shown_count,
+                "response_count": response_count,
+                "positive_count": positive_count,
+                "negative_count": negative_count,
+                "response_rate": round(response_count / shown_count, 3) if shown_count else 0.0,
+                "positive_rate": round(positive_count / response_count, 3) if response_count else 0.0,
+            }
+        )
+
+    return {
+        "variant": TEST_AI_ALGORITHM_VARIANT,
+        "metrics": metrics,
+        "recent": recent_rows,
+    }
 
 
 def fetch_now_playing_movies(limit: int = 18) -> list[dict]:
@@ -3480,6 +3875,8 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
         exclude_ids=",".join(str(movie_id) for movie_id in (popular_ids | tinder_preview_ids | tailored_ids)),
         mode="explore",
     )
+    log_recommendation_impressions(current_user["id"], "spotlight", tailored)
+    log_recommendation_impressions(current_user["id"], "explore", discovery)
 
     friend_rated = fetch_friend_rated_movies(current_user["id"], limit=18)
 
