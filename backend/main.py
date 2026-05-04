@@ -55,6 +55,8 @@ NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
 TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
+GLOBAL_RECOMMENDATION_AI_ENABLED = True
+TEST_AI_DASHBOARD_USERNAME = "test"
 MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.tar.gz"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
@@ -1472,12 +1474,22 @@ def parse_exclude_ids(raw_exclude_ids: Optional[str]) -> set[int]:
     return parsed_ids
 
 
-def is_test_ai_experiment_user(cursor, user_id: int) -> bool:
+def is_test_dashboard_username(username: str) -> bool:
+    return normalize_username(username).lower() == TEST_AI_DASHBOARD_USERNAME
+
+
+def is_test_dashboard_user(cursor, user_id: int) -> bool:
     cursor.execute("SELECT username FROM users WHERE id = ?", (int(user_id),))
     row = cursor.fetchone()
     if not row:
         return False
-    return normalize_username(str(row[0])).lower() == "test"
+    return is_test_dashboard_username(str(row[0]))
+
+
+def is_recommendation_ai_enabled_user(cursor, user_id: int) -> bool:
+    if GLOBAL_RECOMMENDATION_AI_ENABLED:
+        return True
+    return is_test_dashboard_user(cursor, user_id)
 
 
 def get_test_ai_feedback_profile(cursor, user_id: int) -> dict[str, object]:
@@ -1545,7 +1557,7 @@ def mark_recommendation_reaction(
     reaction_type: str,
     reaction_rating: Optional[float] = None,
 ):
-    if not is_test_ai_experiment_user(cursor, user_id):
+    if not is_recommendation_ai_enabled_user(cursor, user_id):
         return
 
     cursor.execute(
@@ -1633,7 +1645,7 @@ def record_recommendation_impression(
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        if not is_test_ai_experiment_user(cursor, user_id):
+        if not is_recommendation_ai_enabled_user(cursor, user_id):
             return False
 
         insert_recommendation_impression(
@@ -3079,7 +3091,7 @@ def compute_recommendation_feed(
         (watch_later_id,),
     )
     recent_watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
-    is_test_ai_experiment = is_test_ai_experiment_user(cursor, current_user_id)
+    is_test_ai_experiment = is_recommendation_ai_enabled_user(cursor, current_user_id)
     test_feedback_profile = (
         get_test_ai_feedback_profile(cursor, current_user_id)
         if is_test_ai_experiment
@@ -3721,7 +3733,7 @@ def create_recommendation_impression(
 def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    if not is_test_ai_experiment_user(cursor, current_user["id"]):
+    if not is_test_dashboard_user(cursor, current_user["id"]):
         conn.close()
         raise HTTPException(status_code=403, detail="Reserve au compte test.")
 
@@ -4015,7 +4027,7 @@ def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dic
 
 @app.get("/movies/news/highlights")
 def movie_news_highlights(current_user: dict = Depends(get_current_user)):
-    is_test_ai_experiment = normalize_username(str(current_user["username"])).lower() == "test"
+    is_test_ai_experiment = is_test_dashboard_username(str(current_user["username"]))
     cached_payload = news_highlights_cache.get(current_user["id"])
     if not is_test_ai_experiment and cached_payload and cached_payload[0] > time.time():
         payload = cached_payload[1]
