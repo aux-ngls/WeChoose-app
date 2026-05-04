@@ -10,7 +10,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 
 interface AppScreenProps {
@@ -18,11 +18,19 @@ interface AppScreenProps {
   scroll?: boolean;
   keyboardAware?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
+  safeAreaEdges?: readonly Edge[];
 }
 
 const RAIL_DOTS = Array.from({ length: 9 }, (_, index) => index);
+const DEFAULT_SAFE_AREA_EDGES = ['top', 'right', 'bottom', 'left'] as const;
 
-export default function AppScreen({ children, scroll = true, keyboardAware = false, contentStyle }: AppScreenProps) {
+export default function AppScreen({
+  children,
+  scroll = true,
+  keyboardAware = false,
+  contentStyle,
+  safeAreaEdges = DEFAULT_SAFE_AREA_EDGES,
+}: AppScreenProps) {
   const { theme } = useTheme();
   const content = scroll ? (
     <ScrollView
@@ -75,7 +83,7 @@ export default function AppScreen({ children, scroll = true, keyboardAware = fal
           />
         ))}
       </View>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={safeAreaEdges} style={styles.safeArea}>
         {keyboardAware ? (
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
