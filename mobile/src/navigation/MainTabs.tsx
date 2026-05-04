@@ -68,15 +68,16 @@ export default function MainTabs() {
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
           backgroundColor: theme.isDark ? 'rgba(13,7,17,0.96)' : 'rgba(255,248,239,0.97)',
-          borderTopColor: theme.colors.border,
-          borderTopWidth: 1,
+          borderTopColor: 'transparent',
+          borderTopWidth: 0,
           height: 74,
           paddingTop: 8,
           paddingBottom: 13,
           shadowColor: '#000000',
-          shadowOffset: { width: 0, height: -8 },
-          shadowOpacity: theme.isDark ? 0.24 : 0.08,
-          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
         },
         tabBarIcon: ({ focused }) => {
           const iconName = (focused ? icons[route.name].replace('-outline', '') : icons[route.name]) as keyof typeof Ionicons.glyphMap;
