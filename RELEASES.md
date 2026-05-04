@@ -2,6 +2,12 @@
 
 Last updated: 2026-05-04
 
+## Maintenance Rule
+
+This file must be updated after each important stable checkpoint, release-oriented change, rollback point, or notable deployment/testing milestone.
+
+It is part of the shared project memory and should stay aligned with `PROJECT_MEMORY.md`, `ROADMAP.md`, and `DECISIONS.md` so every future conversation can quickly recover the latest stable state.
+
 ## Current Stable State
 
 Commit: `be9c7a9`
@@ -63,4 +69,3 @@ npx eas submit --platform ios
 - If EAS config files differ locally on the Mac, `git pull` can be blocked. Check `git status` before pulling.
 - If tunnel mode fails, it can be an ngrok issue rather than a Qulte code issue.
 - The server repository source of truth is `origin/main` at `git@github.com:aux-ngls/WeChoose-app.git`.
-

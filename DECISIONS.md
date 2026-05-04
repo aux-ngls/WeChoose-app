@@ -2,6 +2,12 @@
 
 Last updated: 2026-05-04
 
+## Maintenance Rule
+
+This file must be updated whenever we make, confirm, or reverse an important product, UX, architecture, deployment, or workflow decision.
+
+It is part of the shared project memory and should remain consistent with `PROJECT_MEMORY.md`, `ROADMAP.md`, and `RELEASES.md` so future conversations inherit the same reasoning.
+
 ## Keep Web And Mobile
 
 Decision: keep the current web site and the React Native mobile app in parallel.
@@ -37,6 +43,7 @@ Reason:
 - context compaction can lose details;
 - new conversations need fast project recovery;
 - Git stores both the code and the project intent.
+- these files must be actively maintained as the project evolves.
 
 ## AI Rollout
 
@@ -67,4 +74,3 @@ Reason:
 - the user prefers compact, intuitive mobile screens;
 - long descriptions make the app feel heavy;
 - icons, spacing, and clear actions should carry the interface.
-

@@ -2,6 +2,12 @@
 
 Last updated: 2026-05-04
 
+## Maintenance Rule
+
+This roadmap must be updated whenever priorities change, a major milestone is completed, or a new workstream becomes important.
+
+It is part of the shared project memory and should stay aligned with `PROJECT_MEMORY.md`, `DECISIONS.md`, and `RELEASES.md` so every future conversation starts from the same context.
+
 ## Immediate Priorities
 
 - Keep removing visible loading states, especially in Tinder and high-traffic mobile screens.
@@ -52,4 +58,3 @@ Last updated: 2026-05-04
 - Public profile links.
 - More advanced recommendation explanations.
 - Analytics dashboard for recommendation quality.
-

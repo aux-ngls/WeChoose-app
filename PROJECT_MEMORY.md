@@ -4,6 +4,18 @@ Last updated: 2026-05-04
 Current branch: main
 Current stable commit: be9c7a9
 
+## Maintenance Rule
+
+These memory files must be kept up to date as the project evolves.
+
+At a minimum, after each meaningful product, technical, UX, release, or workflow change:
+- update `PROJECT_MEMORY.md` if the overall project state, rules, or sensitive areas changed;
+- update `ROADMAP.md` if priorities changed;
+- update `DECISIONS.md` if an important decision was made or reversed;
+- update `RELEASES.md` after each important stable point or release-oriented change.
+
+This rule exists so every future conversation can recover the same shared context from the repository, even after context compaction.
+
 ## Vision
 
 Qulte is a social cinema product. The goal is to help users discover movies through personalized recommendations, a Tinder-like swipe experience, profiles, playlists, reviews, private messages, and movie sharing.
@@ -33,6 +45,7 @@ The web site remains active and should not be removed while the mobile app is be
 ## Important Rules
 
 - Commit and push automatically after validated code changes, unless explicitly asked not to.
+- Keep `PROJECT_MEMORY.md`, `ROADMAP.md`, `DECISIONS.md`, and `RELEASES.md` up to date as the project evolves.
 - Do not remove or break the existing web site while working on mobile.
 - Avoid touching the mobile bottom navbar unless the task is specifically about it.
 - Keep the mobile interface light on explanatory text.
@@ -105,7 +118,7 @@ bash /home/wec-front.sh prod
 
 When starting a new conversation or after context compaction:
 - read this file first;
+- treat these memory files as shared source-of-truth documents and update them when the project changes;
 - check `git status --short`;
 - inspect recent commits with `git log --oneline -10`;
 - update this memory when project-level decisions change.
-
