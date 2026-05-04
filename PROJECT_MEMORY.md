@@ -32,7 +32,7 @@ The mobile app currently includes:
 - pull-to-refresh on dynamic mobile screens such as search, social, messages, playlists, and profiles;
 - profile page with profile picture, description, favorite identity content, playlists, and user reviews;
 - movie detail sheet used consistently when opening a movie;
-- movie detail screen should feel like a native iPhone screen, with return by left-edge swipe;
+- full-screen stack screens such as movie details, playlists, profiles, settings, and conversations should feel native on iPhone, with return by left-edge swipe;
 - ratings with half-star precision;
 - playlists, custom playlist creation, adding movies to playlists, and removing movies;
 - social feed with expandable reviews and comments;

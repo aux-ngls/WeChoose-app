@@ -39,7 +39,7 @@ const sheetOptions = {
   animationMatchesGesture: true,
 } as const;
 
-const edgeSwipeDetailOptions = {
+const edgeSwipeScreenOptions = {
   animation: 'default',
   gestureDirection: 'horizontal',
   gestureEnabled: true,
@@ -97,14 +97,14 @@ export default function AppNavigator() {
         ) : (
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} options={{ animation: 'fade', animationDuration: 180 }} />
-            <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={edgeSwipeDetailOptions} />
-            <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} />
+            <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={edgeSwipeScreenOptions} />
+            <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="ShareMovie" component={ShareMovieScreen} options={sheetOptions} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="TestAiDashboard" component={TestAiDashboardScreen} />
-            <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={edgeSwipeScreenOptions} />
+            <Stack.Screen name="TestAiDashboard" component={TestAiDashboardScreen} options={edgeSwipeScreenOptions} />
+            <Stack.Screen name="UserProfile" component={UserProfileScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="CreateReview" component={CreateReviewScreen} options={sheetOptions} />
-            <Stack.Screen name="Conversation" component={ConversationScreen} />
+            <Stack.Screen name="Conversation" component={ConversationScreen} options={edgeSwipeScreenOptions} />
           </>
         )}
       </Stack.Navigator>

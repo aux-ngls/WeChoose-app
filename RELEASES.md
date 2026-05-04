@@ -22,7 +22,7 @@ Summary:
 These changes should be recorded as part of the next stable checkpoint:
 - added pull-to-refresh support across the main dynamic mobile screens;
 - improved drag behavior so list screens dismiss the keyboard more naturally;
-- changed movie details to use native-style left-edge back swipe;
+- changed full-screen stack screens to use native-style left-edge back swipe;
 - removed the custom drag gesture from the trailer modal.
 
 ## Important Recent Commits

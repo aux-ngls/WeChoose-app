@@ -82,6 +82,6 @@ Decision: prefer native-feeling gestures over button-heavy interactions when the
 Reason:
 - the app should feel like a phone app, not a compressed web flow;
 - pull-to-refresh is more natural than adding explicit refresh buttons on live screens;
-- left-edge swipe is preferred for leaving full-screen flows such as movie details;
+- left-edge swipe is preferred for leaving full-screen stack flows such as movie details, playlists, profiles, settings, and conversations;
 - custom gestures should be added only when they clearly improve the native feel;
 - keyboard dismissal on drag reduces friction in search and messaging flows.
