@@ -214,6 +214,87 @@ export interface UserMovieRating {
   rating: number | null;
 }
 
+export interface TestAiOverview {
+  shown_count: number;
+  response_count: number;
+  positive_count: number;
+  negative_count: number;
+  average_rating: number | null;
+  response_rate: number;
+  positive_rate: number;
+}
+
+export interface TestAiModeMetric {
+  algorithm_variant: string;
+  mode: string;
+  shown_count: number;
+  response_count: number;
+  positive_count: number;
+  negative_count: number;
+  average_rating: number | null;
+  response_rate: number;
+  positive_rate: number;
+}
+
+export interface TestAiTopMovie {
+  movie_id: number;
+  title: string;
+  shown_count: number;
+  response_count: number;
+  positive_count: number;
+  negative_count: number;
+  average_rating: number | null;
+  positive_rate: number;
+}
+
+export interface TestAiTopSeed {
+  seed_movie_id: number | null;
+  seed_title: string;
+  shown_count: number;
+  response_count: number;
+  positive_count: number;
+  negative_count: number;
+  average_rating: number | null;
+  positive_rate: number;
+}
+
+export interface TestAiGenreSignal {
+  name: string;
+  score: number;
+}
+
+export interface TestAiFeedbackProfile {
+  total_feedback_count: number;
+  positive_count: number;
+  negative_count: number;
+  positive_genres: TestAiGenreSignal[];
+  negative_genres: TestAiGenreSignal[];
+}
+
+export interface TestAiRecentItem {
+  movie_id: number;
+  movie_title: string;
+  mode: string;
+  algorithm_variant: string;
+  reason: string;
+  reaction_type: string;
+  reaction_rating: number | null;
+  shown_at: string;
+  responded_at: string | null;
+  seed_title: string;
+  is_positive: boolean;
+}
+
+export interface TestAiMetricsPayload {
+  variant: string;
+  overview: TestAiOverview;
+  by_mode: TestAiModeMetric[];
+  top_movies: TestAiTopMovie[];
+  top_seeds: TestAiTopSeed[];
+  feedback_profile: TestAiFeedbackProfile;
+  recent: TestAiRecentItem[];
+}
+
 export interface DirectMessage {
   id: number;
   content: string;

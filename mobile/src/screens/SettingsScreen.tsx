@@ -174,6 +174,14 @@ export default function SettingsScreen() {
           </Text>
 
           <Pressable
+            style={[styles.labButton, { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft }]}
+            onPress={() => navigation.navigate('TestAiDashboard')}
+          >
+            <Ionicons name="analytics-outline" size={18} color={theme.colors.text} />
+            <Text style={[styles.labButtonLabel, { color: theme.colors.text }]}>Ouvrir le labo IA</Text>
+          </Pressable>
+
+          <Pressable
             style={[styles.resetButton, { backgroundColor: '#dc2626' }]}
             onPress={confirmTestReset}
             disabled={resettingTestData}
@@ -336,6 +344,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 14,
+  },
+  labButton: {
+    minHeight: 48,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  labButtonLabel: {
+    fontSize: 14,
+    fontWeight: '900',
   },
   resetButtonLabel: {
     color: '#ffffff',

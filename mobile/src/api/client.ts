@@ -16,6 +16,7 @@ import type {
   SocialProfile,
   SocialReview,
   SocialUser,
+  TestAiMetricsPayload,
   UserMovieRating,
 } from '../types';
 
@@ -121,6 +122,10 @@ export async function resetTestUserData(token: string): Promise<{
     has_completed_onboarding: boolean;
     has_completed_tutorial: boolean;
   }>('/users/me/reset-test-data', { method: 'POST' }, token);
+}
+
+export async function fetchTestAiMetrics(token: string): Promise<TestAiMetricsPayload> {
+  return request<TestAiMetricsPayload>('/ai/test/metrics', undefined, token);
 }
 
 export async function getOnboardingPreferences(token: string): Promise<OnboardingPreferencesResponse> {

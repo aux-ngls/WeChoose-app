@@ -22,6 +22,7 @@ export type RootStackParamList = {
     rating: number;
   };
   Settings: undefined;
+  TestAiDashboard: undefined;
   UserProfile: {
     username: string;
   };

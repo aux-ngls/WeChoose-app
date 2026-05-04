@@ -100,6 +100,7 @@ export default function HomeScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isTestSession = session?.username.trim().toLowerCase() === 'test';
   const initialCache =
     tinderMovieCache && tinderMovieCache.username === session?.username && tinderMovieCache.version === CACHE_VERSION
       ? tinderMovieCache
@@ -135,7 +136,7 @@ export default function HomeScreen() {
   }, [currentMovie?.id, pan]);
 
   useEffect(() => {
-    if (!session || !currentMovie || lastRecordedImpressionMovieIdRef.current === currentMovie.id) {
+    if (!session || !isTestSession || !currentMovie || lastRecordedImpressionMovieIdRef.current === currentMovie.id) {
       return;
     }
 
@@ -145,7 +146,7 @@ export default function HomeScreen() {
         void signOut();
       }
     });
-  }, [currentMovie, session, signOut]);
+  }, [currentMovie, isTestSession, session, signOut]);
 
   useEffect(() => {
     moviesRef.current = movies;

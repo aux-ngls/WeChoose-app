@@ -12,6 +12,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import PlaylistDetailsScreen from '../screens/PlaylistDetailsScreen';
 import ShareMovieScreen from '../screens/ShareMovieScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import TestAiDashboardScreen from '../screens/TestAiDashboardScreen';
 import TutorialScreen from '../screens/TutorialScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import MainTabs from './MainTabs';
@@ -92,6 +93,7 @@ export default function AppNavigator() {
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} />
             <Stack.Screen name="ShareMovie" component={ShareMovieScreen} options={sheetOptions} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="TestAiDashboard" component={TestAiDashboardScreen} />
             <Stack.Screen name="UserProfile" component={UserProfileScreen} />
             <Stack.Screen name="CreateReview" component={CreateReviewScreen} options={sheetOptions} />
             <Stack.Screen name="Conversation" component={ConversationScreen} />

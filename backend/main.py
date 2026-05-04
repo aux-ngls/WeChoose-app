@@ -203,6 +203,20 @@ def get_tmdb_movie_summary(movie_id: int) -> Optional[dict]:
     return normalize_tmdb_movie(data if isinstance(data, dict) else {})
 
 
+def get_display_movie_title(movie_id: int) -> str:
+    movie_index = movie_index_by_id.get(int(movie_id))
+    if movie_index is not None and not movies_df.empty:
+        title = str(movies_df.iloc[movie_index].get("title") or "").strip()
+        if title:
+            return title
+
+    summary = get_tmdb_movie_summary(int(movie_id))
+    if summary and summary.get("title"):
+        return str(summary["title"])
+
+    return f"Film #{movie_id}"
+
+
 def init_db():
     os.makedirs(AVATAR_UPLOAD_DIR, exist_ok=True)
     conn = get_db_connection()
@@ -543,6 +557,17 @@ def normalize_preference_label(value: str) -> str:
 
 def normalize_genre_token(value: str) -> str:
     return normalize_preference_label(value).replace(" ", "").lower()
+
+
+def present_affinity_token(token: str) -> str:
+    normalized_token = normalize_genre_token(token)
+    special_labels = {
+        "sciencefiction": "Science-fiction",
+        "tvmovie": "Telefilm",
+    }
+    if normalized_token in special_labels:
+        return special_labels[normalized_token]
+    return normalize_preference_label(str(token).replace("_", " ").replace("-", " ")).title()
 
 
 def dump_json_list(values: list) -> str:
@@ -1626,36 +1651,6 @@ def record_recommendation_impression(
         )
         conn.commit()
         return True
-    finally:
-        conn.close()
-
-
-def log_recommendation_impressions(user_id: int, mode: str, recommendations: list[dict]):
-    if not recommendations:
-        return
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        if not is_test_ai_experiment_user(cursor, user_id):
-            return
-
-        request_id = str(uuid.uuid4())
-        for rank, movie in enumerate(recommendations, start=1):
-            insert_recommendation_impression(
-                cursor,
-                request_id=request_id,
-                user_id=user_id,
-                movie_id=int(movie["id"]),
-                mode=mode,
-                algorithm_variant=str(movie.get("recommendation_variant") or TEST_AI_ALGORITHM_VARIANT),
-                rank=rank,
-                reason=str(movie.get("recommendation_reason") or ""),
-                seed_movie_id=movie.get("recommendation_seed_movie_id"),
-                seed_title=movie.get("recommendation_seed_title"),
-                seed_similarity=movie.get("recommendation_similarity"),
-            )
-        conn.commit()
     finally:
         conn.close()
 
@@ -3733,6 +3728,21 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
     cursor.execute(
         """
         SELECT
+            COUNT(*) AS shown_count,
+            SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) AS response_count,
+            SUM(CASE WHEN reaction_rating >= 4 OR reaction_type IN ('watch_later', 'playlist_add') THEN 1 ELSE 0 END) AS positive_count,
+            SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
+            AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
+        FROM recommendation_impressions
+        WHERE user_id = ?
+        """,
+        (current_user["id"],),
+    )
+    overview_row = dict(cursor.fetchone() or {})
+
+    cursor.execute(
+        """
+        SELECT
             algorithm_variant,
             mode,
             COUNT(*) AS shown_count,
@@ -3751,7 +3761,16 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
 
     cursor.execute(
         """
-        SELECT movie_id, mode, algorithm_variant, reason, reaction_type, reaction_rating, shown_at, responded_at
+        SELECT
+            movie_id,
+            mode,
+            algorithm_variant,
+            reason,
+            reaction_type,
+            reaction_rating,
+            shown_at,
+            responded_at,
+            seed_title
         FROM recommendation_impressions
         WHERE user_id = ?
         ORDER BY shown_at DESC
@@ -3760,30 +3779,184 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
         (current_user["id"],),
     )
     recent_rows = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute(
+        """
+        SELECT
+            movie_id,
+            COUNT(*) AS shown_count,
+            SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) AS response_count,
+            SUM(CASE WHEN reaction_rating >= 4 OR reaction_type IN ('watch_later', 'playlist_add') THEN 1 ELSE 0 END) AS positive_count,
+            SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
+            AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
+        FROM recommendation_impressions
+        WHERE user_id = ?
+        GROUP BY movie_id
+        HAVING SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) > 0
+        ORDER BY positive_count DESC, response_count DESC, average_rating DESC
+        LIMIT 6
+        """,
+        (current_user["id"],),
+    )
+    top_movie_rows = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute(
+        """
+        SELECT
+            seed_movie_id,
+            seed_title,
+            COUNT(*) AS shown_count,
+            SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) AS response_count,
+            SUM(CASE WHEN reaction_rating >= 4 OR reaction_type IN ('watch_later', 'playlist_add') THEN 1 ELSE 0 END) AS positive_count,
+            SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
+            AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
+        FROM recommendation_impressions
+        WHERE user_id = ?
+          AND COALESCE(seed_title, '') != ''
+        GROUP BY seed_movie_id, seed_title
+        HAVING SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) > 0
+        ORDER BY positive_count DESC, response_count DESC, average_rating DESC
+        LIMIT 6
+        """,
+        (current_user["id"],),
+    )
+    top_seed_rows = [dict(row) for row in cursor.fetchall()]
+    feedback_profile = get_test_ai_feedback_profile(cursor, current_user["id"])
     conn.close()
 
-    metrics = []
+    overview_shown_count = int(overview_row.get("shown_count") or 0)
+    overview_response_count = int(overview_row.get("response_count") or 0)
+    overview_positive_count = int(overview_row.get("positive_count") or 0)
+    overview_negative_count = int(overview_row.get("negative_count") or 0)
+    overview_average_rating = overview_row.get("average_rating")
+
+    overview = {
+        "shown_count": overview_shown_count,
+        "response_count": overview_response_count,
+        "positive_count": overview_positive_count,
+        "negative_count": overview_negative_count,
+        "average_rating": round(float(overview_average_rating), 2) if overview_average_rating is not None else None,
+        "response_rate": round(overview_response_count / overview_shown_count, 3) if overview_shown_count else 0.0,
+        "positive_rate": round(overview_positive_count / overview_response_count, 3) if overview_response_count else 0.0,
+    }
+
+    by_mode = []
     for row in grouped_rows:
         shown_count = int(row["shown_count"] or 0)
         response_count = int(row["response_count"] or 0)
         positive_count = int(row["positive_count"] or 0)
         negative_count = int(row["negative_count"] or 0)
-        metrics.append(
+        average_rating = row.get("average_rating")
+        by_mode.append(
             {
                 **row,
                 "shown_count": shown_count,
                 "response_count": response_count,
                 "positive_count": positive_count,
                 "negative_count": negative_count,
+                "average_rating": round(float(average_rating), 2) if average_rating is not None else None,
                 "response_rate": round(response_count / shown_count, 3) if shown_count else 0.0,
                 "positive_rate": round(positive_count / response_count, 3) if response_count else 0.0,
             }
         )
 
+    top_movies = []
+    for row in top_movie_rows:
+        response_count = int(row["response_count"] or 0)
+        positive_count = int(row["positive_count"] or 0)
+        average_rating = row.get("average_rating")
+        movie_id = int(row["movie_id"])
+        top_movies.append(
+            {
+                "movie_id": movie_id,
+                "title": get_display_movie_title(movie_id),
+                "shown_count": int(row["shown_count"] or 0),
+                "response_count": response_count,
+                "positive_count": positive_count,
+                "negative_count": int(row["negative_count"] or 0),
+                "average_rating": round(float(average_rating), 2) if average_rating is not None else None,
+                "positive_rate": round(positive_count / response_count, 3) if response_count else 0.0,
+            }
+        )
+
+    top_seeds = []
+    for row in top_seed_rows:
+        response_count = int(row["response_count"] or 0)
+        positive_count = int(row["positive_count"] or 0)
+        average_rating = row.get("average_rating")
+        top_seeds.append(
+            {
+                "seed_movie_id": int(row["seed_movie_id"]) if row["seed_movie_id"] is not None else None,
+                "seed_title": str(row["seed_title"] or ""),
+                "shown_count": int(row["shown_count"] or 0),
+                "response_count": response_count,
+                "positive_count": positive_count,
+                "negative_count": int(row["negative_count"] or 0),
+                "average_rating": round(float(average_rating), 2) if average_rating is not None else None,
+                "positive_rate": round(positive_count / response_count, 3) if response_count else 0.0,
+            }
+        )
+
+    positive_genres = [
+        {"name": present_affinity_token(token), "score": round(float(score), 2)}
+        for token, score in sorted(
+            (
+                (str(token), float(score))
+                for token, score in dict(feedback_profile.get("genre_biases") or {}).items()
+                if float(score) > 0
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:6]
+    ]
+    negative_genres = [
+        {"name": present_affinity_token(token), "score": round(float(score), 2)}
+        for token, score in sorted(
+            (
+                (str(token), float(score))
+                for token, score in dict(feedback_profile.get("genre_biases") or {}).items()
+                if float(score) < 0
+            ),
+            key=lambda item: item[1],
+        )[:4]
+    ]
+
+    recent = []
+    for row in recent_rows:
+        reaction_rating = row.get("reaction_rating")
+        recent.append(
+            {
+                "movie_id": int(row["movie_id"]),
+                "movie_title": get_display_movie_title(int(row["movie_id"])),
+                "mode": str(row["mode"] or ""),
+                "algorithm_variant": str(row["algorithm_variant"] or ""),
+                "reason": str(row["reason"] or ""),
+                "reaction_type": str(row["reaction_type"] or ""),
+                "reaction_rating": float(reaction_rating) if reaction_rating is not None else None,
+                "shown_at": row["shown_at"],
+                "responded_at": row["responded_at"],
+                "seed_title": str(row["seed_title"] or ""),
+                "is_positive": (
+                    (reaction_rating is not None and float(reaction_rating) >= 4.0)
+                    or str(row["reaction_type"] or "") in {"watch_later", "playlist_add"}
+                ),
+            }
+        )
+
     return {
         "variant": TEST_AI_ALGORITHM_VARIANT,
-        "metrics": metrics,
-        "recent": recent_rows,
+        "overview": overview,
+        "by_mode": by_mode,
+        "top_movies": top_movies,
+        "top_seeds": top_seeds,
+        "feedback_profile": {
+            "total_feedback_count": int(feedback_profile.get("total_feedback_count") or 0),
+            "positive_count": int(feedback_profile.get("positive_count") or 0),
+            "negative_count": int(feedback_profile.get("negative_count") or 0),
+            "positive_genres": positive_genres,
+            "negative_genres": negative_genres,
+        },
+        "recent": recent,
     }
 
 
@@ -3875,8 +4048,6 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
         exclude_ids=",".join(str(movie_id) for movie_id in (popular_ids | tinder_preview_ids | tailored_ids)),
         mode="explore",
     )
-    log_recommendation_impressions(current_user["id"], "spotlight", tailored)
-    log_recommendation_impressions(current_user["id"], "explore", discovery)
 
     friend_rated = fetch_friend_rated_movies(current_user["id"], limit=18)
 
