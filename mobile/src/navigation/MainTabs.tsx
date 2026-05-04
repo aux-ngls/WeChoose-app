@@ -1,8 +1,7 @@
-import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -23,69 +22,9 @@ const icons: Record<keyof MainTabParamList, string> = {
   Profile: 'person-circle-outline',
 };
 
-function CustomTabBar({ state, navigation, unreadCount }: BottomTabBarProps & { unreadCount: number }) {
-  const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
-  const bottomInset = Math.max(insets.bottom, 10);
-
-  return (
-    <View pointerEvents="box-none" style={[styles.customTabBar, { paddingBottom: bottomInset }]}>
-      <View style={styles.tabRow}>
-        {state.routes.map((route, index) => {
-          const routeName = route.name as keyof MainTabParamList;
-          const focused = state.index === index;
-          const iconName = (focused ? icons[routeName].replace('-outline', '') : icons[routeName]) as keyof typeof Ionicons.glyphMap;
-          const badgeValue = routeName === 'Messages' && unreadCount > 0 ? (unreadCount > 99 ? '99+' : String(unreadCount)) : '';
-
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-
-            if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
-
-          return (
-            <Pressable
-              key={route.key}
-              accessibilityRole="button"
-              accessibilityState={focused ? { selected: true } : undefined}
-              onPress={onPress}
-              style={styles.tabButton}
-            >
-              <View
-                style={[
-                  styles.tabIconWrap,
-                  {
-                    backgroundColor: focused ? theme.colors.accent : theme.rgba.card,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={iconName}
-                  size={21}
-                  color={focused ? theme.colors.accentText : theme.colors.textMuted}
-                />
-                {badgeValue ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeLabel}>{badgeValue}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 export default function MainTabs() {
   const { session, signOut } = useAuth();
+  const { theme } = useTheme();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -120,13 +59,60 @@ export default function MainTabs() {
 
   return (
     <Tab.Navigator
-      tabBar={(props) => <CustomTabBar {...props} unreadCount={unreadCount} />}
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
         animation: 'none',
         tabBarShowLabel: false,
         tabBarHideOnKeyboard: true,
-      }}
+        tabBarShadowVisible: false,
+        tabBarActiveTintColor: theme.colors.accent,
+        tabBarInactiveTintColor: theme.colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: theme.isDark ? '#0d0711' : '#fff8ef',
+          borderTopColor: 'transparent',
+          borderTopWidth: 0,
+          height: 74,
+          paddingTop: 8,
+          paddingBottom: 13,
+          shadowColor: '#000000',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
+        },
+        tabBarIcon: ({ focused }) => {
+          const iconName = (focused ? icons[route.name].replace('-outline', '') : icons[route.name]) as keyof typeof Ionicons.glyphMap;
+          return (
+            <View
+              style={[
+                styles.tabIconWrap,
+                focused && { backgroundColor: theme.colors.accent },
+              ]}
+            >
+              <Ionicons
+                name={iconName}
+                size={21}
+                color={focused ? theme.colors.accentText : theme.colors.textMuted}
+              />
+            </View>
+          );
+        },
+        tabBarBadge:
+          route.name === 'Messages' && unreadCount > 0
+            ? unreadCount > 99
+              ? '99+'
+              : unreadCount
+            : undefined,
+        tabBarBadgeStyle:
+          route.name === 'Messages'
+            ? {
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                fontSize: 10,
+                fontWeight: '800',
+              }
+            : undefined,
+      })}
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Accueil' }} />
       <Tab.Screen name="Search" component={SearchScreen} options={{ title: 'Recherche' }} />
@@ -138,47 +124,11 @@ export default function MainTabs() {
 }
 
 const styles = StyleSheet.create({
-  customTabBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 18,
-  },
-  tabRow: {
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  tabButton: {
-    flex: 1,
-    minHeight: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   tabIconWrap: {
     width: 46,
     height: 40,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  badge: {
-    position: 'absolute',
-    top: -5,
-    right: -7,
-    minWidth: 17,
-    height: 17,
-    borderRadius: 999,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeLabel: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '900',
   },
 });
