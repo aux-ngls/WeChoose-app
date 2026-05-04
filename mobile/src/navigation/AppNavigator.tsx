@@ -39,6 +39,14 @@ const sheetOptions = {
   animationMatchesGesture: true,
 } as const;
 
+const edgeSwipeDetailOptions = {
+  animation: 'default',
+  gestureDirection: 'horizontal',
+  gestureEnabled: true,
+  fullScreenGestureEnabled: false,
+  gestureResponseDistance: { start: 28 },
+} as const;
+
 export default function AppNavigator() {
   const { isBootstrapping, session } = useAuth();
   const { theme } = useTheme();
@@ -89,7 +97,7 @@ export default function AppNavigator() {
         ) : (
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} options={{ animation: 'fade', animationDuration: 180 }} />
-            <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={sheetOptions} />
+            <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={edgeSwipeDetailOptions} />
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} />
             <Stack.Screen name="ShareMovie" component={ShareMovieScreen} options={sheetOptions} />
             <Stack.Screen name="Settings" component={SettingsScreen} />

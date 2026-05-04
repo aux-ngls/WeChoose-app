@@ -79,7 +79,6 @@ export default function MovieDetailsScreen({
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
-  const trailerTranslateY = useState(() => new Animated.Value(0))[0];
   const playlistTranslateY = useState(() => new Animated.Value(0))[0];
 
   useEffect(() => {
@@ -93,12 +92,6 @@ export default function MovieDetailsScreen({
   useEffect(() => {
     setShowTrailer(false);
   }, [route.params.movieId]);
-
-  useEffect(() => {
-    if (showTrailer) {
-      trailerTranslateY.setValue(0);
-    }
-  }, [showTrailer, trailerTranslateY]);
 
   useEffect(() => {
     if (showPlaylistPicker) {
@@ -341,26 +334,6 @@ export default function MovieDetailsScreen({
     });
   };
 
-  const trailerPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dy) > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && gestureState.dy > 0,
-        onPanResponderMove: (_, gestureState) => {
-          trailerTranslateY.setValue(Math.max(0, gestureState.dy));
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dy > MODAL_DISMISS_THRESHOLD || gestureState.vy > MODAL_DISMISS_VELOCITY) {
-            dismissModal(trailerTranslateY, () => setShowTrailer(false));
-            return;
-          }
-          resetModalPosition(trailerTranslateY);
-        },
-        onPanResponderTerminate: () => resetModalPosition(trailerTranslateY),
-      }),
-    [trailerTranslateY],
-  );
-
   const playlistPanResponder = useMemo(
     () =>
       PanResponder.create({
@@ -564,13 +537,10 @@ export default function MovieDetailsScreen({
       </AppScreen>
 
       <Modal visible={showTrailer} animationType="slide" presentationStyle="fullScreen">
-        <Animated.View style={[styles.trailerModal, { transform: [{ translateY: trailerTranslateY }] }]}>
-          <View style={styles.modalHandleZone} {...trailerPanResponder.panHandlers}>
-            <View style={styles.modalHandle} />
-          </View>
+        <View style={styles.trailerModal}>
           <View style={styles.trailerHeader}>
             <Text style={styles.trailerTitle} numberOfLines={1}>{movie?.title ?? 'Bande-annonce'}</Text>
-            <Pressable style={styles.iconButton} onPress={() => dismissModal(trailerTranslateY, () => setShowTrailer(false))}>
+            <Pressable style={styles.iconButton} onPress={() => setShowTrailer(false)}>
               <Ionicons name="close" size={22} color="#ffffff" />
             </Pressable>
           </View>
@@ -587,7 +557,7 @@ export default function MovieDetailsScreen({
               <Text style={styles.stateText}>Aucune bande-annonce disponible.</Text>
             </View>
           )}
-        </Animated.View>
+        </View>
       </Modal>
 
       <Modal visible={showPlaylistPicker} animationType="slide" transparent>

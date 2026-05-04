@@ -32,7 +32,7 @@ The mobile app currently includes:
 - pull-to-refresh on dynamic mobile screens such as search, social, messages, playlists, and profiles;
 - profile page with profile picture, description, favorite identity content, playlists, and user reviews;
 - movie detail sheet used consistently when opening a movie;
-- movie detail sub-panels that can be dismissed naturally by dragging down or tapping the backdrop;
+- movie detail screen should feel like a native iPhone screen, with return by left-edge swipe;
 - ratings with half-star precision;
 - playlists, custom playlist creation, adding movies to playlists, and removing movies;
 - social feed with expandable reviews and comments;
@@ -61,7 +61,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Qulte should feel cinematic, polished, fluid, and social.
 - The identity should not feel too generic, too dark by default, or too feminine.
 - Prefer icons and compact controls over long labels on mobile.
-- Gestures should follow native mobile expectations: pull to refresh, drag to dismiss, drag to hide the keyboard when appropriate.
+- Gestures should follow native mobile expectations: pull to refresh, left-edge swipe to go back on full screens, and drag to hide the keyboard when appropriate.
 - Avoid duplicated navigation paths where possible.
 - Profile should feel like a real social profile, not a stats dashboard.
 - Tinder should feel instant, with movies preloaded and no visible waiting.
