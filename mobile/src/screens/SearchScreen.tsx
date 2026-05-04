@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
@@ -39,13 +39,51 @@ export default function SearchScreen() {
   const [movieResults, setMovieResults] = useState<SearchMovie[]>([]);
   const [userResults, setUserResults] = useState<SocialUser[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const performSearch = useCallback(async (nextQuery: string, mode: SearchMode, options?: { forceRefresh?: boolean }) => {
     if (!session) {
       return;
     }
 
+    const trimmedQuery = nextQuery.trim();
+    if (trimmedQuery.length < 2) {
+      setMovieResults([]);
+      setUserResults([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    if (options?.forceRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      if (mode === 'movies') {
+        const payload = await searchMovies(session.token, trimmedQuery);
+        setMovieResults(payload);
+      } else {
+        const payload = await searchSocialUsers(session.token, trimmedQuery);
+        setUserResults(payload);
+      }
+      setError('');
+    } catch (searchError) {
+      if (searchError instanceof ApiError && searchError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError(mode === 'movies' ? 'Impossible de rechercher ce film.' : 'Impossible de rechercher cet utilisateur.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [session, signOut]);
+
+  useEffect(() => {
     const trimmedQuery = query.trim();
     if (trimmedQuery.length < 2) {
       setMovieResults([]);
@@ -55,31 +93,11 @@ export default function SearchScreen() {
     }
 
     const handle = setTimeout(() => {
-      void (async () => {
-        setLoading(true);
-        try {
-          if (searchMode === 'movies') {
-            const payload = await searchMovies(session.token, trimmedQuery);
-            setMovieResults(payload);
-          } else {
-            const payload = await searchSocialUsers(session.token, trimmedQuery);
-            setUserResults(payload);
-          }
-          setError('');
-        } catch (searchError) {
-          if (searchError instanceof ApiError && searchError.status === 401) {
-            await signOut();
-            return;
-          }
-          setError(searchMode === 'movies' ? 'Impossible de rechercher ce film.' : 'Impossible de rechercher cet utilisateur.');
-        } finally {
-          setLoading(false);
-        }
-      })();
+      void performSearch(trimmedQuery, searchMode);
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [query, searchMode, session, signOut]);
+  }, [performSearch, query, searchMode]);
 
   const resultsLabel = useMemo(() => {
     if (query.trim().length < 2) {
@@ -100,6 +118,18 @@ export default function SearchScreen() {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void performSearch(query, searchMode, { forceRefresh: true })}
+            enabled={query.trim().length >= 2}
+            tintColor={theme.colors.text}
+            colors={[theme.colors.secondaryAccent]}
+            progressViewOffset={16}
+          />
+        }
         ListHeaderComponent={
           <View style={styles.headerBlock}>
             <ScreenHeader

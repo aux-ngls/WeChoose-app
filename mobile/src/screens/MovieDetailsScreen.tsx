@@ -2,11 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   DeviceEventEmitter,
   FlatList,
   Image,
   Linking,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -35,6 +37,9 @@ import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
+const MODAL_DISMISS_THRESHOLD = 90;
+const MODAL_DISMISS_VELOCITY = 0.75;
+const MODAL_OFFSCREEN_Y = 480;
 
 function extractYouTubeVideoId(url: string | null | undefined): string | null {
   if (!url) {
@@ -74,6 +79,8 @@ export default function MovieDetailsScreen({
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+  const trailerTranslateY = useState(() => new Animated.Value(0))[0];
+  const playlistTranslateY = useState(() => new Animated.Value(0))[0];
 
   useEffect(() => {
     if (!feedback) {
@@ -86,6 +93,18 @@ export default function MovieDetailsScreen({
   useEffect(() => {
     setShowTrailer(false);
   }, [route.params.movieId]);
+
+  useEffect(() => {
+    if (showTrailer) {
+      trailerTranslateY.setValue(0);
+    }
+  }, [showTrailer, trailerTranslateY]);
+
+  useEffect(() => {
+    if (showPlaylistPicker) {
+      playlistTranslateY.setValue(0);
+    }
+  }, [playlistTranslateY, showPlaylistPicker]);
 
   useEffect(() => {
     if (!session) {
@@ -302,6 +321,66 @@ export default function MovieDetailsScreen({
     setShowTrailer(true);
   };
 
+  const resetModalPosition = (translateY: Animated.Value) => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 90,
+    }).start();
+  };
+
+  const dismissModal = (translateY: Animated.Value, onHidden: () => void) => {
+    Animated.timing(translateY, {
+      toValue: MODAL_OFFSCREEN_Y,
+      duration: 170,
+      useNativeDriver: true,
+    }).start(() => {
+      translateY.setValue(0);
+      onHidden();
+    });
+  };
+
+  const trailerPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && gestureState.dy > 0,
+        onPanResponderMove: (_, gestureState) => {
+          trailerTranslateY.setValue(Math.max(0, gestureState.dy));
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dy > MODAL_DISMISS_THRESHOLD || gestureState.vy > MODAL_DISMISS_VELOCITY) {
+            dismissModal(trailerTranslateY, () => setShowTrailer(false));
+            return;
+          }
+          resetModalPosition(trailerTranslateY);
+        },
+        onPanResponderTerminate: () => resetModalPosition(trailerTranslateY),
+      }),
+    [trailerTranslateY],
+  );
+
+  const playlistPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && gestureState.dy > 0,
+        onPanResponderMove: (_, gestureState) => {
+          playlistTranslateY.setValue(Math.max(0, gestureState.dy));
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dy > MODAL_DISMISS_THRESHOLD || gestureState.vy > MODAL_DISMISS_VELOCITY) {
+            dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false));
+            return;
+          }
+          resetModalPosition(playlistTranslateY);
+        },
+        onPanResponderTerminate: () => resetModalPosition(playlistTranslateY),
+      }),
+    [playlistTranslateY],
+  );
+
   const providers = movie
     ? [
         { label: 'Abonnement', items: movie.watch_providers.subscription },
@@ -485,10 +564,13 @@ export default function MovieDetailsScreen({
       </AppScreen>
 
       <Modal visible={showTrailer} animationType="slide" presentationStyle="fullScreen">
-        <View style={styles.trailerModal}>
+        <Animated.View style={[styles.trailerModal, { transform: [{ translateY: trailerTranslateY }] }]}>
+          <View style={styles.modalHandleZone} {...trailerPanResponder.panHandlers}>
+            <View style={styles.modalHandle} />
+          </View>
           <View style={styles.trailerHeader}>
             <Text style={styles.trailerTitle} numberOfLines={1}>{movie?.title ?? 'Bande-annonce'}</Text>
-            <Pressable style={styles.iconButton} onPress={() => setShowTrailer(false)}>
+            <Pressable style={styles.iconButton} onPress={() => dismissModal(trailerTranslateY, () => setShowTrailer(false))}>
               <Ionicons name="close" size={22} color="#ffffff" />
             </Pressable>
           </View>
@@ -505,15 +587,19 @@ export default function MovieDetailsScreen({
               <Text style={styles.stateText}>Aucune bande-annonce disponible.</Text>
             </View>
           )}
-        </View>
+        </Animated.View>
       </Modal>
 
       <Modal visible={showPlaylistPicker} animationType="slide" transparent>
-        <View style={styles.sheetBackdrop}>
-          <View style={[styles.sheet, { borderColor: theme.rgba.border, backgroundColor: theme.colors.surface }]}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}>
+          <Animated.View style={[styles.sheetWrap, { transform: [{ translateY: playlistTranslateY }] }]}>
+            <Pressable style={[styles.sheet, { borderColor: theme.rgba.border, backgroundColor: theme.colors.surface }]} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.modalHandleZone} {...playlistPanResponder.panHandlers}>
+              <View style={[styles.modalHandle, { backgroundColor: theme.rgba.border }]} />
+            </View>
             <View style={styles.sheetHeader}>
               <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Ajouter a une playlist</Text>
-              <Pressable style={[styles.sheetCloseButton, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => setShowPlaylistPicker(false)}>
+              <Pressable style={[styles.sheetCloseButton, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}>
                 <Ionicons name="close" size={20} color={theme.colors.text} />
               </Pressable>
             </View>
@@ -549,8 +635,9 @@ export default function MovieDetailsScreen({
                 </Pressable>
               ))}
             </View>
-          </View>
-        </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
       </Modal>
     </>
   );
@@ -809,12 +896,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#050507',
   },
+  modalHandleZone: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  modalHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.24)',
+  },
   trailerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    paddingTop: 60,
+    paddingTop: 16,
     paddingHorizontal: 18,
     paddingBottom: 12,
   },
@@ -832,6 +931,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.68)',
+  },
+  sheetWrap: {
+    justifyContent: 'flex-end',
   },
   sheet: {
     maxHeight: '78%',

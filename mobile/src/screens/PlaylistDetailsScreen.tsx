@@ -6,6 +6,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -67,6 +68,7 @@ export default function PlaylistDetailsScreen({
   const initialMovies = playlistMoviesCache.get(route.params.playlistId) ?? [];
   const [movies, setMovies] = useState<SearchMovie[]>(() => initialMovies);
   const [loading, setLoading] = useState(() => initialMovies.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'manual');
@@ -109,6 +111,15 @@ export default function PlaylistDetailsScreen({
       void loadPlaylist();
     }, [loadPlaylist]),
   );
+
+  const refreshPlaylist = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadPlaylist();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadPlaylist]);
 
   const sortedMovies = useMemo(() => {
     const copy = [...movies];
@@ -220,6 +231,8 @@ export default function PlaylistDetailsScreen({
         columnWrapperStyle={styles.columns}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={styles.headerContent}>
             <SearchField value={query} onChangeText={setQuery} placeholder="Filtrer les films" />
@@ -248,6 +261,15 @@ export default function PlaylistDetailsScreen({
           </View>
         }
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void refreshPlaylist()}
+            tintColor={theme.colors.text}
+            colors={[theme.colors.secondaryAccent]}
+            progressViewOffset={16}
+          />
+        }
         renderItem={({ item, index }) => (
           <Pressable
             style={[styles.movieCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}

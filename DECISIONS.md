@@ -74,3 +74,13 @@ Reason:
 - the user prefers compact, intuitive mobile screens;
 - long descriptions make the app feel heavy;
 - icons, spacing, and clear actions should carry the interface.
+
+## Natural Mobile Gestures
+
+Decision: prefer native-feeling gestures over button-heavy interactions when the action is obvious and standard on mobile.
+
+Reason:
+- the app should feel like a phone app, not a compressed web flow;
+- pull-to-refresh is more natural than adding explicit refresh buttons on live screens;
+- drag-down dismissal fits movie detail sub-panels better than close-only flows;
+- keyboard dismissal on drag reduces friction in search and messaging flows.

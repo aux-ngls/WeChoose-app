@@ -48,6 +48,7 @@ export default function SocialScreen() {
   const [submittingCommentIds, setSubmittingCommentIds] = useState<number[]>([]);
   const [likingReviewIds, setLikingReviewIds] = useState<number[]>([]);
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const reviewsRef = useRef(reviews);
   const notificationsRef = useRef(notifications);
   const unreadNotificationsRef = useRef(unreadNotifications);
@@ -121,6 +122,15 @@ export default function SocialScreen() {
       }
     }
   }, [session, signOut, updateSocialCache]);
+
+  const refreshSocial = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadFeed(), loadNotifications()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadFeed, loadNotifications]);
 
   useFocusEffect(
     useCallback(() => {
@@ -259,7 +269,7 @@ export default function SocialScreen() {
   }, [session, signOut, updateSocialCache]);
 
   return (
-    <AppScreen keyboardAware>
+    <AppScreen keyboardAware refreshing={refreshing} onRefresh={() => void refreshSocial()}>
       <ScreenHeader
         icon="people"
         accent="violet"

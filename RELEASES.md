@@ -17,6 +17,13 @@ Summary:
 - validated with `npm run typecheck`;
 - pushed to `origin/main`.
 
+## Latest Workspace Changes
+
+These changes should be recorded as part of the next stable checkpoint:
+- added pull-to-refresh support across the main dynamic mobile screens;
+- improved drag behavior so list screens dismiss the keyboard more naturally;
+- added drag-down and backdrop dismissal for movie detail sub-panels.
+
 ## Important Recent Commits
 
 - `be9c7a9` - Remove bottom safe area strip globally

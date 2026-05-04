@@ -33,6 +33,7 @@ export default function UserProfileScreen() {
   const { theme } = useTheme();
   const [profile, setProfile] = useState<SocialProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,6 +63,15 @@ export default function UserProfileScreen() {
       void loadProfile();
     }, [loadProfile]),
   );
+
+  const refreshProfile = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadProfile();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadProfile]);
 
   const toggleFollow = async () => {
     if (!session || !profile || profile.is_self || actionLoading) {
@@ -117,7 +127,7 @@ export default function UserProfileScreen() {
   const description = profile?.profile_description?.trim();
 
   return (
-    <AppScreen>
+    <AppScreen refreshing={refreshing} onRefresh={() => void refreshProfile()}>
       <Pressable style={[styles.backButton, { backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
         <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
         <Text style={[styles.backLabel, { color: theme.colors.text }]}>Retour</Text>

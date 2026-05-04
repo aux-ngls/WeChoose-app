@@ -35,6 +35,7 @@ export default function MessagesScreen() {
   const [isNewMessageOpen, setIsNewMessageOpen] = useState(false);
   const [userResults, setUserResults] = useState<SocialUser[]>([]);
   const [loading, setLoading] = useState(() => !initialCache);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [startingUserIds, setStartingUserIds] = useState<number[]>([]);
   const [error, setError] = useState('');
@@ -71,6 +72,15 @@ export default function MessagesScreen() {
       setLoading(false);
     }
   }, [session, signOut]);
+
+  const refreshConversations = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadConversations();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadConversations]);
 
   useFocusEffect(
     useCallback(() => {
@@ -157,7 +167,7 @@ export default function MessagesScreen() {
   };
 
   return (
-    <AppScreen>
+    <AppScreen refreshing={refreshing} onRefresh={() => void refreshConversations()}>
       <ScreenHeader
         icon="chatbubbles"
         accent="blue"

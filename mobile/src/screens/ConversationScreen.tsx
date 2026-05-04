@@ -317,6 +317,7 @@ export default function ConversationScreen({
           inverted
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onScroll={(event) => {

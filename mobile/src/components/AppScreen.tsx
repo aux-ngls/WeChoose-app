@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,6 +20,8 @@ interface AppScreenProps {
   keyboardAware?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
   safeAreaEdges?: readonly Edge[];
+  refreshing?: boolean;
+  onRefresh?: (() => void) | undefined;
 }
 
 const RAIL_DOTS = Array.from({ length: 9 }, (_, index) => index);
@@ -30,6 +33,8 @@ export default function AppScreen({
   keyboardAware = false,
   contentStyle,
   safeAreaEdges = DEFAULT_SAFE_AREA_EDGES,
+  refreshing = false,
+  onRefresh,
 }: AppScreenProps) {
   const { theme } = useTheme();
   const content = scroll ? (
@@ -37,8 +42,19 @@ export default function AppScreen({
       automaticallyAdjustKeyboardInsets={keyboardAware}
       contentContainerStyle={[styles.content, keyboardAware && styles.keyboardContent, contentStyle]}
       contentInsetAdjustmentBehavior="automatic"
-      keyboardDismissMode={keyboardAware ? 'interactive' : 'none'}
+      keyboardDismissMode={keyboardAware ? 'interactive' : 'on-drag'}
       keyboardShouldPersistTaps="handled"
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.text}
+            colors={[theme.colors.secondaryAccent]}
+            progressViewOffset={14}
+          />
+        ) : undefined
+      }
       showsVerticalScrollIndicator={false}
     >
       {children}

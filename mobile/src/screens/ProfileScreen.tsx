@@ -85,6 +85,7 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<SocialProfile | null>(() => initialCache?.profile ?? null);
   const [playlists, setPlaylists] = useState<PlaylistWithPreview[]>(() => initialCache?.playlists ?? []);
   const [loading, setLoading] = useState(() => !initialCache);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [playerMessage, setPlayerMessage] = useState('');
   const [isSoundtrackPlaying, setIsSoundtrackPlaying] = useState(false);
@@ -209,6 +210,15 @@ export default function ProfileScreen() {
       void loadProfile({ force: true });
     });
     return () => subscription.remove();
+  }, [loadProfile]);
+
+  const refreshProfile = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadProfile({ force: true });
+    } finally {
+      setRefreshing(false);
+    }
   }, [loadProfile]);
 
   const handlePlaybackStatus = useCallback((status: AVPlaybackStatus) => {
@@ -489,7 +499,7 @@ export default function ProfileScreen() {
   const profileDescription = profile?.profile_description?.trim() ?? '';
 
   return (
-    <AppScreen>
+    <AppScreen refreshing={refreshing} onRefresh={() => void refreshProfile()}>
       {error ? <InlineBanner message={error} tone="error" /> : null}
       {playerMessage ? <InlineBanner message={playerMessage} tone="error" /> : null}
       {loading && !profile ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de ton profil...</Text> : null}
