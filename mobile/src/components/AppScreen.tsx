@@ -88,13 +88,6 @@ export default function AppScreen({ children, scroll = true, keyboardAware = fal
           content
         )}
       </SafeAreaView>
-      <View
-        pointerEvents="none"
-        style={[
-          styles.bottomBridge,
-          { backgroundColor: theme.isDark ? '#0d0711' : '#fff8ef' },
-        ]}
-      />
     </LinearGradient>
   );
 }
@@ -105,14 +98,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#07070A',
   },
   safeArea: { flex: 1 },
-  bottomBridge: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: -2,
-    height: 8,
-    zIndex: 10,
-  },
   content: {
     paddingHorizontal: 20,
     paddingTop: 16,
