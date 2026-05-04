@@ -22,7 +22,7 @@ interface AppScreenProps {
 }
 
 const RAIL_DOTS = Array.from({ length: 9 }, (_, index) => index);
-const DEFAULT_SAFE_AREA_EDGES = ['top', 'right', 'bottom', 'left'] as const;
+const DEFAULT_SAFE_AREA_EDGES = ['top', 'right', 'left'] as const;
 
 export default function AppScreen({
   children,

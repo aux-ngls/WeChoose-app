@@ -35,7 +35,6 @@ import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
-const MOVIE_DETAILS_SAFE_AREA_EDGES = ['top', 'right', 'left'] as const;
 
 function extractYouTubeVideoId(url: string | null | undefined): string | null {
   if (!url) {
@@ -313,7 +312,7 @@ export default function MovieDetailsScreen({
 
   return (
     <>
-      <AppScreen safeAreaEdges={MOVIE_DETAILS_SAFE_AREA_EDGES}>
+      <AppScreen>
         <View style={styles.headerRow}>
           <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
