@@ -64,10 +64,11 @@ export default function MainTabs() {
         animation: 'none',
         tabBarShowLabel: false,
         tabBarHideOnKeyboard: true,
+        tabBarShadowVisible: false,
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
-          backgroundColor: theme.isDark ? 'rgba(13,7,17,0.96)' : 'rgba(255,248,239,0.97)',
+          backgroundColor: theme.isDark ? '#0d0711' : '#fff8ef',
           borderTopColor: 'transparent',
           borderTopWidth: 0,
           height: 74,
