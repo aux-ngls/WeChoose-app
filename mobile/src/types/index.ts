@@ -45,6 +45,13 @@ export interface SocialUser {
   is_following: boolean;
 }
 
+export interface BlockedUser {
+  id: number;
+  username: string;
+  avatar_url: string | null;
+  blocked_at: string;
+}
+
 export interface SocialReview {
   id: number;
   movie_id: number;

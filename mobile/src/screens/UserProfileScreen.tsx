@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { API_URL } from '../api/config';
-import { ApiError, fetchSocialProfile, followUser, startConversation, unfollowUser } from '../api/client';
+import { ApiError, blockUser, fetchSocialProfile, followUser, reportUser, startConversation, unfollowUser } from '../api/client';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
@@ -14,6 +14,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SocialProfile } from '../types';
+import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { formatDate } from '../utils/format';
 
 function resolveMediaUrl(url: string | null | undefined): string | null {
@@ -123,6 +124,85 @@ export default function UserProfileScreen() {
     }
   };
 
+  const presentReportReasonPicker = (callback: (reason: ReportReason) => void) => {
+    Alert.alert(
+      'Signaler ce profil',
+      'Choisis une raison.',
+      [
+        ...REPORT_REASONS.map((reason) => ({
+          text: reason.label,
+          onPress: () => callback(reason.value),
+        })),
+        { text: 'Annuler', style: 'cancel' as const },
+      ],
+    );
+  };
+
+  const handleReportProfile = async (reason: ReportReason) => {
+    if (!session || !profile || profile.is_self) {
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await reportUser(session.token, profile.id, { reason });
+      Alert.alert('Signalement envoyé', 'Merci, le profil a été signalé.');
+      setError('');
+    } catch (reportError) {
+      if (reportError instanceof ApiError && reportError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de signaler ce profil.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBlockProfile = async () => {
+    if (!session || !profile || profile.is_self) {
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await blockUser(session.token, profile.id);
+      Alert.alert('Compte bloqué', 'Ce compte a été masqué dans le social et les messages.');
+      navigation.goBack();
+    } catch (blockError) {
+      if (blockError instanceof ApiError && blockError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de bloquer ce compte.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openProfileSafetyMenu = () => {
+    if (!profile || profile.is_self) {
+      return;
+    }
+
+    Alert.alert(
+      `@${profile.username}`,
+      'Choisis une action.',
+      [
+        {
+          text: 'Signaler',
+          onPress: () => presentReportReasonPicker((reason) => void handleReportProfile(reason)),
+        },
+        {
+          text: 'Bloquer',
+          style: 'destructive',
+          onPress: () => void handleBlockProfile(),
+        },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+    );
+  };
+
   const avatarUrl = resolveMediaUrl(profile?.avatar_url);
   const description = profile?.profile_description?.trim();
 
@@ -190,6 +270,13 @@ export default function UserProfileScreen() {
                 <Pressable style={[styles.messageAction, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.card }]} onPress={() => void openConversation()} disabled={actionLoading}>
                   <Ionicons name="chatbubble-ellipses-outline" size={17} color={theme.colors.secondaryAccent} />
                   <Text style={[styles.messageActionLabel, { color: theme.colors.secondaryAccent }]}>Message</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.menuAction, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                  onPress={openProfileSafetyMenu}
+                  disabled={actionLoading}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.text} />
                 </Pressable>
               </View>
             ) : null}
@@ -399,6 +486,14 @@ const styles = StyleSheet.create({
     color: '#7dd3fc',
     fontSize: 13,
     fontWeight: '900',
+  },
+  menuAction: {
+    width: 46,
+    height: 46,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionCard: {
     gap: 14,

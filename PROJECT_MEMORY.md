@@ -39,6 +39,10 @@ The mobile app currently includes:
 - private messages with movie sharing;
 - user profile navigation from social areas;
 - app settings, including theme mode, notification controls, tutorial replay, and recommendation cache tools;
+- in-app account deletion from Settings;
+- basic social safety tools: block user, report profile, report review, report conversation, and light text filtering for UGC;
+- public support and privacy pages on the web side for App Store / TestFlight references;
+- iPhone-only release path for the mobile app (`supportsTablet: false`);
 - push notification groundwork;
 - TestFlight / EAS build flow.
 
@@ -55,6 +59,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Keep movie detail behavior unified across the app.
 - For sensitive AI changes, keep a rollback path in Git.
 - If local user changes are present, do not overwrite them without confirmation.
+- For App Store work, prefer the simplest first release path: iPhone only, with essential moderation and account deletion in place.
 
 ## UX Preferences
 
@@ -76,6 +81,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Tinder recommendation pipeline and preloading.
 - Message list scroll behavior.
 - Keyboard handling in messages and review creation.
+- Account deletion, block/report flows, and support/privacy URLs for App Review.
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Onboarding signals: movies chosen during onboarding should guide recommendations but should not be proposed back to the user.
 

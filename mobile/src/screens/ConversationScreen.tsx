@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
   Keyboard,
@@ -18,13 +19,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppScreen from '../components/AppScreen';
 import {
   ApiError,
+  blockUser,
   fetchConversation,
+  reportConversation,
   sendMessage,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type DirectMessage } from '../types';
+import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 
 type ConversationItem =
   | { type: 'day'; id: string; label: string }
@@ -123,9 +127,11 @@ export default function ConversationScreen({
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<LocalDirectMessage[]>([]);
   const [participantUsername, setParticipantUsername] = useState(route.params.participantUsername ?? 'Conversation');
+  const [participantId, setParticipantId] = useState<number | null>(route.params.participantId ?? null);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [sendingMessageIds, setSendingMessageIds] = useState<number[]>([]);
+  const [safetyLoading, setSafetyLoading] = useState(false);
   const [error, setError] = useState('');
   const [keyboardLift, setKeyboardLift] = useState(0);
   const listRef = useRef<FlatList<ConversationItem>>(null);
@@ -158,6 +164,7 @@ export default function ConversationScreen({
       messageCountRef.current = payload.messages.length;
       setMessages((current) => mergeServerMessages(current, payload.messages));
       setParticipantUsername(payload.conversation.participant.username);
+      setParticipantId(payload.conversation.participant.id);
       setError('');
     } catch (fetchError) {
       if (fetchError instanceof ApiError && fetchError.status === 401) {
@@ -238,6 +245,89 @@ export default function ConversationScreen({
 
   const canSend = useMemo(() => draft.trim().length > 0, [draft]);
 
+  const handleReportConversation = useCallback(async (reason: ReportReason) => {
+    if (!session || safetyLoading) {
+      return;
+    }
+
+    setSafetyLoading(true);
+    try {
+      await reportConversation(session.token, route.params.conversationId, { reason });
+      Alert.alert('Signalement envoyé', 'Merci, la conversation a été signalée.');
+      setError('');
+    } catch (reportError) {
+      if (reportError instanceof ApiError && reportError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de signaler cette conversation.');
+    } finally {
+      setSafetyLoading(false);
+    }
+  }, [route.params.conversationId, safetyLoading, session, signOut]);
+
+  const presentReportReasonPicker = useCallback(() => {
+    Alert.alert(
+      'Signaler la conversation',
+      'Choisis une raison.',
+      [
+        ...REPORT_REASONS.map((reason) => ({
+          text: reason.label,
+          onPress: () => void handleReportConversation(reason.value),
+        })),
+        { text: 'Annuler', style: 'cancel' as const },
+      ],
+    );
+  }, [handleReportConversation]);
+
+  const handleBlockParticipant = useCallback(async () => {
+    if (!session || !participantId || safetyLoading) {
+      return;
+    }
+
+    setSafetyLoading(true);
+    try {
+      await blockUser(session.token, participantId);
+      Alert.alert('Compte bloqué', 'Ce compte a été masqué dans le social et les messages.');
+      navigation.goBack();
+    } catch (blockError) {
+      if (blockError instanceof ApiError && blockError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de bloquer ce compte.');
+    } finally {
+      setSafetyLoading(false);
+    }
+  }, [navigation, participantId, safetyLoading, session, signOut]);
+
+  const openConversationSafetyMenu = useCallback(() => {
+    Alert.alert(
+      `@${participantUsername}`,
+      'Choisis une action.',
+      [
+        {
+          text: 'Voir le profil',
+          onPress: () => {
+            if (participantUsername !== 'Conversation') {
+              navigation.navigate('UserProfile', { username: participantUsername });
+            }
+          },
+        },
+        {
+          text: 'Signaler',
+          onPress: presentReportReasonPicker,
+        },
+        {
+          text: 'Bloquer',
+          style: 'destructive',
+          onPress: () => void handleBlockParticipant(),
+        },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+    );
+  }, [handleBlockParticipant, navigation, participantUsername, presentReportReasonPicker]);
+
   const handleSend = async () => {
     const content = draft.trim();
     if (!session || !content) {
@@ -307,6 +397,13 @@ export default function ConversationScreen({
             <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>@{participantUsername}</Text>
             <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Discussion privée</Text>
           </Pressable>
+          <Pressable
+            style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+            onPress={openConversationSafetyMenu}
+            disabled={safetyLoading}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} />
+          </Pressable>
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -363,7 +460,7 @@ export default function ConversationScreen({
                   >
                     <Image source={{ uri: message.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
                     <View style={styles.sharedMovieBody}>
-                      <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partage</Text>
+                      <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partagé</Text>
                       <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{message.movie.title}</Text>
                       {message.movie.rating > 0 ? (
                         <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{message.movie.rating.toFixed(1)} / 10</Text>

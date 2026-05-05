@@ -3,6 +3,7 @@ import base64
 from collections import defaultdict
 import json
 import os
+import re
 import sqlite3
 import datetime
 import time
@@ -66,6 +67,17 @@ AVATAR_CONTENT_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
+}
+OBJECTIONABLE_TERMS = {
+    "gore",
+    "kill yourself",
+    "lynch",
+    "nazi",
+    "pedo",
+    "pornhub",
+    "rape",
+    "rapist",
+    "suicide",
 }
 
 
@@ -296,6 +308,16 @@ def init_db():
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         PRIMARY KEY (follower_id, followed_id))''')
 
+    # Table BLOCKED_USERS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS blocked_users (
+                        blocker_id INTEGER,
+                        blocked_id INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (blocker_id, blocked_id))''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked_id ON blocked_users(blocked_id)"
+    )
+
     # Table REVIEWS
     cursor.execute('''CREATE TABLE IF NOT EXISTS reviews (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -413,6 +435,21 @@ def init_db():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_feedback ON recommendation_impressions(user_id, responded_at, algorithm_variant)"
     )
+
+    # Table MODERATION_REPORTS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS moderation_reports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reporter_user_id INTEGER,
+                        target_user_id INTEGER,
+                        target_review_id INTEGER,
+                        target_comment_id INTEGER,
+                        target_conversation_id INTEGER,
+                        reason TEXT,
+                        details TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_moderation_reports_reporter ON moderation_reports(reporter_user_id)"
+    )
     
     conn.commit()
     conn.close()
@@ -514,6 +551,11 @@ class ProfilePreferencesPayload(BaseModel):
     profile_soundtrack: Optional[dict] = None
 
 
+class ModerationReportPayload(BaseModel):
+    reason: str
+    details: str = ""
+
+
 class RecommendationImpressionPayload(BaseModel):
     movie_id: int
     mode: str = "tinder"
@@ -561,6 +603,42 @@ def normalize_genre_token(value: str) -> str:
     return normalize_preference_label(value).replace(" ", "").lower()
 
 
+def normalize_report_reason(value: str) -> str:
+    normalized = normalize_preference_label(value).lower()
+    return (normalized[:48] or "other")
+
+
+def normalize_report_details(value: Optional[str]) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())[:500]
+
+
+def normalize_moderation_text(value: Optional[str]) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def contains_objectionable_text(value: Optional[str]) -> bool:
+    normalized = normalize_moderation_text(value)
+    if not normalized:
+        return False
+
+    for term in OBJECTIONABLE_TERMS:
+        if term in normalized:
+            return True
+    return False
+
+
+def ensure_clean_ugc_text(value: Optional[str]):
+    if contains_objectionable_text(value):
+        raise HTTPException(
+            status_code=400,
+            detail="Ce contenu ne peut pas être publié en l'état.",
+        )
+
+
 def present_affinity_token(token: str) -> str:
     normalized_token = normalize_genre_token(token)
     special_labels = {
@@ -606,6 +684,46 @@ def load_json_dict(raw_value: Optional[str]) -> dict:
 
 def dedupe_list(values: list) -> list:
     return list(dict.fromkeys(values))
+
+
+def get_blocked_user_ids(cursor, user_id: int) -> set[int]:
+    cursor.execute(
+        "SELECT blocked_id FROM blocked_users WHERE blocker_id = ?",
+        (int(user_id),),
+    )
+    return {int(row[0]) for row in cursor.fetchall()}
+
+
+def get_hidden_user_ids(cursor, user_id: int) -> set[int]:
+    hidden_user_ids = set(get_blocked_user_ids(cursor, user_id))
+    cursor.execute(
+        "SELECT blocker_id FROM blocked_users WHERE blocked_id = ?",
+        (int(user_id),),
+    )
+    hidden_user_ids.update(int(row[0]) for row in cursor.fetchall())
+    return hidden_user_ids
+
+
+def is_hidden_user_relationship(cursor, current_user_id: int, target_user_id: int) -> bool:
+    if int(current_user_id) == int(target_user_id):
+        return False
+
+    cursor.execute(
+        """
+        SELECT 1
+        FROM blocked_users
+        WHERE (blocker_id = ? AND blocked_id = ?)
+           OR (blocker_id = ? AND blocked_id = ?)
+        LIMIT 1
+        """,
+        (int(current_user_id), int(target_user_id), int(target_user_id), int(current_user_id)),
+    )
+    return cursor.fetchone() is not None
+
+
+def ensure_user_interaction_allowed(cursor, current_user_id: int, target_user_id: int):
+    if is_hidden_user_relationship(cursor, current_user_id, target_user_id):
+        raise HTTPException(status_code=403, detail="Interaction indisponible pour ce compte.")
 
 
 def serialize_tmdb_person(person: dict) -> Optional[dict]:
@@ -1119,70 +1237,7 @@ def reset_test_user_data(current_user: dict = Depends(get_current_user)):
     user_id = int(current_user["id"])
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    reset_counts: dict[str, int] = {}
-
-    cursor.execute("SELECT id FROM reviews WHERE user_id = ?", (user_id,))
-    review_ids = [int(row["id"]) for row in cursor.fetchall()]
-    cursor.execute("SELECT id FROM comments WHERE user_id = ?", (user_id,))
-    comment_ids = [int(row["id"]) for row in cursor.fetchall()]
-    cursor.execute("SELECT id FROM playlists WHERE user_id = ?", (user_id,))
-    playlist_ids = [int(row["id"]) for row in cursor.fetchall()]
-    cursor.execute(
-        "SELECT id FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?",
-        (user_id, user_id),
-    )
-    conversation_ids = [int(row["id"]) for row in cursor.fetchall()]
-
-    reset_counts["notifications"] = 0
-    cursor.execute(
-        "DELETE FROM notifications WHERE user_id = ? OR actor_user_id = ?",
-        (user_id, user_id),
-    )
-    reset_counts["notifications"] += max(cursor.rowcount, 0)
-    reset_counts["notifications"] += delete_many_by_ids(cursor, "notifications", "review_id", review_ids)
-    reset_counts["notifications"] += delete_many_by_ids(cursor, "notifications", "comment_id", comment_ids)
-
-    reset_counts["comments"] = 0
-    reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "review_id", review_ids)
-    reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "parent_id", comment_ids)
-    cursor.execute("DELETE FROM comments WHERE user_id = ?", (user_id,))
-    reset_counts["comments"] += max(cursor.rowcount, 0)
-
-    reset_counts["review_likes"] = 0
-    reset_counts["review_likes"] += delete_many_by_ids(cursor, "review_likes", "review_id", review_ids)
-    cursor.execute("DELETE FROM review_likes WHERE user_id = ?", (user_id,))
-    reset_counts["review_likes"] += max(cursor.rowcount, 0)
-
-    cursor.execute("DELETE FROM reviews WHERE user_id = ?", (user_id,))
-    reset_counts["reviews"] = max(cursor.rowcount, 0)
-
-    cursor.execute("DELETE FROM follows WHERE follower_id = ? OR followed_id = ?", (user_id, user_id))
-    reset_counts["follows"] = max(cursor.rowcount, 0)
-
-    cursor.execute("DELETE FROM user_ratings WHERE user_id = ?", (user_id,))
-    reset_counts["ratings"] = max(cursor.rowcount, 0)
-
-    cursor.execute("DELETE FROM recommendation_impressions WHERE user_id = ?", (user_id,))
-    reset_counts["recommendation_impressions"] = max(cursor.rowcount, 0)
-
-    reset_counts["playlist_items"] = delete_many_by_ids(cursor, "playlist_items", "playlist_id", playlist_ids)
-    cursor.execute("DELETE FROM playlists WHERE user_id = ?", (user_id,))
-    reset_counts["playlists"] = max(cursor.rowcount, 0)
-
-    reset_counts["direct_messages"] = delete_many_by_ids(cursor, "direct_messages", "conversation_id", conversation_ids)
-    cursor.execute("DELETE FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?", (user_id, user_id))
-    reset_counts["direct_conversations"] = max(cursor.rowcount, 0)
-
-    cursor.execute("DELETE FROM user_preferences WHERE user_id = ?", (user_id,))
-    reset_counts["preferences"] = max(cursor.rowcount, 0)
-
-    cursor.execute("SELECT avatar_url FROM users WHERE id = ?", (user_id,))
-    avatar_row = cursor.fetchone()
-    previous_avatar_url = avatar_row["avatar_url"] if avatar_row else None
-    cursor.execute("UPDATE users SET avatar_url = NULL WHERE id = ?", (user_id,))
-    reset_counts["avatar"] = 1 if previous_avatar_url else 0
-
-    get_or_create_watch_later_id(cursor, user_id)
+    reset_counts, previous_avatar_url = purge_user_data(cursor, user_id, delete_account=False)
     conn.commit()
     conn.close()
 
@@ -1198,6 +1253,28 @@ def reset_test_user_data(current_user: dict = Depends(get_current_user)):
         "counts": reset_counts,
         "has_completed_onboarding": False,
         "has_completed_tutorial": False,
+    }
+
+
+@app.delete("/users/me")
+def delete_current_user_account(current_user: dict = Depends(get_current_user)):
+    user_id = int(current_user["id"])
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    reset_counts, previous_avatar_url = purge_user_data(cursor, user_id, delete_account=True)
+    conn.commit()
+    conn.close()
+
+    previous_avatar_path = local_avatar_path_from_url(previous_avatar_url)
+    if previous_avatar_path and os.path.exists(previous_avatar_path):
+        try:
+            os.remove(previous_avatar_path)
+        except OSError:
+            pass
+
+    return {
+        "status": "deleted",
+        "counts": reset_counts,
     }
 
 
@@ -1998,6 +2075,15 @@ def serialize_user_row(row: sqlite3.Row) -> dict:
     }
 
 
+def serialize_blocked_user_row(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "avatar_url": row["avatar_url"],
+        "blocked_at": row["blocked_at"],
+    }
+
+
 def serialize_comment_row(row: sqlite3.Row) -> dict:
     row_keys = set(row.keys())
     return {
@@ -2075,6 +2161,42 @@ def create_notification(
         VALUES (?, ?, ?, ?, ?)
         """,
         (user_id, actor_user_id, notification_type, review_id, comment_id),
+    )
+
+
+def insert_moderation_report(
+    cursor,
+    *,
+    reporter_user_id: int,
+    reason: str,
+    details: str = "",
+    target_user_id: Optional[int] = None,
+    target_review_id: Optional[int] = None,
+    target_comment_id: Optional[int] = None,
+    target_conversation_id: Optional[int] = None,
+):
+    cursor.execute(
+        """
+        INSERT INTO moderation_reports (
+            reporter_user_id,
+            target_user_id,
+            target_review_id,
+            target_comment_id,
+            target_conversation_id,
+            reason,
+            details
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(reporter_user_id),
+            target_user_id,
+            target_review_id,
+            target_comment_id,
+            target_conversation_id,
+            normalize_report_reason(reason),
+            normalize_report_details(details),
+        ),
     )
 
 
@@ -2404,6 +2526,7 @@ def send_web_push_notifications(
 
 
 def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, params=(), limit: Optional[int] = None) -> list[dict]:
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
     query = f"""
         SELECT
             r.id,
@@ -2426,10 +2549,17 @@ def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, pa
         FROM reviews r
         JOIN users u ON u.id = r.user_id
         WHERE {where_clause}
-        ORDER BY r.created_at DESC, r.id DESC
     """
 
     query_params = (current_user_id, *params)
+    if hidden_user_ids:
+        placeholders = ",".join("?" for _ in hidden_user_ids)
+        query += f" AND r.user_id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+
+    query += """
+        ORDER BY r.created_at DESC, r.id DESC
+    """
     if limit is not None:
         query += " LIMIT ?"
         query_params = (*query_params, limit)
@@ -2438,9 +2568,9 @@ def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, pa
     return [serialize_review_row(row) for row in cursor.fetchall()]
 
 
-def fetch_review_comments(cursor, review_id: int) -> list[dict]:
-    cursor.execute(
-        """
+def fetch_review_comments(cursor, review_id: int, current_user_id: int) -> list[dict]:
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
+    query = """
         SELECT
             c.id,
             c.review_id,
@@ -2456,22 +2586,32 @@ def fetch_review_comments(cursor, review_id: int) -> list[dict]:
         LEFT JOIN comments parent_comment ON parent_comment.id = c.parent_id
         LEFT JOIN users parent_user ON parent_user.id = parent_comment.user_id
         WHERE c.review_id = ?
+    """
+    query_params: tuple = (review_id,)
+    if hidden_user_ids:
+        placeholders = ",".join("?" for _ in hidden_user_ids)
+        query += f" AND c.user_id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+
+    query += """
         ORDER BY COALESCE(c.parent_id, c.id), c.parent_id IS NOT NULL, c.created_at ASC, c.id ASC
-        """,
-        (review_id,),
-    )
+    """
+    cursor.execute(query, query_params)
     return [serialize_comment_row(row) for row in cursor.fetchall()]
 
 
 def fetch_notifications_payload(cursor, user_id: int, limit: int) -> dict:
-    cursor.execute(
-        "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0",
-        (user_id,),
-    )
+    hidden_user_ids = get_hidden_user_ids(cursor, user_id)
+    unread_query = "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0"
+    unread_params: tuple = (user_id,)
+    if hidden_user_ids:
+        placeholders = ",".join("?" for _ in hidden_user_ids)
+        unread_query += f" AND actor_user_id NOT IN ({placeholders})"
+        unread_params = (*unread_params, *hidden_user_ids)
+    cursor.execute(unread_query, unread_params)
     unread_count = int(cursor.fetchone()[0])
 
-    cursor.execute(
-        """
+    query = """
         SELECT
             n.id,
             n.type,
@@ -2490,11 +2630,19 @@ def fetch_notifications_payload(cursor, user_id: int, limit: int) -> dict:
         LEFT JOIN comments c ON c.id = n.comment_id
         WHERE n.user_id = ?
         AND n.is_read = 0
+    """
+    query_params: tuple = (user_id,)
+    if hidden_user_ids:
+        placeholders = ",".join("?" for _ in hidden_user_ids)
+        query += f" AND n.actor_user_id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+
+    query += """
         ORDER BY n.created_at DESC, n.id DESC
         LIMIT ?
-        """,
-        (user_id, limit),
-    )
+    """
+    query_params = (*query_params, limit)
+    cursor.execute(query, query_params)
     return {
         "items": [serialize_notification_row(row) for row in cursor.fetchall()],
         "unread_count": unread_count,
@@ -2627,6 +2775,7 @@ def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Conversation introuvable")
+    ensure_user_interaction_allowed(cursor, current_user_id, int(row["participant_id"]))
     return row
 
 
@@ -2650,8 +2799,8 @@ def mark_direct_conversation_read(cursor, conversation_row: sqlite3.Row, current
 
 
 def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
-    cursor.execute(
-        """
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
+    query = """
         SELECT
             c.id,
             c.created_at,
@@ -2693,23 +2842,30 @@ def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
                 LIMIT 1
             )
         WHERE c.user_one_id = ? OR c.user_two_id = ?
-        ORDER BY updated_at DESC, c.id DESC
-        """,
-        (
-            current_user_id,
-            current_user_id,
-            current_user_id,
-            current_user_id,
-            current_user_id,
-            current_user_id,
-        ),
+    """
+    query_params: tuple = (
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
     )
+    if hidden_user_ids:
+        placeholders = ",".join("?" for _ in hidden_user_ids)
+        query += f" AND participant.id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+
+    query += """
+        ORDER BY updated_at DESC, c.id DESC
+    """
+    cursor.execute(query, query_params)
     return [serialize_direct_conversation_row(row) for row in cursor.fetchall()]
 
 
 def get_total_unread_direct_messages(cursor, current_user_id: int) -> int:
-    cursor.execute(
-        """
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
+    query = """
         SELECT COALESCE(SUM(unread_count), 0)
         FROM (
             SELECT (
@@ -2723,12 +2879,139 @@ def get_total_unread_direct_messages(cursor, current_user_id: int) -> int:
                   END
             ) AS unread_count
             FROM direct_conversations c
+            JOIN users participant
+              ON participant.id = CASE
+                  WHEN c.user_one_id = ? THEN c.user_two_id
+                  ELSE c.user_one_id
+              END
             WHERE c.user_one_id = ? OR c.user_two_id = ?
-        ) AS unread_counts
-        """,
-        (current_user_id, current_user_id, current_user_id, current_user_id),
+    """
+    query_params: tuple = (
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
     )
+    if hidden_user_ids:
+        placeholders = ",".join("?" for _ in hidden_user_ids)
+        query += f" AND participant.id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+
+    query += """
+        ) AS unread_counts
+    """
+    cursor.execute(query, query_params)
     return int(cursor.fetchone()[0] or 0)
+
+
+def fetch_blocked_user_summaries(cursor, user_id: int) -> list[dict]:
+    cursor.execute(
+        """
+        SELECT
+            u.id,
+            u.username,
+            u.avatar_url,
+            bu.created_at AS blocked_at
+        FROM blocked_users bu
+        JOIN users u ON u.id = bu.blocked_id
+        WHERE bu.blocker_id = ?
+        ORDER BY bu.created_at DESC, u.username ASC
+        """,
+        (int(user_id),),
+    )
+    return [serialize_blocked_user_row(row) for row in cursor.fetchall()]
+
+
+def purge_user_data(cursor, user_id: int, *, delete_account: bool) -> tuple[dict[str, int], Optional[str]]:
+    reset_counts: dict[str, int] = {}
+
+    cursor.execute("SELECT id FROM reviews WHERE user_id = ?", (user_id,))
+    review_ids = [int(row["id"]) for row in cursor.fetchall()]
+    cursor.execute("SELECT id FROM comments WHERE user_id = ?", (user_id,))
+    comment_ids = [int(row["id"]) for row in cursor.fetchall()]
+    cursor.execute("SELECT id FROM playlists WHERE user_id = ?", (user_id,))
+    playlist_ids = [int(row["id"]) for row in cursor.fetchall()]
+    cursor.execute(
+        "SELECT id FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?",
+        (user_id, user_id),
+    )
+    conversation_ids = [int(row["id"]) for row in cursor.fetchall()]
+    cursor.execute("SELECT avatar_url FROM users WHERE id = ?", (user_id,))
+    avatar_row = cursor.fetchone()
+    previous_avatar_url = avatar_row["avatar_url"] if avatar_row else None
+
+    reset_counts["notifications"] = 0
+    cursor.execute(
+        "DELETE FROM notifications WHERE user_id = ? OR actor_user_id = ?",
+        (user_id, user_id),
+    )
+    reset_counts["notifications"] += max(cursor.rowcount, 0)
+    reset_counts["notifications"] += delete_many_by_ids(cursor, "notifications", "review_id", review_ids)
+    reset_counts["notifications"] += delete_many_by_ids(cursor, "notifications", "comment_id", comment_ids)
+
+    reset_counts["comments"] = 0
+    reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "review_id", review_ids)
+    reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "parent_id", comment_ids)
+    cursor.execute("DELETE FROM comments WHERE user_id = ?", (user_id,))
+    reset_counts["comments"] += max(cursor.rowcount, 0)
+
+    reset_counts["review_likes"] = 0
+    reset_counts["review_likes"] += delete_many_by_ids(cursor, "review_likes", "review_id", review_ids)
+    cursor.execute("DELETE FROM review_likes WHERE user_id = ?", (user_id,))
+    reset_counts["review_likes"] += max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM reviews WHERE user_id = ?", (user_id,))
+    reset_counts["reviews"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM follows WHERE follower_id = ? OR followed_id = ?", (user_id, user_id))
+    reset_counts["follows"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM user_ratings WHERE user_id = ?", (user_id,))
+    reset_counts["ratings"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM recommendation_impressions WHERE user_id = ?", (user_id,))
+    reset_counts["recommendation_impressions"] = max(cursor.rowcount, 0)
+
+    reset_counts["playlist_items"] = delete_many_by_ids(cursor, "playlist_items", "playlist_id", playlist_ids)
+    cursor.execute("DELETE FROM playlists WHERE user_id = ?", (user_id,))
+    reset_counts["playlists"] = max(cursor.rowcount, 0)
+
+    reset_counts["direct_messages"] = delete_many_by_ids(cursor, "direct_messages", "conversation_id", conversation_ids)
+    cursor.execute("DELETE FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?", (user_id, user_id))
+    reset_counts["direct_conversations"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM user_preferences WHERE user_id = ?", (user_id,))
+    reset_counts["preferences"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM mobile_devices WHERE user_id = ?", (user_id,))
+    reset_counts["mobile_devices"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM web_push_subscriptions WHERE user_id = ?", (user_id,))
+    reset_counts["web_push_subscriptions"] = max(cursor.rowcount, 0)
+
+    cursor.execute("DELETE FROM blocked_users WHERE blocker_id = ? OR blocked_id = ?", (user_id, user_id))
+    reset_counts["blocked_users"] = max(cursor.rowcount, 0)
+
+    reset_counts["moderation_reports"] = 0
+    cursor.execute(
+        "DELETE FROM moderation_reports WHERE reporter_user_id = ? OR target_user_id = ?",
+        (user_id, user_id),
+    )
+    reset_counts["moderation_reports"] += max(cursor.rowcount, 0)
+    reset_counts["moderation_reports"] += delete_many_by_ids(cursor, "moderation_reports", "target_review_id", review_ids)
+    reset_counts["moderation_reports"] += delete_many_by_ids(cursor, "moderation_reports", "target_comment_id", comment_ids)
+    reset_counts["moderation_reports"] += delete_many_by_ids(cursor, "moderation_reports", "target_conversation_id", conversation_ids)
+
+    if delete_account:
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        reset_counts["user"] = max(cursor.rowcount, 0)
+    else:
+        cursor.execute("UPDATE users SET avatar_url = NULL WHERE id = ?", (user_id,))
+        reset_counts["avatar"] = 1 if previous_avatar_url else 0
+        get_or_create_watch_later_id(cursor, user_id)
+
+    return reset_counts, previous_avatar_url
 
 # --- 6. ROUTES PLAYLISTS & RATINGS ---
 class PlaylistCreate(BaseModel):
@@ -4100,8 +4383,8 @@ def social_users(
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute(
-        """
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user["id"])
+    query_sql = """
         SELECT
             u.id,
             u.username,
@@ -4117,17 +4400,24 @@ def social_users(
         FROM users u
         WHERE u.id != ?
           AND (? = '' OR lower(u.username) LIKE lower(?))
+    """
+    query_params: tuple = (
+        current_user["id"],
+        current_user["id"],
+        search_value,
+        f"%{search_value}%",
+    )
+    if hidden_user_ids:
+        placeholders = ",".join("?" for _ in hidden_user_ids)
+        query_sql += f" AND u.id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+
+    query_sql += """
         ORDER BY reviews_count DESC, followers_count DESC, u.username ASC
         LIMIT ?
-        """,
-        (
-            current_user["id"],
-            current_user["id"],
-            search_value,
-            f"%{search_value}%",
-            safe_limit,
-        ),
-    )
+    """
+    query_params = (*query_params, safe_limit)
+    cursor.execute(query_sql, query_params)
     users = [serialize_user_row(row) for row in cursor.fetchall()]
     conn.close()
     return users
@@ -4168,6 +4458,9 @@ def social_profile(
     if not profile_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Profil introuvable")
+    if is_hidden_user_relationship(cursor, current_user["id"], int(profile_row["id"])):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Profil introuvable")
 
     reviews = fetch_serialized_reviews(
         cursor,
@@ -4205,6 +4498,7 @@ def follow_user(target_user_id: int, current_user: dict = Depends(get_current_us
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    ensure_user_interaction_allowed(cursor, current_user["id"], target_user_id)
 
     cursor.execute(
         "INSERT OR IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)",
@@ -4239,6 +4533,53 @@ def unfollow_user(target_user_id: int, current_user: dict = Depends(get_current_
     conn.commit()
     conn.close()
     return {"status": "unfollowed"}
+
+
+@app.get("/social/blocks")
+def social_blocks(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    blocked_users = fetch_blocked_user_summaries(cursor, current_user["id"])
+    conn.close()
+    return blocked_users
+
+
+@app.post("/social/block/{target_user_id}")
+def block_user(target_user_id: int, current_user: dict = Depends(get_current_user)):
+    if target_user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Action invalide")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    cursor.execute(
+        "INSERT OR IGNORE INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?)",
+        (current_user["id"], target_user_id),
+    )
+    cursor.execute(
+        "DELETE FROM follows WHERE (follower_id = ? AND followed_id = ?) OR (follower_id = ? AND followed_id = ?)",
+        (current_user["id"], target_user_id, target_user_id, current_user["id"]),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "blocked"}
+
+
+@app.delete("/social/block/{target_user_id}")
+def unblock_user(target_user_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM blocked_users WHERE blocker_id = ? AND blocked_id = ?",
+        (current_user["id"], target_user_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "unblocked"}
 
 
 @app.post("/mobile/devices/register")
@@ -4429,6 +4770,8 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         raise HTTPException(status_code=400, detail="Le titre du film est requis")
     if len(review_content) < 10:
         raise HTTPException(status_code=400, detail="La critique doit contenir au moins 10 caractères")
+    ensure_clean_ugc_text(review_title)
+    ensure_clean_ugc_text(review_content)
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
@@ -4510,6 +4853,7 @@ def update_review(
         raise HTTPException(status_code=400, detail="La note doit être comprise entre 1 et 5")
     if len(review_content) < 10:
         raise HTTPException(status_code=400, detail="La critique doit contenir au moins 10 caractères")
+    ensure_clean_ugc_text(review_content)
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
@@ -4594,7 +4938,7 @@ def social_review_comments(review_id: int, current_user: dict = Depends(get_curr
         conn.close()
         raise HTTPException(status_code=404, detail="Critique introuvable")
 
-    comments = fetch_review_comments(cursor, review_id)
+    comments = fetch_review_comments(cursor, review_id, current_user["id"])
     conn.close()
     return comments
 
@@ -4608,6 +4952,7 @@ def create_review_comment(
     content = payload.content.strip()
     if len(content) < 2:
         raise HTTPException(status_code=400, detail="Le commentaire est trop court")
+    ensure_clean_ugc_text(content)
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
@@ -4642,6 +4987,7 @@ def create_review_comment(
     comment_id = cursor.lastrowid
 
     review_owner_id = int(review_row["user_id"])
+    ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
     if review_owner_id != current_user["id"]:
         create_notification(
             cursor,
@@ -4719,6 +5065,7 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Critique introuvable")
     review_owner_id = int(review_row["user_id"])
     review_title = str(review_row["title"] or "ce film")
+    ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
 
     cursor.execute(
         "SELECT 1 FROM review_likes WHERE review_id = ? AND user_id = ?",
@@ -4780,6 +5127,61 @@ def social_notifications_read_all(current_user: dict = Depends(get_current_user)
     return {"status": "ok", "updated": updated_count}
 
 
+@app.post("/social/reports/user/{target_user_id}")
+def report_social_user(
+    target_user_id: int,
+    payload: ModerationReportPayload,
+    current_user: dict = Depends(get_current_user),
+):
+    if target_user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Action invalide")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    insert_moderation_report(
+        cursor,
+        reporter_user_id=current_user["id"],
+        target_user_id=target_user_id,
+        reason=payload.reason,
+        details=payload.details,
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "reported"}
+
+
+@app.post("/social/reports/review/{review_id}")
+def report_social_review(
+    review_id: int,
+    payload: ModerationReportPayload,
+    current_user: dict = Depends(get_current_user),
+):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, user_id FROM reviews WHERE id = ?", (review_id,))
+    review_row = cursor.fetchone()
+    if not review_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+
+    insert_moderation_report(
+        cursor,
+        reporter_user_id=current_user["id"],
+        target_user_id=int(review_row["user_id"]),
+        target_review_id=review_id,
+        reason=payload.reason,
+        details=payload.details,
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "reported"}
+
+
 # --- 9. ROUTES MESSAGERIE ---
 @app.get("/messages/conversations")
 def message_conversations(current_user: dict = Depends(get_current_user)):
@@ -4801,6 +5203,7 @@ def start_direct_conversation(target_user_id: int, current_user: dict = Depends(
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    ensure_user_interaction_allowed(cursor, current_user["id"], target_user_id)
 
     conversation_id = get_or_create_direct_conversation(cursor, current_user["id"], target_user_id)
     conn.commit()
@@ -4886,10 +5289,12 @@ async def create_direct_message(
 
     if not content and movie_id is None:
         raise HTTPException(status_code=400, detail="Le message ne peut pas être vide")
+    ensure_clean_ugc_text(content)
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
     conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
+    ensure_user_interaction_allowed(cursor, current_user["id"], int(conversation_row["participant_id"]))
 
     cursor.execute(
         """
@@ -5002,6 +5407,28 @@ def unread_direct_message_count(current_user: dict = Depends(get_current_user)):
     unread_count = get_total_unread_direct_messages(cursor, current_user["id"])
     conn.close()
     return {"unread_count": unread_count}
+
+
+@app.post("/messages/reports/conversations/{conversation_id}")
+def report_direct_conversation(
+    conversation_id: int,
+    payload: ModerationReportPayload,
+    current_user: dict = Depends(get_current_user),
+):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
+    insert_moderation_report(
+        cursor,
+        reporter_user_id=current_user["id"],
+        target_user_id=int(conversation_row["participant_id"]),
+        target_conversation_id=conversation_id,
+        reason=payload.reason,
+        details=payload.details,
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "reported"}
 
 
 @app.websocket("/ws/realtime")

@@ -27,6 +27,10 @@ These changes should be recorded as part of the next stable checkpoint:
 - moved profile showcase saving into the top profile action button;
 - expanded Settings with notification controls, tutorial replay, and recommendation cache actions.
 - corrected French spelling, accents, and apostrophes across the main mobile user-facing screens.
+- switched the Expo iOS config to iPhone only (`supportsTablet: false`);
+- added in-app account deletion support through mobile settings and backend deletion logic;
+- added social safety basics: block user list, unblock flow, report profile, report review, report conversation, and hidden-user filtering in key backend queries;
+- added public `/privacy` and `/support` pages on the web app for App Store / TestFlight references.
 
 ## Important Recent Commits
 
@@ -80,3 +84,4 @@ npx eas submit --platform ios
 - If EAS config files differ locally on the Mac, `git pull` can be blocked. Check `git status` before pulling.
 - If tunnel mode fails, it can be an ngrok issue rather than a Qulte code issue.
 - The server repository source of truth is `origin/main` at `git@github.com:aux-ngls/WeChoose-app.git`.
+- For the simplest first App Store release, the mobile app now targets iPhone only and expects support/privacy URLs from the web app.

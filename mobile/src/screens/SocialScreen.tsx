@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -14,12 +14,14 @@ import {
   fetchSocialFeed,
   fetchSocialNotifications,
   markSocialNotificationsRead,
+  reportReview,
   toggleReviewLike,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SocialComment, type SocialNotification, type SocialReview } from '../types';
+import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { formatDate } from '../utils/format';
 import { SOCIAL_REFRESH_EVENT } from '../utils/events';
 
@@ -48,6 +50,7 @@ export default function SocialScreen() {
   const [submittingCommentIds, setSubmittingCommentIds] = useState<number[]>([]);
   const [likingReviewIds, setLikingReviewIds] = useState<number[]>([]);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const reviewsRef = useRef(reviews);
   const notificationsRef = useRef(notifications);
@@ -64,6 +67,14 @@ export default function SocialScreen() {
   useEffect(() => {
     unreadNotificationsRef.current = unreadNotifications;
   }, [unreadNotifications]);
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+    const timeout = setTimeout(() => setFeedback(''), 2400);
+    return () => clearTimeout(timeout);
+  }, [feedback]);
 
   const updateSocialCache = useCallback((next: Partial<Omit<SocialCache, 'username'>>) => {
     if (!session) {
@@ -268,6 +279,37 @@ export default function SocialScreen() {
     }
   }, [session, signOut, updateSocialCache]);
 
+  const handleReportReview = useCallback(async (review: SocialReview, reason: ReportReason) => {
+    if (!session || review.author.username === session.username) {
+      return;
+    }
+
+    try {
+      await reportReview(session.token, review.id, { reason });
+      setFeedback('Merci, la critique a été signalée.');
+    } catch (reportError) {
+      if (reportError instanceof ApiError && reportError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de signaler cette critique.');
+    }
+  }, [session, signOut]);
+
+  const presentReviewReportPicker = useCallback((review: SocialReview) => {
+    Alert.alert(
+      'Signaler la critique',
+      'Choisis une raison.',
+      [
+        ...REPORT_REASONS.map((reason) => ({
+          text: reason.label,
+          onPress: () => void handleReportReview(review, reason.value),
+        })),
+        { text: 'Annuler', style: 'cancel' as const },
+      ],
+    );
+  }, [handleReportReview]);
+
   return (
     <AppScreen keyboardAware refreshing={refreshing} onRefresh={() => void refreshSocial()}>
       <ScreenHeader
@@ -282,6 +324,7 @@ export default function SocialScreen() {
       />
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
+      {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
 
       {notifications.length > 0 ? (
         <View style={[styles.notificationsCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -322,7 +365,7 @@ export default function SocialScreen() {
         </View>
         <View style={[styles.summaryCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{stats.liked}</Text>
-          <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>likees</Text>
+          <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>likées</Text>
         </View>
       </View>
 
@@ -347,15 +390,30 @@ export default function SocialScreen() {
                 <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               </Pressable>
               <View style={styles.reviewBody}>
-                <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{item.title}</Text>
-                <Pressable
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    navigation.navigate('UserProfile', { username: item.author.username });
-                  }}
-                >
-                  <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{item.author.username} · {formatDate(item.created_at)}</Text>
-                </Pressable>
+                <View style={styles.reviewHeader}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                    <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{item.title}</Text>
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        navigation.navigate('UserProfile', { username: item.author.username });
+                      }}
+                    >
+                      <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{item.author.username} · {formatDate(item.created_at)}</Text>
+                    </Pressable>
+                  </View>
+                  {item.author.username !== session?.username ? (
+                    <Pressable
+                      style={[styles.reviewMenuButton, { backgroundColor: theme.rgba.cardStrong }]}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        presentReviewReportPicker(item);
+                      }}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textMuted} />
+                    </Pressable>
+                  ) : null}
+                </View>
                 <View style={styles.inlinePills}>
                   <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                     <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.rating.toFixed(1)} / 5</Text>
@@ -564,6 +622,11 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 8,
   },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
   reviewTitle: {
     color: '#ffffff',
     fontSize: 16,
@@ -572,6 +635,13 @@ const styles = StyleSheet.create({
   reviewMeta: {
     color: '#94a3b8',
     fontSize: 12,
+  },
+  reviewMenuButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inlinePills: {
     flexDirection: 'row',

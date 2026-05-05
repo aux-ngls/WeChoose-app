@@ -103,3 +103,21 @@ Reason:
 - missing accents and ASCII-only copy make the app feel unfinished;
 - Qulte needs polished, natural French on visible labels, messages, and onboarding flows;
 - copy cleanup should be maintained over time, not only as a one-off pass.
+
+## iPhone-Only First Release
+
+Decision: simplify the first App Store release path by targeting iPhone only.
+
+Reason:
+- it avoids extra iPad layout and screenshot work before the product is fully stabilized;
+- it keeps the first public mobile scope smaller and easier to validate;
+- Expo configuration now uses `ios.supportsTablet: false`.
+
+## App Review Safety Baseline
+
+Decision: add the minimum viable trust-and-safety layer before wider iOS publication.
+
+Reason:
+- Qulte contains user-generated content: reviews, comments, profiles, and private messages;
+- Apple review expects account deletion and basic moderation/reporting capabilities;
+- the current baseline is: in-app account deletion, block user, report profile, report review, report conversation, and light objectionable-text filtering on UGC creation.

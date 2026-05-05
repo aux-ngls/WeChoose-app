@@ -1,6 +1,6 @@
 # Qulte - Roadmap
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 ## Maintenance Rule
 
@@ -10,11 +10,11 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Immediate Priorities
 
+- Finish iOS publication readiness: App Store Connect metadata, screenshots, privacy form, and review notes.
 - Keep removing visible loading states, especially in Tinder and high-traffic mobile screens.
 - Improve first connection experience and onboarding quality.
 - Continue improving recommendation quality using onboarding signals, ratings, and behavior.
 - Stabilize push notifications outside the app.
-- Improve TestFlight update workflow and release confidence.
 
 ## Mobile Product Priorities
 
@@ -48,7 +48,8 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 - Strong recommendation quality from first session.
 - App Store / TestFlight polish.
 - Privacy and data ownership clarity.
-- Basic moderation/reporting for social content before wider launch.
+- Confirm the first release scope stays iPhone only until the iPad version is intentionally designed.
+- Keep basic moderation/reporting for social content in place before wider launch.
 
 ## Later Ideas
 

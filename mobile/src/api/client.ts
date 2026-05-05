@@ -1,6 +1,7 @@
 import { API_URL } from './config';
 import type {
   AuthPayload,
+  BlockedUser,
   DirectConversationDetails,
   DirectConversationSummary,
   DirectMessage,
@@ -104,6 +105,10 @@ export async function signup(username: string, password: string): Promise<AuthPa
 
 export async function getMe(token: string): Promise<{ has_completed_onboarding: boolean; has_completed_tutorial: boolean }> {
   return request<{ has_completed_onboarding: boolean; has_completed_tutorial: boolean }>('/users/me', undefined, token);
+}
+
+export async function deleteAccount(token: string): Promise<{ status: string; counts: Record<string, number> }> {
+  return request<{ status: string; counts: Record<string, number> }>('/users/me', { method: 'DELETE' }, token);
 }
 
 export async function completeTutorial(token: string): Promise<void> {
@@ -314,6 +319,50 @@ export async function unfollowUser(token: string, targetUserId: number): Promise
   await request<null>(`/social/follow/${targetUserId}`, { method: 'DELETE' }, token);
 }
 
+export async function fetchBlockedUsers(token: string): Promise<BlockedUser[]> {
+  return request<BlockedUser[]>('/social/blocks', undefined, token);
+}
+
+export async function blockUser(token: string, targetUserId: number): Promise<void> {
+  await request<null>(`/social/block/${targetUserId}`, { method: 'POST' }, token);
+}
+
+export async function unblockUser(token: string, targetUserId: number): Promise<void> {
+  await request<null>(`/social/block/${targetUserId}`, { method: 'DELETE' }, token);
+}
+
+export async function reportUser(
+  token: string,
+  targetUserId: number,
+  payload: { reason: string; details?: string },
+): Promise<void> {
+  await request<null>(
+    `/social/reports/user/${targetUserId}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export async function reportReview(
+  token: string,
+  reviewId: number,
+  payload: { reason: string; details?: string },
+): Promise<void> {
+  await request<null>(
+    `/social/reports/review/${reviewId}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
 export async function startConversation(token: string, targetUserId: number): Promise<{ id: number }> {
   return request<{ id: number }>(`/messages/conversations/start/${targetUserId}`, { method: 'POST' }, token);
 }
@@ -343,6 +392,22 @@ export async function sendMessage(
 ): Promise<DirectMessage> {
   return request<DirectMessage>(
     `/messages/conversations/${conversationId}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export async function reportConversation(
+  token: string,
+  conversationId: number,
+  payload: { reason: string; details?: string },
+): Promise<void> {
+  await request<null>(
+    `/messages/reports/conversations/${conversationId}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

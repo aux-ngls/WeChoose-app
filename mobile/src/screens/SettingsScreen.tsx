@@ -6,13 +6,15 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ApiError, resetTestUserData } from '../api/client';
+import { WEB_URL } from '../api/config';
+import { ApiError, deleteAccount, fetchBlockedUsers, resetTestUserData, unblockUser } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
 import type { RootStackParamList } from '../navigation/types';
 import { registerForPushNotifications } from '../notifications/push';
 import { useTheme, type ThemePreference } from '../theme/ThemeContext';
+import type { BlockedUser } from '../types';
 
 const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { value: 'system', label: 'Automatique', detail: 'Suit le réglage de ton iPhone.', icon: 'phone-portrait-outline' },
@@ -43,6 +45,10 @@ export default function SettingsScreen() {
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermissionState>('loading');
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
   const [clearingRecommendationCache, setClearingRecommendationCache] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
+  const [updatingBlockedUserIds, setUpdatingBlockedUserIds] = useState<number[]>([]);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [resettingTestData, setResettingTestData] = useState(false);
   const [resetError, setResetError] = useState('');
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success' | 'info'; message: string } | null>(null);
@@ -63,10 +69,35 @@ export default function SettingsScreen() {
     setNotificationStatus(permissions.status);
   }, []);
 
+  const loadBlockedUsers = useCallback(async () => {
+    if (!session) {
+      setBlockedUsers([]);
+      return;
+    }
+
+    setLoadingBlockedUsers(true);
+    try {
+      const payload = await fetchBlockedUsers(session.token);
+      setBlockedUsers(payload);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: 'Impossible de charger les comptes bloqués.',
+      });
+    } finally {
+      setLoadingBlockedUsers(false);
+    }
+  }, [session, signOut]);
+
   useFocusEffect(
     useCallback(() => {
       void loadNotificationStatus();
-    }, [loadNotificationStatus]),
+      void loadBlockedUsers();
+    }, [loadBlockedUsers, loadNotificationStatus]),
   );
 
   const handleThemePreferenceChange = async (preference: ThemePreference) => {
@@ -199,6 +230,80 @@ export default function SettingsScreen() {
     } finally {
       setClearingRecommendationCache(false);
     }
+  };
+
+  const openSupportPage = async () => {
+    await Linking.openURL(`${WEB_URL}/support`);
+  };
+
+  const openPrivacyPage = async () => {
+    await Linking.openURL(`${WEB_URL}/privacy`);
+  };
+
+  const handleUnblockUser = async (targetUserId: number) => {
+    if (!session || updatingBlockedUserIds.includes(targetUserId)) {
+      return;
+    }
+
+    setUpdatingBlockedUserIds((current) => [...current, targetUserId]);
+    try {
+      await unblockUser(session.token, targetUserId);
+      setBlockedUsers((current) => current.filter((user) => user.id !== targetUserId));
+      setFeedback({
+        tone: 'success',
+        message: 'Compte débloqué.',
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: 'Impossible de débloquer ce compte.',
+      });
+    } finally {
+      setUpdatingBlockedUserIds((current) => current.filter((id) => id !== targetUserId));
+    }
+  };
+
+  const executeDeleteAccount = async () => {
+    if (!session || deletingAccount) {
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      await deleteAccount(session.token);
+      await signOut();
+      Alert.alert('Compte supprimé', 'Ton compte et ses données ont été supprimés.');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: 'Impossible de supprimer le compte pour le moment.',
+      });
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Supprimer le compte ?',
+      'Cette action est définitive. Tes notes, playlists, critiques, messages, profil et préférences seront supprimés.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => void executeDeleteAccount(),
+        },
+      ],
+    );
   };
 
   const executeTestReset = async () => {
@@ -388,6 +493,113 @@ export default function SettingsScreen() {
       <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
+            <Ionicons name="shield-checkmark-outline" size={18} color={theme.colors.secondaryAccent} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Sécurité</Text>
+          </View>
+        </View>
+
+        <View style={styles.optionsList}>
+          {loadingBlockedUsers ? (
+            <View style={styles.inlineLoaderRow}>
+              <ActivityIndicator color={theme.colors.text} />
+              <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement des comptes bloqués...</Text>
+            </View>
+          ) : blockedUsers.length > 0 ? (
+            blockedUsers.map((blockedUser) => {
+              const isUpdating = updatingBlockedUserIds.includes(blockedUser.id);
+              return (
+                <View
+                  key={blockedUser.id}
+                  style={[styles.optionCard, styles.blockedRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                >
+                  <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }]}>
+                    <Ionicons name="ban-outline" size={18} color={theme.colors.secondaryAccent} />
+                  </View>
+                  <View style={styles.optionBody}>
+                    <Text style={[styles.optionTitle, { color: theme.colors.text }]}>@{blockedUser.username}</Text>
+                    <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Compte masqué dans le social et les messages.</Text>
+                  </View>
+                  <Pressable
+                    style={[styles.unblockButton, { borderColor: theme.colors.secondaryAccent }]}
+                    onPress={() => void handleUnblockUser(blockedUser.id)}
+                    disabled={isUpdating}
+                  >
+                    {isUpdating ? (
+                      <ActivityIndicator size="small" color={theme.colors.secondaryAccent} />
+                    ) : (
+                      <Text style={[styles.unblockButtonLabel, { color: theme.colors.secondaryAccent }]}>Débloquer</Text>
+                    )}
+                  </Pressable>
+                </View>
+              );
+            })
+          ) : (
+            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Aucun compte bloqué pour le moment.</Text>
+          )}
+        </View>
+      </View>
+
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="document-text-outline" size={18} color={theme.colors.accent} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Confidentialité</Text>
+          </View>
+        </View>
+
+        <View style={styles.optionsList}>
+          <Pressable
+            style={[styles.optionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+            onPress={() => void openSupportPage()}
+          >
+            <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }]}>
+              <Ionicons name="help-buoy-outline" size={18} color={theme.colors.accent} />
+            </View>
+            <View style={styles.optionBody}>
+              <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Support</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Ouvre la page d'aide publique de Qulte.</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+          </Pressable>
+
+          <Pressable
+            style={[styles.optionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+            onPress={() => void openPrivacyPage()}
+          >
+            <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }]}>
+              <Ionicons name="lock-closed-outline" size={18} color={theme.colors.accent} />
+            </View>
+            <View style={styles.optionBody}>
+              <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Politique de confidentialité</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Consulte les données utilisées par l'app et tes droits.</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+          </Pressable>
+
+          <Pressable
+            style={[styles.optionCard, { borderColor: theme.colors.danger, backgroundColor: theme.rgba.card }]}
+            onPress={confirmDeleteAccount}
+            disabled={deletingAccount}
+          >
+            <View style={[styles.optionIcon, { borderColor: theme.colors.danger }]}>
+              <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
+            </View>
+            <View style={styles.optionBody}>
+              <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Supprimer mon compte</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Lance la suppression définitive de ton compte depuis l'app.</Text>
+            </View>
+            {deletingAccount ? (
+              <ActivityIndicator color={theme.colors.danger} />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+            )}
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
             <Ionicons name="phone-portrait-outline" size={18} color={theme.colors.accent} />
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App</Text>
           </View>
@@ -532,6 +744,11 @@ const styles = StyleSheet.create({
   optionsList: {
     gap: 10,
   },
+  inlineLoaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   optionCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -563,6 +780,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: 3,
   },
+  blockedRow: {
+    alignItems: 'center',
+  },
   optionTitle: {
     color: '#ffffff',
     fontSize: 15,
@@ -577,6 +797,19 @@ const styles = StyleSheet.create({
   inlineActionLabel: {
     fontSize: 12,
     lineHeight: 17,
+    fontWeight: '900',
+  },
+  unblockButton: {
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  unblockButtonLabel: {
+    fontSize: 12,
     fontWeight: '900',
   },
   helperText: {
