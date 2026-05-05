@@ -38,7 +38,7 @@ The mobile app currently includes:
 - social feed with expandable reviews and comments;
 - private messages with movie sharing;
 - user profile navigation from social areas;
-- app settings, including theme mode;
+- app settings, including theme mode, notification controls, tutorial replay, and recommendation cache tools;
 - push notification groundwork;
 - TestFlight / EAS build flow.
 
@@ -64,6 +64,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Gestures should follow native mobile expectations: pull to refresh, left-edge swipe to go back on full screens, and drag to hide the keyboard when appropriate.
 - Avoid duplicated navigation paths where possible.
 - Profile should feel like a real social profile, not a stats dashboard.
+- App-level controls should live in Settings rather than taking space in the profile identity area.
 - Tinder should feel instant, with movies preloaded and no visible waiting.
 - Conversations should feel like a normal messaging app: fluid send, latest messages visible, clean day separators.
 

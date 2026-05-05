@@ -12,6 +12,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   completeTutorial: () => Promise<void>;
+  reopenTutorial: () => Promise<void>;
   refreshOnboardingState: () => Promise<void>;
 }
 
@@ -111,6 +112,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const reopenTutorial = async () => {
+    if (!session) {
+      return;
+    }
+
+    await persistSession({
+      ...session,
+      hasCompletedTutorial: false,
+    });
+  };
+
   const refreshOnboardingState = async () => {
     if (!session) {
       return;
@@ -140,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       completeOnboarding,
       completeTutorial,
+      reopenTutorial,
       refreshOnboardingState,
     }),
     [session, isBootstrapping],

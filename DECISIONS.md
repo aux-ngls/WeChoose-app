@@ -85,3 +85,12 @@ Reason:
 - left-edge swipe is preferred for leaving full-screen stack flows such as movie details, playlists, profiles, settings, and conversations;
 - custom gestures should be added only when they clearly improve the native feel;
 - keyboard dismissal on drag reduces friction in search and messaging flows.
+
+## Profile Vs Settings
+
+Decision: keep profile editing actions lightweight in the profile header, and move broader app preferences into Settings.
+
+Reason:
+- the profile should stay focused on identity, films, playlists, and reviews;
+- save/edit actions feel better in the same top action slot than in a detached bottom button;
+- app-wide controls such as theme, notifications, tutorial replay, and cache tools belong in Settings.

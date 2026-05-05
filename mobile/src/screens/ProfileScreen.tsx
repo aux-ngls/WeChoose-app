@@ -375,6 +375,7 @@ export default function ProfileScreen() {
       .slice(0, 5);
 
     setSavingShowcase(true);
+    setError('');
     try {
       await saveProfilePreferences(session.token, {
         profile_description: draftDescription.trim(),
@@ -523,8 +524,22 @@ export default function ProfileScreen() {
                 <Text style={[styles.profileKickerLabel, { color: theme.colors.text }]}>Profil Qulte</Text>
               </View>
               <View style={styles.profileTopActions}>
-                <Pressable style={[styles.profileEditButton, { backgroundColor: theme.colors.accent }]} onPress={openShowcaseEditor} disabled={isEditingShowcase}>
-                  <Ionicons name={isEditingShowcase ? 'checkmark' : 'create-outline'} size={18} color={theme.colors.accentText} />
+                <Pressable
+                  style={[styles.profileEditButton, { backgroundColor: theme.colors.accent }]}
+                  onPress={() => {
+                    if (isEditingShowcase) {
+                      void saveShowcase();
+                      return;
+                    }
+                    openShowcaseEditor();
+                  }}
+                  disabled={savingShowcase}
+                >
+                  {savingShowcase ? (
+                    <Ionicons name="hourglass-outline" size={18} color={theme.colors.accentText} />
+                  ) : (
+                    <Ionicons name={isEditingShowcase ? 'checkmark' : 'create-outline'} size={18} color={theme.colors.accentText} />
+                  )}
                 </Pressable>
                 <Pressable style={[styles.settingsIconButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]} onPress={() => navigation.navigate('Settings')}>
                   <Ionicons name="settings-outline" size={18} color={theme.colors.accent} />
@@ -740,9 +755,6 @@ export default function ProfileScreen() {
                   ) : null}
                 </View>
 
-                <Pressable style={[styles.saveButton, { backgroundColor: theme.colors.accent }]} onPress={() => void saveShowcase()} disabled={savingShowcase}>
-                  <Text style={[styles.saveButtonLabel, { color: theme.colors.accentText }]}>{savingShowcase ? 'Enregistrement...' : 'Enregistrer'}</Text>
-                </Pressable>
               </View>
             ) : null}
 
@@ -1323,17 +1335,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.05)',
     padding: 8,
-  },
-  saveButton: {
-    borderRadius: 18,
-    backgroundColor: '#f9a8d4',
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  saveButtonLabel: {
-    color: '#190713',
-    fontSize: 14,
-    fontWeight: '900',
   },
   subsection: {
     gap: 12,

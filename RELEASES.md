@@ -24,6 +24,8 @@ These changes should be recorded as part of the next stable checkpoint:
 - improved drag behavior so list screens dismiss the keyboard more naturally;
 - changed full-screen stack screens to use native-style left-edge back swipe;
 - removed the custom drag gesture from the trailer modal.
+- moved profile showcase saving into the top profile action button;
+- expanded Settings with notification controls, tutorial replay, and recommendation cache actions.
 
 ## Important Recent Commits
 
