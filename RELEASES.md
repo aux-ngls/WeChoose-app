@@ -31,6 +31,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - added in-app account deletion support through mobile settings and backend deletion logic;
 - added social safety basics: block user list, unblock flow, report profile, report review, report conversation, and hidden-user filtering in key backend queries;
 - added public `/privacy` and `/support` pages on the web app for App Store / TestFlight references.
+- expanded the public `/privacy` and `/support` pages with clearer user-facing content for data usage, account deletion, safety reports, beta support, and contact.
 
 ## Important Recent Commits
 
