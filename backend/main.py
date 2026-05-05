@@ -44,7 +44,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "").strip()
-WEB_PUSH_SUBJECT = os.getenv("WEB_PUSH_SUBJECT", "").strip() or "mailto:notifications@qulte.app"
+WEB_PUSH_SUBJECT = os.getenv("WEB_PUSH_SUBJECT", "").strip() or "mailto:qulte.developpeur@gmail.com"
 app = FastAPI(title="Qulte API")
 
 WATCH_LATER_SYSTEM_ID = -1

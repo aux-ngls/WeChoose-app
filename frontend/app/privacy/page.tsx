@@ -118,8 +118,8 @@ export default function PrivacyPage() {
         <h2 className="text-xl font-bold text-white">Contact</h2>
         <p className="mt-4 text-sm leading-6 text-white/72 sm:text-[15px]">
           Pour une question sur la confidentialité, le support ou la suppression de compte, écris à{' '}
-          <a className="font-semibold text-pink-200 underline decoration-pink-300/40 underline-offset-4" href="mailto:notifications@qulte.app">
-            notifications@qulte.app
+          <a className="font-semibold text-pink-200 underline decoration-pink-300/40 underline-offset-4" href="mailto:qulte.developpeur@gmail.com">
+            qulte.developpeur@gmail.com
           </a>
           .
         </p>

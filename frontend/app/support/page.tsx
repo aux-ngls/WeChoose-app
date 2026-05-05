@@ -63,9 +63,9 @@ export default function SupportPage() {
           </div>
           <a
             className="inline-flex w-fit items-center rounded-full border border-sky-300/30 bg-sky-300/10 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-300/15"
-            href="mailto:notifications@qulte.app?subject=Support%20Qulte"
+            href="mailto:qulte.developpeur@gmail.com?subject=Support%20Qulte"
           >
-            notifications@qulte.app
+            qulte.developpeur@gmail.com
           </a>
         </div>
       </section>
