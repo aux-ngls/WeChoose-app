@@ -160,7 +160,7 @@ export default function MessagesScreen() {
         await signOut();
         return;
       }
-      setError('Impossible d ouvrir cette conversation.');
+      setError("Impossible d'ouvrir cette conversation.");
     } finally {
       setStartingUserIds((current) => current.filter((id) => id !== user.id));
     }
@@ -200,7 +200,7 @@ export default function MessagesScreen() {
           <SearchField
             value={userQuery}
             onChangeText={setUserQuery}
-            placeholder="Chercher quelqu un"
+            placeholder="Chercher quelqu'un"
             icon="person-add"
           />
           {searchingUsers ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Recherche en cours...</Text> : null}
@@ -215,9 +215,9 @@ export default function MessagesScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.userName, { color: theme.colors.text }]}>@{user.username}</Text>
-                      <Text style={[styles.userMeta, { color: theme.colors.textMuted }]}>{user.followers_count} abonnes</Text>
+                      <Text style={[styles.userMeta, { color: theme.colors.textMuted }]}>{user.followers_count} abonnés</Text>
                     </View>
-                    <Text style={[styles.userAction, { color: theme.colors.secondaryAccent }]}>{isStarting ? 'Ouverture...' : 'Ecrire'}</Text>
+                    <Text style={[styles.userAction, { color: theme.colors.secondaryAccent }]}>{isStarting ? 'Ouverture...' : 'Écrire'}</Text>
                   </Pressable>
                 );
               })}
@@ -267,7 +267,7 @@ export default function MessagesScreen() {
 
           {recentConversations.length > 0 ? (
             <View style={styles.groupBlock}>
-              <Text style={[styles.groupTitle, { color: theme.colors.textSoft }]}>Recents</Text>
+              <Text style={[styles.groupTitle, { color: theme.colors.textSoft }]}>Récents</Text>
               <View style={styles.cardsList}>
                 {recentConversations.map((conversation) => (
                   <Pressable key={conversation.id} style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => openConversation(conversation)}>

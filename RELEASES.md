@@ -1,6 +1,6 @@
 # Qulte - Releases And Stable Points
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 ## Maintenance Rule
 
@@ -26,6 +26,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - removed the custom drag gesture from the trailer modal.
 - moved profile showcase saving into the top profile action button;
 - expanded Settings with notification controls, tutorial replay, and recommendation cache actions.
+- corrected French spelling, accents, and apostrophes across the main mobile user-facing screens.
 
 ## Important Recent Commits
 

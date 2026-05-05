@@ -124,7 +124,7 @@ export default function ShareMovieScreen({
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.username, { color: theme.colors.text }]}>@{user.username}</Text>
-                <Text style={[styles.userMeta, { color: theme.colors.textMuted }]}>{user.followers_count} abonnes</Text>
+                <Text style={[styles.userMeta, { color: theme.colors.textMuted }]}>{user.followers_count} abonnés</Text>
               </View>
               <Ionicons name={isSharing ? 'hourglass-outline' : 'send'} size={18} color={theme.colors.secondaryAccent} />
             </Pressable>

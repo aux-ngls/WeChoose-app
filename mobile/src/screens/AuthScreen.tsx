@@ -61,7 +61,7 @@ export default function AuthScreen() {
         <ScreenHeader
           icon={mode === 'login' ? 'log-in' : 'person-add'}
           accent={mode === 'login' ? 'blue' : 'pink'}
-          title={mode === 'login' ? 'Connexion' : 'Creer un compte'}
+          title={mode === 'login' ? 'Connexion' : 'Créer un compte'}
         />
 
         <View style={[styles.segmentedControl, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -105,14 +105,14 @@ export default function AuthScreen() {
             {loading ? (
               <ActivityIndicator color={accentText} />
             ) : (
-              <Text style={[styles.submitLabel, { color: accentText }]}>{mode === 'login' ? 'Se connecter' : 'Creer le compte'}</Text>
+              <Text style={[styles.submitLabel, { color: accentText }]}>{mode === 'login' ? 'Se connecter' : 'Créer le compte'}</Text>
             )}
           </Pressable>
 
           <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
             {mode === 'login'
               ? 'Recos, playlists, messages.'
-              : 'Cree ton univers cine.'}
+              : 'Crée ton univers ciné.'}
           </Text>
         </View>
       </View>

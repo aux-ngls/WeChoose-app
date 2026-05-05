@@ -15,8 +15,8 @@ import { registerForPushNotifications } from '../notifications/push';
 import { useTheme, type ThemePreference } from '../theme/ThemeContext';
 
 const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
-  { value: 'system', label: 'Automatique', detail: 'Suit le reglage de ton iPhone.', icon: 'phone-portrait-outline' },
-  { value: 'dark', label: 'Sombre', detail: 'Garde l ambiance cinema nocturne.', icon: 'moon-outline' },
+  { value: 'system', label: 'Automatique', detail: 'Suit le réglage de ton iPhone.', icon: 'phone-portrait-outline' },
+  { value: 'dark', label: 'Sombre', detail: "Garde l'ambiance cinéma nocturne.", icon: 'moon-outline' },
   { value: 'light', label: 'Clair', detail: 'Base claire pour la future interface.', icon: 'sunny-outline' },
 ];
 
@@ -93,17 +93,17 @@ export default function SettingsScreen() {
     if (notificationStatus === 'granted') {
       return {
         title: 'Notifications actives',
-        detail: 'Les messages et activites sociales peuvent arriver directement sur ce telephone.',
-        action: 'Verifier la configuration',
+        detail: 'Les messages et activités sociales peuvent arriver directement sur ce téléphone.',
+        action: 'Vérifier la configuration',
         icon: 'notifications' as const,
       };
     }
 
     if (notificationStatus === 'denied') {
       return {
-        title: 'Notifications bloquees',
-        detail: 'Autorise-les dans les reglages du telephone pour recevoir les messages hors de l app.',
-        action: 'Ouvrir les reglages du telephone',
+        title: 'Notifications bloquées',
+        detail: "Autorise-les dans les réglages du téléphone pour recevoir les messages hors de l'app.",
+        action: 'Ouvrir les réglages du téléphone',
         icon: 'notifications-off-outline' as const,
       };
     }
@@ -111,15 +111,15 @@ export default function SettingsScreen() {
     if (notificationStatus === 'loading') {
       return {
         title: 'Notifications',
-        detail: 'Verification des autorisations en cours.',
-        action: 'Verifier',
+        detail: 'Vérification des autorisations en cours.',
+        action: 'Vérifier',
         icon: 'notifications-outline' as const,
       };
     }
 
     return {
-      title: 'Notifications desactivees',
-      detail: 'Active-les pour recevoir les nouveaux messages et activites sociales.',
+      title: 'Notifications désactivées',
+      detail: 'Active-les pour recevoir les nouveaux messages et activités sociales.',
       action: 'Activer les notifications',
       icon: 'notifications-outline' as const,
     };
@@ -138,7 +138,7 @@ export default function SettingsScreen() {
         await Linking.openSettings();
         setFeedback({
           tone: 'info',
-          message: 'Ouvre les reglages du telephone puis reviens ici pour verifier les notifications.',
+          message: 'Ouvre les réglages du téléphone puis reviens ici pour vérifier les notifications.',
         });
         return;
       }
@@ -150,12 +150,12 @@ export default function SettingsScreen() {
       if (permissions.status === 'granted') {
         setFeedback({
           tone: 'success',
-          message: 'Notifications actives sur ce telephone.',
+          message: 'Notifications actives sur ce téléphone.',
         });
       } else {
         setFeedback({
           tone: 'info',
-          message: 'Les notifications ne sont pas encore autorisees.',
+          message: 'Les notifications ne sont pas encore autorisées.',
         });
       }
     } catch (error) {
@@ -165,7 +165,7 @@ export default function SettingsScreen() {
       }
       setFeedback({
         tone: 'error',
-        message: 'Impossible d actualiser les notifications.',
+        message: "Impossible d'actualiser les notifications.",
       });
     } finally {
       setUpdatingNotifications(false);
@@ -189,7 +189,7 @@ export default function SettingsScreen() {
       const clearedKeys = await clearRecommendationCaches(session.username);
       setFeedback({
         tone: 'success',
-        message: clearedKeys > 0 ? 'Cache des recommandations vide.' : 'Aucun cache de recommandations a vider.',
+        message: clearedKeys > 0 ? 'Cache des recommandations vidé.' : 'Aucun cache de recommandations à vider.',
       });
     } catch {
       setFeedback({
@@ -213,8 +213,8 @@ export default function SettingsScreen() {
       await resetTestUserData(session.token);
       await clearTestLocalCaches();
       Alert.alert(
-        'Compte test remis a zero',
-        "Les donnees de test ont ete effacees. Tu vas repasser par l'onboarding.",
+        'Compte test remis à zéro',
+        "Les données de test ont été effacées. Tu vas repasser par l'onboarding.",
       );
       await refreshOnboardingState();
     } catch (error) {
@@ -222,7 +222,7 @@ export default function SettingsScreen() {
         await signOut();
         return;
       }
-      setResetError(error instanceof Error ? error.message : 'Impossible de reinitialiser le compte test.');
+      setResetError(error instanceof Error ? error.message : 'Impossible de réinitialiser le compte test.');
     } finally {
       setResettingTestData(false);
     }
@@ -230,12 +230,12 @@ export default function SettingsScreen() {
 
   const confirmTestReset = () => {
     Alert.alert(
-      'Reinitialiser test ?',
-      "Cela efface les notes, playlists, critiques, preferences IA, profil, follows et messages du compte test. Le compte reste utilisable.",
+      'Réinitialiser test ?',
+      'Cela efface les notes, playlists, critiques, préférences IA, profil, follows et messages du compte test. Le compte reste utilisable.',
       [
         { text: 'Annuler', style: 'cancel' },
         {
-          text: 'Reinitialiser',
+          text: 'Réinitialiser',
           style: 'destructive',
           onPress: () => void executeTestReset(),
         },
@@ -255,8 +255,8 @@ export default function SettingsScreen() {
           <Ionicons name="settings-outline" size={22} color={theme.colors.accentText} />
         </View>
         <View style={styles.heroBody}>
-          <Text style={[styles.heroTitle, { color: theme.colors.text }]}>Reglages</Text>
-          <Text style={[styles.heroSubtitle, { color: theme.colors.textSoft }]}>Les preferences de l'app, sans encombrer ton profil.</Text>
+          <Text style={[styles.heroTitle, { color: theme.colors.text }]}>Réglages</Text>
+          <Text style={[styles.heroSubtitle, { color: theme.colors.textSoft }]}>Les préférences de l'app, sans encombrer ton profil.</Text>
         </View>
       </View>
 
@@ -305,7 +305,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-          Le choix est sauvegarde sur ce telephone et s applique aux ecrans principaux de l app.
+          Le choix est sauvegardé sur ce téléphone et s'applique aux écrans principaux de l'app.
         </Text>
       </View>
 
@@ -345,7 +345,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
             <Ionicons name="sparkles-outline" size={18} color={theme.colors.accent} />
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Experience</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Expérience</Text>
           </View>
         </View>
 
@@ -359,7 +359,7 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.optionBody}>
               <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Revoir le tutoriel</Text>
-              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Relance la visite guidee de l app depuis le debut.</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Relance la visite guidée de l'app depuis le début.</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
           </Pressable>
@@ -417,7 +417,7 @@ export default function SettingsScreen() {
           {resetError ? <InlineBanner message={resetError} tone="error" /> : null}
 
           <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-            Remet ce compte a zero pour retester l IA depuis un profil vierge.
+            Remet ce compte à zéro pour retester l'IA depuis un profil vierge.
           </Text>
 
           <Pressable
@@ -438,7 +438,7 @@ export default function SettingsScreen() {
             ) : (
               <>
                 <Ionicons name="refresh-circle-outline" size={20} color="#ffffff" />
-                <Text style={styles.resetButtonLabel}>Reinitialiser les donnees</Text>
+                <Text style={styles.resetButtonLabel}>Réinitialiser les données</Text>
               </>
             )}
           </Pressable>

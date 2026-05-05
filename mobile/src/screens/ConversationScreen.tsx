@@ -283,7 +283,7 @@ export default function ConversationScreen({
         return;
       }
       setDraft((current) => (current.trim().length > 0 ? current : content));
-      setError('Impossible d envoyer le message.');
+      setError("Impossible d'envoyer le message.");
     } finally {
       setSendingMessageIds((current) => current.filter((id) => id !== optimisticId));
     }
@@ -305,7 +305,7 @@ export default function ConversationScreen({
             }}
           >
             <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>@{participantUsername}</Text>
-            <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Discussion privee</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Discussion privée</Text>
           </Pressable>
         </View>
 
@@ -401,7 +401,7 @@ export default function ConversationScreen({
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="Ecrire un message"
+            placeholder="Écrire un message"
             placeholderTextColor={theme.colors.textMuted}
             style={[styles.input, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
             multiline

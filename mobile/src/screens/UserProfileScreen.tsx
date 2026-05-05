@@ -167,7 +167,7 @@ export default function UserProfileScreen() {
               </View>
               <View style={[styles.statPill, { backgroundColor: theme.rgba.card }]}>
                 <Text style={[styles.statValue, { color: theme.colors.text }]}>{profile.followers_count}</Text>
-                <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>abonnes</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>abonnés</Text>
               </View>
               <View style={[styles.statPill, { backgroundColor: theme.rgba.card }]}>
                 <Text style={[styles.statValue, { color: theme.colors.text }]}>{profile.following_count}</Text>
@@ -184,7 +184,7 @@ export default function UserProfileScreen() {
                 >
                   <Ionicons name={profile.is_following ? 'checkmark' : 'person-add-outline'} size={17} color={profile.is_following ? theme.colors.accent : theme.colors.accentText} />
                   <Text style={[styles.primaryActionLabel, { color: theme.colors.accentText }, profile.is_following && [styles.secondaryActionLabel, { color: theme.colors.accent }]]}>
-                    {profile.is_following ? 'Abonne' : 'Suivre'}
+                    {profile.is_following ? 'Abonné' : 'Suivre'}
                   </Text>
                 </Pressable>
                 <Pressable style={[styles.messageAction, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.card }]} onPress={() => void openConversation()} disabled={actionLoading}>
@@ -210,7 +210,7 @@ export default function UserProfileScreen() {
 
           {profile.profile_people.length > 0 ? (
             <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Personnes clefs</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Personnes clés</Text>
               <FlatList
                 data={profile.profile_people}
                 horizontal

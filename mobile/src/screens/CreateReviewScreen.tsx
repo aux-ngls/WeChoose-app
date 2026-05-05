@@ -105,7 +105,7 @@ export default function CreateReviewScreen({
       return;
     }
     if (trimmedContent.length < 10) {
-      setError('Ta critique doit contenir au moins 10 caracteres.');
+      setError('Ta critique doit contenir au moins 10 caractères.');
       return;
     }
     if (reviewRating <= 0) {
@@ -151,7 +151,7 @@ export default function CreateReviewScreen({
     if (query.trim().length < 2) {
       return null;
     }
-    return `${results.length} resultat${results.length > 1 ? 's' : ''}`;
+    return `${results.length} résultat${results.length > 1 ? 's' : ''}`;
   }, [query, results.length]);
 
   return (
@@ -163,7 +163,7 @@ export default function CreateReviewScreen({
         <View style={styles.headerBody}>
           <Text style={[styles.headerEyebrow, { color: theme.colors.accent }]}>Social</Text>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]}>{isEditMode ? 'Modifier la critique' : 'Nouvelle critique'}</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>{isEditMode ? 'Ajuste ta note et ton avis.' : 'Note. Ecris. Publie.'}</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>{isEditMode ? 'Ajuste ta note et ton avis.' : 'Note. Écris. Publie.'}</Text>
         </View>
       </View>
 
@@ -228,7 +228,7 @@ export default function CreateReviewScreen({
                 <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
                 <View style={styles.resultBody}>
                   <Text style={[styles.resultTitle, { color: theme.colors.text }]}>{movie.title}</Text>
-                  <Text style={[styles.resultHint, { color: theme.colors.textMuted }]}>Selectionner pour critiquer</Text>
+                  <Text style={[styles.resultHint, { color: theme.colors.textMuted }]}>Sélectionner pour critiquer</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
               </Pressable>
@@ -251,12 +251,12 @@ export default function CreateReviewScreen({
       <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.rowBetween}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Ton avis</Text>
-          <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>{reviewContent.trim().length} caracteres</Text>
+          <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>{reviewContent.trim().length} caractères</Text>
         </View>
         <TextInput
           value={reviewContent}
           onChangeText={setReviewContent}
-          placeholder="Ecris ce que tu as ressenti, ce qui t'a marque, ce que tu recommandes..."
+          placeholder="Écris ce que tu as ressenti, ce qui t'a marqué, ce que tu recommandes..."
           placeholderTextColor={theme.colors.textMuted}
           multiline
           textAlignVertical="top"

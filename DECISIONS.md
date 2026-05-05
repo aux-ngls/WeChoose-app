@@ -1,6 +1,6 @@
 # Qulte - Decisions
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 ## Maintenance Rule
 
@@ -94,3 +94,12 @@ Reason:
 - the profile should stay focused on identity, films, playlists, and reviews;
 - save/edit actions feel better in the same top action slot than in a detached bottom button;
 - app-wide controls such as theme, notifications, tutorial replay, and cache tools belong in Settings.
+
+## French Mobile Copy Quality
+
+Decision: keep the mobile app's French copy fully accented and corrected across user-facing strings.
+
+Reason:
+- missing accents and ASCII-only copy make the app feel unfinished;
+- Qulte needs polished, natural French on visible labels, messages, and onboarding flows;
+- copy cleanup should be maintained over time, not only as a one-off pass.

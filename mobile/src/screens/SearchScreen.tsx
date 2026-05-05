@@ -104,7 +104,7 @@ export default function SearchScreen() {
       return null;
     }
     const count = searchMode === 'movies' ? movieResults.length : userResults.length;
-    return `${count} resultat${count > 1 ? 's' : ''}`;
+    return `${count} résultat${count > 1 ? 's' : ''}`;
   }, [movieResults.length, query, searchMode, userResults.length]);
 
   const results: SearchResult[] = searchMode === 'movies'
@@ -211,7 +211,7 @@ export default function SearchScreen() {
                 <Text style={[styles.itemTitle, { color: theme.colors.text }]}>@{item.user.username}</Text>
                 <View style={styles.userMetaRow}>
                   <Text style={[styles.userMeta, { color: theme.colors.textSoft }]}>{item.user.reviews_count} critiques</Text>
-                  <Text style={[styles.userMeta, { color: theme.colors.textSoft }]}>{item.user.followers_count} abonnes</Text>
+                  <Text style={[styles.userMeta, { color: theme.colors.textSoft }]}>{item.user.followers_count} abonnés</Text>
                 </View>
                 <Text style={[styles.itemHint, { color: theme.colors.textMuted }]}>{item.user.is_following ? 'Profil suivi' : 'Voir le profil'}</Text>
               </View>

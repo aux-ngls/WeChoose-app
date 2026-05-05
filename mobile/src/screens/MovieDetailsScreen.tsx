@@ -181,14 +181,14 @@ export default function MovieDetailsScreen({
           movieId: movie.id,
         });
       }
-      setFeedback('Ajoute a regarder plus tard.');
+      setFeedback('Ajouté à regarder plus tard.');
       setError('');
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 401) {
         await signOut();
         return;
       }
-      setError('Impossible d ajouter ce film a ta liste.');
+      setError("Impossible d'ajouter ce film à ta liste.");
     } finally {
       setActionLoading(false);
     }
@@ -231,14 +231,14 @@ export default function MovieDetailsScreen({
         });
       }
       setShowPlaylistPicker(false);
-      setFeedback(`Ajoute a ${playlist.name}.`);
+      setFeedback(`Ajouté à ${playlist.name}.`);
       setError('');
     } catch (playlistError) {
       if (playlistError instanceof ApiError && playlistError.status === 401) {
         await signOut();
         return;
       }
-      setError("Impossible d'ajouter ce film a cette playlist.");
+      setError("Impossible d'ajouter ce film à cette playlist.");
     } finally {
       setActionLoading(false);
     }
@@ -254,14 +254,14 @@ export default function MovieDetailsScreen({
       const created = await createPlaylist(session.token, newPlaylistName.trim());
       setPlaylists((current) => [created, ...current]);
       setNewPlaylistName('');
-      setFeedback('Playlist creee.');
+      setFeedback('Playlist créée.');
       setError('');
     } catch (createError) {
       if (createError instanceof ApiError && createError.status === 401) {
         await signOut();
         return;
       }
-      setError('Impossible de creer cette playlist.');
+      setError('Impossible de créer cette playlist.');
     } finally {
       setLoadingPlaylists(false);
     }
@@ -291,7 +291,7 @@ export default function MovieDetailsScreen({
         return;
       }
       setUserRating(0);
-      setError('Impossible d enregistrer la note.');
+      setError("Impossible d'enregistrer la note.");
     } finally {
       setActionLoading(false);
     }
@@ -451,7 +451,7 @@ export default function MovieDetailsScreen({
                 })}
               >
                 <Ionicons name="create-outline" size={16} color={theme.colors.accent} />
-                <Text style={[styles.reviewButtonLabel, { color: theme.colors.accent }]}>Ecrire une critique</Text>
+                <Text style={[styles.reviewButtonLabel, { color: theme.colors.accent }]}>Écrire une critique</Text>
               </Pressable>
               <View style={styles.ratingBlock}>
                 <Text style={[styles.ratingLabel, { color: theme.colors.textSoft }]}>Ta note</Text>
@@ -473,7 +473,7 @@ export default function MovieDetailsScreen({
 
             {movie.directors.length > 0 ? (
               <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Realisation</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Réalisation</Text>
                 <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.directors.join(', ')}</Text>
               </View>
             ) : null}
@@ -568,7 +568,7 @@ export default function MovieDetailsScreen({
               <View style={[styles.modalHandle, { backgroundColor: theme.rgba.border }]} />
             </View>
             <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Ajouter a une playlist</Text>
+              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Ajouter à une playlist</Text>
               <Pressable style={[styles.sheetCloseButton, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}>
                 <Ionicons name="close" size={20} color={theme.colors.text} />
               </Pressable>
@@ -599,7 +599,7 @@ export default function MovieDetailsScreen({
                   <Ionicons name={playlist.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'} size={19} color={theme.colors.secondaryAccent} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
-                    <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste systeme'}</Text>
+                    <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste système'}</Text>
                   </View>
                   <Ionicons name="add-circle" size={21} color={theme.colors.accent} />
                 </Pressable>

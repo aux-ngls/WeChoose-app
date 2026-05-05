@@ -36,9 +36,9 @@ import {
 const SORT_OPTIONS = [
   { key: 'manual', label: 'Ordre' },
   { key: 'genre', label: 'Genre' },
-  { key: 'recent', label: 'Recents' },
+  { key: 'recent', label: 'Récents' },
   { key: 'oldest', label: 'Anciens' },
-  { key: 'rating', label: 'Mieux notes' },
+  { key: 'rating', label: 'Mieux notés' },
 ] as const;
 
 type SortMode = (typeof SORT_OPTIONS)[number]['key'];

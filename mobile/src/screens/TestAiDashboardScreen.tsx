@@ -15,7 +15,7 @@ import { formatDate } from '../utils/format';
 const modeLabels: Record<string, string> = {
   tinder: 'Tinder',
   spotlight: 'Pour toi',
-  explore: 'Decouverte',
+  explore: 'Découverte',
 };
 
 const reactionLabels: Record<string, string> = {
@@ -73,7 +73,7 @@ function ModeRow({ metric }: { metric: TestAiModeMetric }) {
       <View style={styles.modeRowMain}>
         <Text style={[styles.modeTitle, { color: theme.colors.text }]}>{formatMode(metric.mode)}</Text>
         <Text style={[styles.modeDetail, { color: theme.colors.textMuted }]}>
-          {metric.shown_count} films montres, {metric.response_count} retours
+          {metric.shown_count} films montrés, {metric.response_count} retours
         </Text>
       </View>
       <View style={styles.modeStats}>
@@ -143,7 +143,7 @@ export default function TestAiDashboardScreen() {
         <View style={styles.heroBody}>
           <Text style={[styles.heroTitle, { color: theme.colors.text }]}>Labo IA</Text>
           <Text style={[styles.heroSubtitle, { color: theme.colors.textSoft }]}>
-            Un tableau de bord reserve au compte test pour suivre ce que les recos convertissent vraiment.
+            Un tableau de bord réservé au compte test pour suivre ce que les recos convertissent vraiment.
           </Text>
         </View>
         <Pressable
@@ -181,24 +181,24 @@ export default function TestAiDashboardScreen() {
         <>
           <View style={styles.metricsGrid}>
             <MetricTile
-              label="Films montres"
+              label="Films montrés"
               value={String(payload.overview.shown_count)}
-              detail={`${payload.overview.response_count} retours reels`}
+              detail={`${payload.overview.response_count} retours réels`}
             />
             <MetricTile
               label="Taux de retour"
               value={formatPercent(payload.overview.response_rate)}
-              detail="Films qui ont provoque une action"
+              detail="Films qui ont provoqué une action"
             />
             <MetricTile
               label="Taux positif"
               value={formatPercent(payload.overview.positive_rate)}
-              detail={`${payload.overview.positive_count} reactions positives`}
+              detail={`${payload.overview.positive_count} réactions positives`}
             />
             <MetricTile
               label="Note moyenne"
               value={formatAverageRating(payload.overview.average_rating)}
-              detail="Sur les films notes apres reco"
+              detail="Sur les films notés après reco"
             />
           </View>
 
@@ -211,7 +211,7 @@ export default function TestAiDashboardScreen() {
                 ))
               ) : (
                 <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-                  Pas encore assez de donnees pour distinguer les modes.
+                  Pas encore assez de données pour distinguer les modes.
                 </Text>
               )}
             </View>
@@ -235,7 +235,7 @@ export default function TestAiDashboardScreen() {
                         {movie.title}
                       </Text>
                       <Text style={[styles.rankDetail, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                        {movie.positive_count} reactions positives sur {movie.response_count} retours
+                        {movie.positive_count} réactions positives sur {movie.response_count} retours
                       </Text>
                     </View>
                     <Text style={[styles.rankScore, { color: theme.colors.text }]}>
@@ -245,7 +245,7 @@ export default function TestAiDashboardScreen() {
                 ))
               ) : (
                 <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-                  Les meilleurs films apparaitront ici apres quelques notes ou ajouts en playlist.
+                  Les meilleurs films apparaîtront ici après quelques notes ou ajouts en playlist.
                 </Text>
               )}
             </View>
@@ -288,7 +288,7 @@ export default function TestAiDashboardScreen() {
                 ))
               ) : (
                 <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-                  Quand une reco basee sur un film-source fonctionne bien, elle remontera ici.
+                  Quand une reco basée sur un film-source fonctionne bien, elle remontera ici.
                 </Text>
               )}
             </View>
@@ -349,7 +349,7 @@ export default function TestAiDashboardScreen() {
                         {item.seed_title ? ` • depuis ${item.seed_title}` : ''}
                       </Text>
                       <Text style={[styles.timestampLabel, { color: theme.colors.textMuted }]}>
-                        Montre le {formatDate(item.shown_at)}
+                        Montré le {formatDate(item.shown_at)}
                       </Text>
                     </View>
                     <View
@@ -369,7 +369,7 @@ export default function TestAiDashboardScreen() {
                 ))
               ) : (
                 <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-                  Des que tu interagis avec quelques recos du compte test, l historique apparait ici.
+                  Dès que tu interagis avec quelques recos du compte test, l'historique apparaît ici.
                 </Text>
               )}
             </View>

@@ -26,13 +26,13 @@ const GENRES = [
   'Action',
   'Aventure',
   'Animation',
-  'Comedie',
+  'Comédie',
   'Crime',
   'Documentaire',
   'Drame',
   'Fantastique',
   'Horreur',
-  'Mystere',
+  'Mystère',
   'Romance',
   'Science-Fiction',
   'Thriller',
@@ -92,7 +92,7 @@ export default function OnboardingScreen() {
           return;
         }
         if (active) {
-          setError('Impossible de charger tes gouts de depart.');
+          setError('Impossible de charger tes goûts de départ.');
         }
       } finally {
         if (active) {
@@ -236,7 +236,7 @@ export default function OnboardingScreen() {
         await signOut();
         return;
       }
-      setError(submitError instanceof Error ? submitError.message : 'Impossible d enregistrer tes gouts.');
+      setError(submitError instanceof Error ? submitError.message : "Impossible d'enregistrer tes goûts.");
     } finally {
       setSaving(false);
     }
@@ -246,7 +246,7 @@ export default function OnboardingScreen() {
     return (
       <AppScreen scroll={false} contentStyle={styles.centered}>
         <ActivityIndicator color={theme.colors.text} />
-        <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Preparation de ton profil cinema...</Text>
+        <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Préparation de ton profil cinéma...</Text>
       </AppScreen>
     );
   }
@@ -256,7 +256,7 @@ export default function OnboardingScreen() {
       <ScreenHeader
         icon="sparkles"
         accent="pink"
-        title="Tes gouts de depart"
+        title="Tes goûts de départ"
         subtitle="5 films minimum pour lancer une vraie reco."
       />
 
@@ -280,8 +280,8 @@ export default function OnboardingScreen() {
       <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Tes 5 films preferes</Text>
-            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>{missingMoviesCount > 0 ? `Encore ${missingMoviesCount} a choisir` : 'Base IA prete'}</Text>
+            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Tes 5 films préférés</Text>
+            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>{missingMoviesCount > 0 ? `Encore ${missingMoviesCount} à choisir` : 'Base IA prête'}</Text>
           </View>
           <View style={[styles.requiredBadge, { backgroundColor: movies.length >= MIN_FAVORITE_MOVIES ? theme.colors.success : theme.colors.accentSoft }]}>
             <Text style={[styles.requiredBadgeLabel, { color: movies.length >= MIN_FAVORITE_MOVIES ? '#08111f' : theme.colors.accent }]}>{movies.length}/{MAX_FAVORITE_MOVIES}</Text>
@@ -332,8 +332,8 @@ export default function OnboardingScreen() {
       <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Acteurs et realisateurs</Text>
-            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>Optionnel, mais tres utile.</Text>
+            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Acteurs et réalisateurs</Text>
+            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>Optionnel, mais très utile.</Text>
           </View>
           <Text style={[styles.counterLabel, { color: theme.colors.textMuted }]}>{people.length}/{MAX_FAVORITE_PEOPLE}</Text>
         </View>
@@ -348,7 +348,7 @@ export default function OnboardingScreen() {
                 <Image source={{ uri: person.photo_url || FALLBACK_POSTER }} style={styles.personImage} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.personName, { color: theme.colors.text }]} numberOfLines={1}>{person.name}</Text>
-                  <Text style={[styles.personMeta, { color: theme.colors.textMuted }]}>{person.known_for_department ?? 'Cinema'}</Text>
+                  <Text style={[styles.personMeta, { color: theme.colors.textMuted }]}>{person.known_for_department ?? 'Cinéma'}</Text>
                 </View>
                 <Ionicons name="add" size={18} color={theme.colors.accent} />
               </Pressable>

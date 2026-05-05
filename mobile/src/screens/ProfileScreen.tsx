@@ -400,7 +400,7 @@ export default function ProfileScreen() {
 
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      setError('Autorise l acces aux photos pour changer ta photo de profil.');
+      setError("Autorise l'accès aux photos pour changer ta photo de profil.");
       return;
     }
 
@@ -453,7 +453,7 @@ export default function ProfileScreen() {
         await signOut();
         return;
       }
-      setError('Impossible de creer cette playlist.');
+      setError('Impossible de créer cette playlist.');
     } finally {
       setSavingPlaylist(false);
     }
@@ -581,7 +581,7 @@ export default function ProfileScreen() {
                   ]}
                   numberOfLines={4}
                 >
-                  {profileDescription || 'Ajoute une courte description pour raconter ton univers cine.'}
+                  {profileDescription || 'Ajoute une courte description pour raconter ton univers ciné.'}
                 </Text>
               </View>
             </View>
@@ -609,7 +609,7 @@ export default function ProfileScreen() {
                   <TextInput
                     value={draftDescription}
                     onChangeText={(value) => setDraftDescription(value.slice(0, 180))}
-                    placeholder="Ex: romance tragique, thrillers nerveux et BO qui restent en tete..."
+                    placeholder="Ex. : romance tragique, thrillers nerveux et BO qui restent en tête..."
                     placeholderTextColor={theme.colors.textMuted}
                     multiline
                     maxLength={180}
@@ -627,7 +627,7 @@ export default function ProfileScreen() {
                   <TextInput
                     value={draftGenresText}
                     onChangeText={setDraftGenresText}
-                    placeholder="Comedie, thriller, romance..."
+                    placeholder="Comédie, thriller, romance..."
                     placeholderTextColor={theme.colors.textMuted}
                     style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                   />
@@ -671,7 +671,7 @@ export default function ProfileScreen() {
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Personnes clefs</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Personnes clés</Text>
                   <View style={styles.selectedPeopleRow}>
                     {draftPeople.map((person) => (
                       <Pressable
@@ -776,7 +776,7 @@ export default function ProfileScreen() {
 
             {profile.profile_people.length > 0 ? (
               <View style={styles.subsection}>
-                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Personnes clefs</Text>
+                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Personnes clés</Text>
                 <FlatList
                   data={profile.profile_people}
                   horizontal
@@ -847,7 +847,7 @@ export default function ProfileScreen() {
                   onPress={() => void handleCreatePlaylist()}
                   disabled={!newPlaylistName.trim() || savingPlaylist}
                 >
-                  <Text style={[styles.createPlaylistButtonLabel, { color: theme.colors.accentText }]}>{savingPlaylist ? '...' : 'Creer'}</Text>
+                  <Text style={[styles.createPlaylistButtonLabel, { color: theme.colors.accentText }]}>{savingPlaylist ? '...' : 'Créer'}</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -984,7 +984,7 @@ export default function ProfileScreen() {
             {[
               ['Critiques', profile.reviews_count],
               ['Favoris', profile.favorites_count],
-              ['Abonnes', profile.followers_count],
+              ['Abonnés', profile.followers_count],
               ['Abonnements', profile.following_count],
             ].map(([label, value]) => (
               <View key={label} style={[styles.statCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -996,7 +996,7 @@ export default function ProfileScreen() {
 
           <Pressable style={styles.logoutButton} onPress={() => void signOut()}>
             <Ionicons name="log-out-outline" size={18} color="#fecaca" />
-            <Text style={styles.logoutButtonLabel}>Se deconnecter</Text>
+            <Text style={styles.logoutButtonLabel}>Se déconnecter</Text>
           </Pressable>
         </>
       ) : null}

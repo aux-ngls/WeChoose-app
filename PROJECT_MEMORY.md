@@ -1,6 +1,6 @@
 # Qulte - Project Memory
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 Current branch: main
 Current stable commit: be9c7a9
 
@@ -67,6 +67,7 @@ The web site remains active and should not be removed while the mobile app is be
 - App-level controls should live in Settings rather than taking space in the profile identity area.
 - Tinder should feel instant, with movies preloaded and no visible waiting.
 - Conversations should feel like a normal messaging app: fluid send, latest messages visible, clean day separators.
+- User-facing French copy in the mobile app should be fully accented, clean, and natural rather than ASCII-only.
 
 ## Known Sensitive Areas
 

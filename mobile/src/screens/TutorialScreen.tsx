@@ -11,11 +11,11 @@ const STEPS = [
   {
     icon: 'sparkles-outline',
     title: 'Accueil',
-    text: 'Swipe les films, note precisement, garde ceux que tu veux voir plus tard.',
+    text: 'Swipe les films, note précisément, garde ceux que tu veux voir plus tard.',
   },
   {
     icon: 'newspaper-outline',
-    title: "A l'affiche",
+    title: "À l'affiche",
     text: 'Retrouve les sorties populaires, tes suggestions et les notes de tes amis.',
   },
   {
@@ -26,7 +26,7 @@ const STEPS = [
   {
     icon: 'chatbubble-ellipses-outline',
     title: 'Messages',
-    text: 'Discute en prive et partage directement des films dans une conversation.',
+    text: 'Discute en privé et partage directement des films dans une conversation.',
   },
 ] as const;
 
