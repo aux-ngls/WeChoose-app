@@ -39,6 +39,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - improved the mobile first-run experience by explaining the onboarding taste signals and rewriting the welcome tutorial around Qulte's actual recommendation, playlist, social and messaging loop.
 - added a first onboarding concept screen explaining the Tinder-like movie flow, swipes, ratings, AI learning, watch-later behavior and social discovery before asking for favorite films.
 - removed the duplicate explanatory card from the onboarding favorite-film selection screen so the step stays focused on choosing films.
+- replaced the default Expo mobile icon assets with the Qulte logo used by the web app, including the iOS app icon used by TestFlight/App Store builds.
 
 ## Important Recent Commits
 
