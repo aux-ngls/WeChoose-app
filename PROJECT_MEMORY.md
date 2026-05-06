@@ -1,6 +1,6 @@
 # Qulte - Project Memory
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 Current branch: main
 Current stable commit: be9c7a9
 
@@ -27,7 +27,8 @@ The project must keep two usable products in parallel:
 ## Current Product State
 
 The mobile app currently includes:
-- authentication and first-run onboarding that explains why Qulte asks for favorite films and how those choices bootstrap recommendations;
+- authentication and first-run onboarding with a dedicated concept screen explaining Qulte before the favorite-film selection;
+- a compact onboarding favorite-film selection screen focused on search, progress, and validation, without duplicated explanatory blocks;
 - movie Tinder / swipe recommendations;
 - pull-to-refresh on dynamic mobile screens such as search, social, messages, playlists, and profiles;
 - profile page with profile picture, description, favorite identity content, playlists, and user reviews;
@@ -87,6 +88,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Onboarding signals: movies chosen during onboarding should guide recommendations but should not be proposed back to the user.
 - First-run copy should clearly explain the product loop: choose taste signals, swipe/rate films, Qulte adapts, then users can organize, review, follow and message.
 - The first onboarding screen should explain the core concept before asking for favorite films: Tinder-like movie cards, swipe/pass/watch-later behavior, star ratings as strong signals, AI adaptation, and social discovery.
+- The onboarding film selection step should stay direct and space-efficient because the explanation already lives on the first concept screen.
 
 ## Current AI Direction
 

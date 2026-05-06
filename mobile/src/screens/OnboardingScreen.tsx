@@ -38,28 +38,6 @@ const GENRES = [
   'Thriller',
 ];
 
-const ONBOARDING_EXPLAINERS: Array<{
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  text: string;
-}> = [
-  {
-    icon: 'film-outline',
-    title: 'Une base pour l’IA',
-    text: 'Tes films préférés donnent à Qulte un premier portrait de tes goûts, avant même tes premières notes.',
-  },
-  {
-    icon: 'compass-outline',
-    title: 'Des recos qui bougent',
-    text: 'Chaque swipe et chaque note affinent ensuite les propositions. Rien n’est figé.',
-  },
-  {
-    icon: 'shuffle-outline',
-    title: 'Pas seulement des évidences',
-    text: 'Qulte cherche aussi des films un peu différents, pour éviter de tourner en rond.',
-  },
-];
-
 const APP_PRINCIPLE_STEPS: Array<{
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -355,34 +333,6 @@ export default function OnboardingScreen() {
         subtitle="Ces choix servent à lancer tes premières recommandations."
       />
 
-      <View style={[styles.explainerCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
-        <View style={styles.explainerHeader}>
-          <View style={[styles.explainerHeroIcon, { backgroundColor: theme.colors.accent }]}>
-            <Ionicons name="sparkles" size={20} color={theme.colors.accentText} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.explainerTitle, { color: theme.colors.text }]}>Pourquoi Qulte te demande ça ?</Text>
-            <Text style={[styles.explainerIntro, { color: theme.colors.textSoft }]}>
-              Pour éviter une app qui propose les mêmes films à tout le monde. Tes réponses créent un point de départ personnel.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.explainerList}>
-          {ONBOARDING_EXPLAINERS.map((item) => (
-            <View key={item.title} style={styles.explainerRow}>
-              <View style={[styles.explainerIcon, { backgroundColor: theme.rgba.card }]}>
-                <Ionicons name={item.icon} size={16} color={theme.colors.accent} />
-              </View>
-              <View style={styles.explainerBody}>
-                <Text style={[styles.explainerRowTitle, { color: theme.colors.text }]}>{item.title}</Text>
-                <Text style={[styles.explainerText, { color: theme.colors.textMuted }]}>{item.text}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-
       <View style={styles.progressRow}>
         <View style={[styles.progressPill, { borderColor: movies.length >= MIN_FAVORITE_MOVIES ? theme.colors.success : theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <Text style={[styles.progressValue, { color: theme.colors.text }]}>{movies.length}/{MIN_FAVORITE_MOVIES}</Text>
@@ -628,63 +578,6 @@ const styles = StyleSheet.create({
   progressRow: {
     flexDirection: 'row',
     gap: 10,
-  },
-  explainerCard: {
-    gap: 14,
-    borderRadius: 28,
-    borderWidth: 1,
-    padding: 16,
-  },
-  explainerHeader: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-  explainerHeroIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  explainerTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  explainerIntro: {
-    marginTop: 5,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '700',
-  },
-  explainerList: {
-    gap: 10,
-  },
-  explainerRow: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'flex-start',
-  },
-  explainerIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  explainerBody: {
-    flex: 1,
-    gap: 2,
-  },
-  explainerRowTitle: {
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  explainerText: {
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '700',
   },
   progressPill: {
     flex: 1,
