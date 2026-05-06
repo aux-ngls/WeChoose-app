@@ -86,6 +86,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Onboarding signals: movies chosen during onboarding should guide recommendations but should not be proposed back to the user.
 - First-run copy should clearly explain the product loop: choose taste signals, swipe/rate films, Qulte adapts, then users can organize, review, follow and message.
+- The first onboarding screen should explain the core concept before asking for favorite films: Tinder-like movie cards, swipe/pass/watch-later behavior, star ratings as strong signals, AI adaptation, and social discovery.
 
 ## Current AI Direction
 

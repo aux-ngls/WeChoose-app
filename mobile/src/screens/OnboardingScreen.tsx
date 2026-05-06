@@ -60,6 +60,33 @@ const ONBOARDING_EXPLAINERS: Array<{
   },
 ];
 
+const APP_PRINCIPLE_STEPS: Array<{
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  text: string;
+}> = [
+  {
+    icon: 'swap-horizontal-outline',
+    title: 'Un Tinder de films',
+    text: 'Un film apparaît, tu décides vite : tu le passes, tu le gardes pour plus tard ou tu ouvres sa fiche.',
+  },
+  {
+    icon: 'star-half-outline',
+    title: 'Les étoiles remplacent les likes',
+    text: 'Quand tu as vu un film, note-le précisément. C’est le signal le plus fort pour comprendre tes goûts.',
+  },
+  {
+    icon: 'sparkles-outline',
+    title: 'L’IA apprend de tes choix',
+    text: 'Qulte regarde les thèmes, le scénario, les acteurs, les réalisateurs et les notes pour proposer mieux.',
+  },
+  {
+    icon: 'people-outline',
+    title: 'Tu découvres aussi par les autres',
+    text: 'Critiques, profils, messages et partages transforment tes découvertes en vraie expérience sociale.',
+  },
+];
+
 function personFromName(name: string): ProfileShowcasePerson {
   return {
     id: null,
@@ -83,6 +110,7 @@ export default function OnboardingScreen() {
   const [saving, setSaving] = useState(false);
   const [searchingMovies, setSearchingMovies] = useState(false);
   const [searchingPeople, setSearchingPeople] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
   const [error, setError] = useState('');
 
   const selectedMovieIds = useMemo(() => new Set(movies.map((movie) => movie.id)), [movies]);
@@ -269,6 +297,51 @@ export default function OnboardingScreen() {
       <AppScreen scroll={false} contentStyle={styles.centered}>
         <ActivityIndicator color={theme.colors.text} />
         <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Préparation de ton profil cinéma...</Text>
+      </AppScreen>
+    );
+  }
+
+  if (showIntro) {
+    return (
+      <AppScreen contentStyle={styles.introScreen}>
+        <View style={[styles.introHero, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
+          <View style={[styles.introHeroIcon, { backgroundColor: theme.colors.accent }]}>
+            <Ionicons name="film" size={24} color={theme.colors.accentText} />
+          </View>
+          <Text style={[styles.introTitle, { color: theme.colors.text }]}>Qulte, c’est quoi ?</Text>
+          <Text style={[styles.introText, { color: theme.colors.textSoft }]}>
+            Une app pour trouver quoi regarder, retenir les films qui t’attirent et recevoir des recommandations qui apprennent vraiment de toi.
+          </Text>
+        </View>
+
+        <View style={styles.principleList}>
+          {APP_PRINCIPLE_STEPS.map((step, index) => (
+            <View key={step.title} style={[styles.principleCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <View style={[styles.principleNumber, { backgroundColor: theme.rgba.cardStrong }]}>
+                <Text style={[styles.principleNumberLabel, { color: theme.colors.text }]}>{index + 1}</Text>
+              </View>
+              <View style={[styles.principleIcon, { backgroundColor: theme.colors.accentSoft }]}>
+                <Ionicons name={step.icon} size={19} color={theme.colors.accent} />
+              </View>
+              <View style={styles.principleBody}>
+                <Text style={[styles.principleTitle, { color: theme.colors.text }]}>{step.title}</Text>
+                <Text style={[styles.principleText, { color: theme.colors.textMuted }]}>{step.text}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <View style={[styles.introReminder, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <Ionicons name="information-circle-outline" size={18} color={theme.colors.secondaryAccent} />
+          <Text style={[styles.introReminderText, { color: theme.colors.textSoft }]}>
+            Sur l’écran suivant, choisis 5 films que tu aimes. Ils servent uniquement à lancer tes premières recommandations.
+          </Text>
+        </View>
+
+        <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]} onPress={() => setShowIntro(false)}>
+          <Text style={[styles.primaryButtonLabel, { color: theme.colors.accentText }]}>Compris, je commence</Text>
+          <Ionicons name="arrow-forward" size={18} color={theme.colors.accentText} />
+        </Pressable>
       </AppScreen>
     );
   }
@@ -466,6 +539,91 @@ const styles = StyleSheet.create({
   helperText: {
     color: '#9ca3af',
     fontSize: 14,
+  },
+  introScreen: {
+    paddingVertical: 22,
+  },
+  introHero: {
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 20,
+  },
+  introHeroIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  introTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  introText: {
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  principleList: {
+    gap: 10,
+  },
+  principleCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 12,
+  },
+  principleNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 3,
+  },
+  principleNumberLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  principleIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  principleBody: {
+    flex: 1,
+    gap: 3,
+  },
+  principleTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  principleText: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  introReminder: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 13,
+  },
+  introReminderText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
   },
   progressRow: {
     flexDirection: 'row',
@@ -728,8 +886,10 @@ const styles = StyleSheet.create({
   primaryButton: {
     borderRadius: 24,
     backgroundColor: '#f472b6',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     paddingVertical: 16,
   },
   primaryButtonLabel: {
