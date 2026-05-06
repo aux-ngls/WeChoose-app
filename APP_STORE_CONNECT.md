@@ -107,8 +107,8 @@ Qulte est une application sociale autour du cinéma. Elle permet de découvrir d
 Un compte est nécessaire pour tester l’application.
 
 Compte de test :
-Nom d’utilisateur : [à compléter]
-Mot de passe : [à compléter]
+Nom d’utilisateur : apple.review
+Mot de passe : [à coller directement dans App Store Connect, ne pas enregistrer dans Git]
 
 Parcours conseillé pour la review :
 1. Connectez-vous avec le compte de test.
@@ -133,9 +133,9 @@ https://wechoose.dury.dev/privacy
 These fields are required in App Store Connect and are not shown publicly.
 
 ```text
-First name: [à compléter]
-Last name: [à compléter]
-Phone: [à compléter]
+First name: Auxence
+Last name: Angles
+Phone: [à coller directement dans App Store Connect, ne pas enregistrer dans Git]
 Email: qulte.developpeur@gmail.com
 ```
 
@@ -236,7 +236,7 @@ Expected result may be higher than a simple utility app because Qulte includes s
 ## Final Checklist Before Submit
 
 ```text
-1. Create or verify the App Review test account.
+1. Verify the App Review test account `apple.review`.
 2. Confirm the test account can log in on the latest TestFlight build.
 3. Confirm Support and Privacy links open from Settings.
 4. Confirm account deletion works from Settings.

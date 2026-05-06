@@ -35,6 +35,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - changed the public support contact address to `qulte.developpeur@gmail.com`.
 - rewrote the public privacy and support pages with fuller French prose for App Store review readiness, including user-generated content, recommendation data, deletion, signalement, and support scope.
 - added `APP_STORE_CONNECT.md` with ready-to-paste App Store metadata, review notes, privacy questionnaire guidance, and final submission checklist.
+- created the production App Review test account `apple.review`, with onboarding and tutorial completed; password is intentionally kept outside Git.
 
 ## Important Recent Commits
 
