@@ -140,6 +140,7 @@ export default function ConversationScreen({
   const hasLoadedConversationRef = useRef(false);
   const messageCountRef = useRef(0);
   const optimisticMessageIdRef = useRef(-1);
+  const composerBottomGap = keyboardLift > 0 ? keyboardLift : Math.max(insets.bottom, 10);
 
   const scrollToLatestMessage = useCallback((animated = false) => {
     requestAnimationFrame(() => {
@@ -181,7 +182,7 @@ export default function ConversationScreen({
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardLift(Math.max(0, event.endCoordinates.height - insets.bottom + 12));
+      setKeyboardLift(Math.max(0, event.endCoordinates.height + 10));
       scrollToLatestMessage(true);
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardLift(0));
@@ -190,7 +191,7 @@ export default function ConversationScreen({
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, [insets.bottom]);
+  }, [scrollToLatestMessage]);
 
   useFocusEffect(
     useCallback(() => {
@@ -494,7 +495,7 @@ export default function ConversationScreen({
           }
         />
 
-        <View style={[styles.composerRow, { marginBottom: keyboardLift }]}>
+        <View style={[styles.composerRow, { marginBottom: composerBottomGap }]}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
