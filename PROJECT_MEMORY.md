@@ -43,6 +43,7 @@ The mobile app currently includes:
 - basic social safety tools: block user, report profile, report review, report conversation, and light text filtering for UGC;
 - public support and privacy pages on the web side for App Store / TestFlight references;
 - iPhone-only release path for the mobile app (`supportsTablet: false`);
+- App Store Connect copy and privacy guidance are maintained in `APP_STORE_CONNECT.md`;
 - push notification groundwork;
 - TestFlight / EAS build flow.
 

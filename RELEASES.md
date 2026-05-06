@@ -34,6 +34,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - expanded the public `/privacy` and `/support` pages with clearer user-facing content for data usage, account deletion, safety reports, beta support, and contact.
 - changed the public support contact address to `qulte.developpeur@gmail.com`.
 - rewrote the public privacy and support pages with fuller French prose for App Store review readiness, including user-generated content, recommendation data, deletion, signalement, and support scope.
+- added `APP_STORE_CONNECT.md` with ready-to-paste App Store metadata, review notes, privacy questionnaire guidance, and final submission checklist.
 
 ## Important Recent Commits
 
