@@ -27,7 +27,7 @@ The project must keep two usable products in parallel:
 ## Current Product State
 
 The mobile app currently includes:
-- authentication and first-run onboarding;
+- authentication and first-run onboarding that explains why Qulte asks for favorite films and how those choices bootstrap recommendations;
 - movie Tinder / swipe recommendations;
 - pull-to-refresh on dynamic mobile screens such as search, social, messages, playlists, and profiles;
 - profile page with profile picture, description, favorite identity content, playlists, and user reviews;
@@ -85,6 +85,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Account deletion, block/report flows, and support/privacy URLs for App Review.
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Onboarding signals: movies chosen during onboarding should guide recommendations but should not be proposed back to the user.
+- First-run copy should clearly explain the product loop: choose taste signals, swipe/rate films, Qulte adapts, then users can organize, review, follow and message.
 
 ## Current AI Direction
 

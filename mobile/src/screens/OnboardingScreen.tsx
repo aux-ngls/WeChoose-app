@@ -38,6 +38,28 @@ const GENRES = [
   'Thriller',
 ];
 
+const ONBOARDING_EXPLAINERS: Array<{
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  text: string;
+}> = [
+  {
+    icon: 'film-outline',
+    title: 'Une base pour l’IA',
+    text: 'Tes films préférés donnent à Qulte un premier portrait de tes goûts, avant même tes premières notes.',
+  },
+  {
+    icon: 'compass-outline',
+    title: 'Des recos qui bougent',
+    text: 'Chaque swipe et chaque note affinent ensuite les propositions. Rien n’est figé.',
+  },
+  {
+    icon: 'shuffle-outline',
+    title: 'Pas seulement des évidences',
+    text: 'Qulte cherche aussi des films un peu différents, pour éviter de tourner en rond.',
+  },
+];
+
 function personFromName(name: string): ProfileShowcasePerson {
   return {
     id: null,
@@ -256,9 +278,37 @@ export default function OnboardingScreen() {
       <ScreenHeader
         icon="sparkles"
         accent="pink"
-        title="Tes goûts de départ"
-        subtitle="5 films minimum pour lancer une vraie reco."
+        title="Construis ton goût cinéma"
+        subtitle="Ces choix servent à lancer tes premières recommandations."
       />
+
+      <View style={[styles.explainerCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
+        <View style={styles.explainerHeader}>
+          <View style={[styles.explainerHeroIcon, { backgroundColor: theme.colors.accent }]}>
+            <Ionicons name="sparkles" size={20} color={theme.colors.accentText} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.explainerTitle, { color: theme.colors.text }]}>Pourquoi Qulte te demande ça ?</Text>
+            <Text style={[styles.explainerIntro, { color: theme.colors.textSoft }]}>
+              Pour éviter une app qui propose les mêmes films à tout le monde. Tes réponses créent un point de départ personnel.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.explainerList}>
+          {ONBOARDING_EXPLAINERS.map((item) => (
+            <View key={item.title} style={styles.explainerRow}>
+              <View style={[styles.explainerIcon, { backgroundColor: theme.rgba.card }]}>
+                <Ionicons name={item.icon} size={16} color={theme.colors.accent} />
+              </View>
+              <View style={styles.explainerBody}>
+                <Text style={[styles.explainerRowTitle, { color: theme.colors.text }]}>{item.title}</Text>
+                <Text style={[styles.explainerText, { color: theme.colors.textMuted }]}>{item.text}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
 
       <View style={styles.progressRow}>
         <View style={[styles.progressPill, { borderColor: movies.length >= MIN_FAVORITE_MOVIES ? theme.colors.success : theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -281,7 +331,9 @@ export default function OnboardingScreen() {
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Tes 5 films préférés</Text>
-            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>{missingMoviesCount > 0 ? `Encore ${missingMoviesCount} à choisir` : 'Base IA prête'}</Text>
+            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>
+              {missingMoviesCount > 0 ? `Encore ${missingMoviesCount} à choisir pour démarrer` : 'Base IA prête'}
+            </Text>
           </View>
           <View style={[styles.requiredBadge, { backgroundColor: movies.length >= MIN_FAVORITE_MOVIES ? theme.colors.success : theme.colors.accentSoft }]}>
             <Text style={[styles.requiredBadgeLabel, { color: movies.length >= MIN_FAVORITE_MOVIES ? '#08111f' : theme.colors.accent }]}>{movies.length}/{MAX_FAVORITE_MOVIES}</Text>
@@ -333,7 +385,7 @@ export default function OnboardingScreen() {
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Acteurs et réalisateurs</Text>
-            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>Optionnel, mais très utile.</Text>
+            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>Optionnel : quelques noms suffisent à reconnaître tes univers.</Text>
           </View>
           <Text style={[styles.counterLabel, { color: theme.colors.textMuted }]}>{people.length}/{MAX_FAVORITE_PEOPLE}</Text>
         </View>
@@ -373,7 +425,7 @@ export default function OnboardingScreen() {
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Genres bonus</Text>
-            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>Pour affiner sans enfermer.</Text>
+            <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>Des repères pour affiner, pas une case fermée.</Text>
           </View>
           <Text style={[styles.counterLabel, { color: theme.colors.textMuted }]}>{genres.length}/8</Text>
         </View>
@@ -398,7 +450,7 @@ export default function OnboardingScreen() {
       </View>
 
       <Pressable onPress={() => void handleSubmit()} style={[styles.primaryButton, { backgroundColor: canContinue ? theme.colors.accent : theme.rgba.cardStrong }]} disabled={!canContinue}>
-        {saving ? <ActivityIndicator color={theme.colors.accentText} /> : <Text style={[styles.primaryButtonLabel, { color: canContinue ? theme.colors.accentText : theme.colors.textMuted }]}>{canContinue ? "Entrer dans l'app" : `Encore ${missingMoviesCount} film${missingMoviesCount > 1 ? 's' : ''}`}</Text>}
+        {saving ? <ActivityIndicator color={theme.colors.accentText} /> : <Text style={[styles.primaryButtonLabel, { color: canContinue ? theme.colors.accentText : theme.colors.textMuted }]}>{canContinue ? 'Lancer Qulte' : `Encore ${missingMoviesCount} film${missingMoviesCount > 1 ? 's' : ''}`}</Text>}
       </Pressable>
     </AppScreen>
   );
@@ -418,6 +470,63 @@ const styles = StyleSheet.create({
   progressRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  explainerCard: {
+    gap: 14,
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 16,
+  },
+  explainerHeader: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  explainerHeroIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  explainerTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  explainerIntro: {
+    marginTop: 5,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  explainerList: {
+    gap: 10,
+  },
+  explainerRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  explainerIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  explainerBody: {
+    flex: 1,
+    gap: 2,
+  },
+  explainerRowTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  explainerText: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   progressPill: {
     flex: 1,
