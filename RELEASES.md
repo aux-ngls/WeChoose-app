@@ -41,6 +41,8 @@ These changes should be recorded as part of the next stable checkpoint:
 - removed the duplicate explanatory card from the onboarding favorite-film selection screen so the step stays focused on choosing films.
 - replaced the default Expo mobile icon assets with the Qulte logo used by the web app, including the iOS app icon used by TestFlight/App Store builds.
 - fixed the mobile conversation composer so it stays above the iOS keyboard after the global bottom safe-area strip removal.
+- relaxed mobile review creation/editing to allow 0.5-star reviews and short non-empty text, aligned with the backend.
+- changed mobile review creation from a vertical sheet to a full-screen horizontal stack screen to avoid accidental down-swipe dismissal and the black top seam.
 
 ## Important Recent Commits
 

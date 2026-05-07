@@ -4764,12 +4764,12 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     review_content = review.content.strip()
     poster_url = review.poster_url.strip()
 
-    if review.rating < 1 or review.rating > 5:
-        raise HTTPException(status_code=400, detail="La note doit être comprise entre 1 et 5")
+    if review.rating < 0.5 or review.rating > 5:
+        raise HTTPException(status_code=400, detail="La note doit être comprise entre 0,5 et 5")
     if len(review_title) < 1:
         raise HTTPException(status_code=400, detail="Le titre du film est requis")
-    if len(review_content) < 10:
-        raise HTTPException(status_code=400, detail="La critique doit contenir au moins 10 caractères")
+    if len(review_content) < 1:
+        raise HTTPException(status_code=400, detail="La critique ne peut pas être vide")
     ensure_clean_ugc_text(review_title)
     ensure_clean_ugc_text(review_content)
 
@@ -4849,10 +4849,10 @@ def update_review(
 ):
     review_content = payload.content.strip()
 
-    if payload.rating < 1 or payload.rating > 5:
-        raise HTTPException(status_code=400, detail="La note doit être comprise entre 1 et 5")
-    if len(review_content) < 10:
-        raise HTTPException(status_code=400, detail="La critique doit contenir au moins 10 caractères")
+    if payload.rating < 0.5 or payload.rating > 5:
+        raise HTTPException(status_code=400, detail="La note doit être comprise entre 0,5 et 5")
+    if len(review_content) < 1:
+        raise HTTPException(status_code=400, detail="La critique ne peut pas être vide")
     ensure_clean_ugc_text(review_content)
 
     conn = get_db_connection(row_factory=True)

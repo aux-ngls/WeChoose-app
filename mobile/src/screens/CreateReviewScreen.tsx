@@ -83,7 +83,7 @@ export default function CreateReviewScreen({
   }, [query, session, signOut]);
 
   const canPublish = useMemo(
-    () => Boolean(selectedMovie) && reviewRating > 0 && reviewContent.trim().length >= 10 && !publishing,
+    () => Boolean(selectedMovie) && reviewRating >= 0.5 && reviewContent.trim().length > 0 && !publishing,
     [publishing, reviewContent, reviewRating, selectedMovie],
   );
 
@@ -104,11 +104,11 @@ export default function CreateReviewScreen({
       setError('Choisis un film avant de publier ta critique.');
       return;
     }
-    if (trimmedContent.length < 10) {
-      setError('Ta critique doit contenir au moins 10 caractères.');
+    if (trimmedContent.length < 1) {
+      setError('Écris un avis avant de publier ta critique.');
       return;
     }
-    if (reviewRating <= 0) {
+    if (reviewRating < 0.5) {
       setError('Ajoute une note avant de publier ta critique.');
       return;
     }

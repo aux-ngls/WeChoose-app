@@ -103,7 +103,7 @@ export default function AppNavigator() {
             <Stack.Screen name="Settings" component={SettingsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="TestAiDashboard" component={TestAiDashboardScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="UserProfile" component={UserProfileScreen} options={edgeSwipeScreenOptions} />
-            <Stack.Screen name="CreateReview" component={CreateReviewScreen} options={sheetOptions} />
+            <Stack.Screen name="CreateReview" component={CreateReviewScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="Conversation" component={ConversationScreen} options={edgeSwipeScreenOptions} />
           </>
         )}
