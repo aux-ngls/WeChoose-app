@@ -49,6 +49,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - allowed users to clear a movie rating from the movie detail screen by tapping the currently selected star value again.
 - synced the Tinder star control with the current movie's saved rating, including rating changes or clears made from the movie detail screen.
 - blocked deletion of a movie rating when it is tied to an existing review, with a clear mobile error message asking the user to edit or delete the review first.
+- fixed Tinder pass/swipe-left so it records a pass recommendation signal instead of creating a fake 1-star movie rating; undoing a pass now undoes that pass signal.
 
 ## Important Recent Commits
 

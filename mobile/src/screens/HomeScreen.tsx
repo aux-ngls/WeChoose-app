@@ -21,11 +21,13 @@ import StarRatingInput from '../components/StarRatingInput';
 import {
   addToWatchLater,
   ApiError,
+  dislikeMovie,
   fetchMovieFeed,
   fetchUserMovieRating,
   getOnboardingPreferences,
   rateMovie,
   recordRecommendationImpression,
+  undoDislikeMovie,
   removeMovieFromPlaylist,
   removeMovieRating,
 } from '../api/client';
@@ -425,7 +427,7 @@ export default function HomeScreen() {
       await addToWatchLater(session.token, movie.id);
       return;
     }
-    await rateMovie(session.token, movie.id, 1);
+    await dislikeMovie(session.token, movie.id);
   }, [session]);
 
   const undoSwipeAction = useCallback(async (action: UndoableAction) => {
@@ -435,6 +437,11 @@ export default function HomeScreen() {
 
     if (action.type === 'swipe-right') {
       await removeMovieFromPlaylist(session.token, WATCH_LATER_PLAYLIST_ID, action.movie.id);
+      return;
+    }
+
+    if (action.type === 'swipe-left') {
+      await undoDislikeMovie(session.token, action.movie.id);
       return;
     }
 

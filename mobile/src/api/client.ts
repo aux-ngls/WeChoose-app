@@ -207,6 +207,14 @@ export async function removeMovieRating(token: string, movieId: number): Promise
   await request<null>(`/movies/rate/${movieId}`, { method: 'DELETE' }, token);
 }
 
+export async function dislikeMovie(token: string, movieId: number): Promise<void> {
+  await request<null>(`/movies/dislike/${movieId}`, { method: 'POST' }, token);
+}
+
+export async function undoDislikeMovie(token: string, movieId: number): Promise<void> {
+  await request<null>(`/movies/dislike/${movieId}`, { method: 'DELETE' }, token);
+}
+
 export async function addToWatchLater(token: string, movieId: number): Promise<void> {
   await request<null>(`/playlists/-1/add/${movieId}`, { method: 'POST' }, token);
 }

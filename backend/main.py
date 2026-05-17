@@ -58,6 +58,7 @@ news_highlights_cache: dict[int, tuple[float, dict]] = {}
 TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
 GLOBAL_RECOMMENDATION_AI_ENABLED = True
 TEST_AI_DASHBOARD_USERNAME = "test"
+PASS_REACTION_TYPES = {"pass"}
 MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.tar.gz"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
@@ -1600,6 +1601,8 @@ def get_test_ai_feedback_profile(cursor, user_id: int) -> dict[str, object]:
             feedback_value = max(-1.0, min(1.0, (float(reaction_rating) - 3.0) / 2.0))
         elif reaction_type in {"watch_later", "playlist_add"}:
             feedback_value = 0.62
+        elif reaction_type in PASS_REACTION_TYPES:
+            feedback_value = -0.36
         else:
             feedback_value = 0.0
 
@@ -1649,6 +1652,34 @@ def mark_recommendation_reaction(
     )
     row = cursor.fetchone()
     if not row:
+        cursor.execute(
+            """
+            INSERT INTO recommendation_impressions (
+                request_id,
+                user_id,
+                movie_id,
+                mode,
+                algorithm_variant,
+                rank,
+                reason,
+                responded_at,
+                reaction_type,
+                reaction_rating
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                int(user_id),
+                int(movie_id),
+                "tinder",
+                TEST_AI_ALGORITHM_VARIANT,
+                0,
+                "Interaction directe",
+                reaction_type,
+                reaction_rating,
+            ),
+        )
         return
 
     cursor.execute(
@@ -3384,6 +3415,29 @@ def compute_recommendation_feed(
     watch_later_ids = {int(row[0]) for row in cursor.fetchall()}
 
     cursor.execute(
+        """
+        SELECT movie_id, reaction_type
+        FROM recommendation_impressions
+        WHERE user_id = ?
+          AND responded_at IS NOT NULL
+        ORDER BY responded_at DESC
+        LIMIT 500
+        """,
+        (current_user_id,),
+    )
+    latest_reaction_by_movie: dict[int, str] = {}
+    for row in cursor.fetchall():
+        movie_id = int(row[0])
+        if movie_id in latest_reaction_by_movie:
+            continue
+        latest_reaction_by_movie[movie_id] = str(row[1] or "")
+    passed_ids = {
+        movie_id
+        for movie_id, reaction_type in latest_reaction_by_movie.items()
+        if reaction_type in PASS_REACTION_TYPES
+    }
+
+    cursor.execute(
         "SELECT movie_id FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 999999), added_at DESC LIMIT 12",
         (watch_later_id,),
     )
@@ -3404,7 +3458,7 @@ def compute_recommendation_feed(
     collaborative_scores = build_collaborative_candidate_scores(
         cursor,
         current_user_id,
-        rated_ids | watch_later_ids,
+        rated_ids | watch_later_ids | passed_ids,
     ) if not is_tinder_mode else {}
     conn.close()
 
@@ -3412,10 +3466,10 @@ def compute_recommendation_feed(
     people_seed_movie_ids = preferences["people_seed_movie_ids"]
     onboarding_movie_id_set = {int(movie_id) for movie_id in onboarding_movie_ids}
     request_exclude_ids = parse_exclude_ids(exclude_ids)
-    seen_ids = rated_ids | watch_later_ids | onboarding_movie_id_set
+    seen_ids = rated_ids | watch_later_ids | passed_ids | onboarding_movie_id_set
     blocked_ids = seen_ids | request_exclude_ids
     interaction_count = len(seen_ids)
-    real_interaction_count = len(rated_ids | watch_later_ids)
+    real_interaction_count = len(rated_ids | watch_later_ids | passed_ids)
     cold_start_mode = real_interaction_count < 8 if is_test_ai_experiment else interaction_count < 6
     onboarding_genre_tokens = {
         normalize_genre_token(value)
@@ -5505,4 +5559,29 @@ def news():
 
 @app.post("/movies/dislike/{movie_id}")
 def dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user)):
-    return rate_movie(movie_id, 1, current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    mark_recommendation_reaction(
+        cursor,
+        current_user["id"],
+        movie_id,
+        "pass",
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "passed"}
+
+
+@app.delete("/movies/dislike/{movie_id}")
+def undo_dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    mark_recommendation_reaction(
+        cursor,
+        current_user["id"],
+        movie_id,
+        "undo_pass",
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "removed"}
