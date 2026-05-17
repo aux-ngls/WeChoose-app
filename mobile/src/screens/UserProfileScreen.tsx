@@ -305,12 +305,20 @@ export default function UserProfileScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 12 }}
                 renderItem={({ item }) => (
-                  <View style={[styles.personCard, { backgroundColor: theme.rgba.cardStrong }]}>
+                  <Pressable
+                    style={[styles.personCard, { backgroundColor: theme.rgba.cardStrong }]}
+                    disabled={!item.id}
+                    onPress={() => item.id && navigation.navigate('PersonDetails', {
+                      personId: item.id,
+                      name: item.name,
+                      photoUrl: item.photo_url,
+                    })}
+                  >
                     <Image source={{ uri: item.photo_url || FALLBACK_POSTER }} style={styles.personImage} />
                     <View style={styles.personOverlay}>
                       <Text style={styles.personName} numberOfLines={2}>{item.name}</Text>
                     </View>
-                  </View>
+                  </Pressable>
                 )}
               />
             </View>

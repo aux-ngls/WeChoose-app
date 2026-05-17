@@ -522,15 +522,23 @@ export default function MovieDetailsScreen({
                 <FlatList
                   horizontal
                   data={movie.cast}
-                  keyExtractor={(item) => `${item.name}-${item.character}`}
+                  keyExtractor={(item) => `${item.id ?? item.name}-${item.character}`}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.castList}
                   renderItem={({ item }) => (
-                    <View style={styles.castCard}>
+                    <Pressable
+                      style={styles.castCard}
+                      disabled={!item.id}
+                      onPress={() => item.id && navigation.navigate('PersonDetails', {
+                        personId: item.id,
+                        name: item.name,
+                        photoUrl: item.photo,
+                      })}
+                    >
                       <Image source={{ uri: item.photo || FALLBACK_POSTER }} style={styles.castPhoto} />
                       <Text style={[styles.castName, { color: theme.colors.text }]} numberOfLines={2}>{item.name}</Text>
                       <Text style={[styles.castCharacter, { color: theme.colors.textMuted }]} numberOfLines={2}>{item.character}</Text>
-                    </View>
+                    </Pressable>
                   )}
                 />
               </View>

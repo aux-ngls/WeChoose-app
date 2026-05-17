@@ -1481,7 +1481,15 @@ def get_tmdb_details(movie_id):
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR&append_to_response=videos,credits"
         data = requests.get(url, timeout=3).json()
         trailer = next((f"https://www.youtube.com/embed/{v['key']}" for v in data.get('videos', {}).get('results', []) if v['site']=='YouTube' and v['type']=='Trailer'), None)
-        cast = [{"name": a['name'], "character": a['character'], "photo": f"https://image.tmdb.org/t/p/w200{a['profile_path']}" if a.get('profile_path') else None} for a in data.get('credits', {}).get('cast', [])[:5]]
+        cast = [
+            {
+                "id": int(a["id"]) if isinstance(a.get("id"), int) else None,
+                "name": a["name"],
+                "character": a["character"],
+                "photo": f"https://image.tmdb.org/t/p/w200{a['profile_path']}" if a.get('profile_path') else None,
+            }
+            for a in data.get('credits', {}).get('cast', [])[:8]
+        ]
         directors = [
             crew_member.get("name")
             for crew_member in data.get("credits", {}).get("crew", [])
@@ -1509,6 +1517,70 @@ def get_tmdb_details(movie_id):
             "watch_providers": watch_providers,
         }
     except: return None
+
+
+@lru_cache(maxsize=512)
+def get_tmdb_person_details(person_id: int) -> Optional[dict]:
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/person/{person_id}",
+            params={
+                "api_key": TMDB_API_KEY,
+                "language": "fr-FR",
+                "append_to_response": "movie_credits",
+            },
+            timeout=3,
+        )
+        data = response.json()
+    except Exception:
+        return None
+
+    if not isinstance(data, dict) or not isinstance(data.get("id"), int):
+        return None
+
+    known_movies: list[dict] = []
+    seen_movie_ids: set[int] = set()
+    credits = data.get("movie_credits") if isinstance(data.get("movie_credits"), dict) else {}
+    credit_items = list(credits.get("cast") or []) + list(credits.get("crew") or [])
+    credit_items.sort(
+        key=lambda movie: (
+            float(movie.get("vote_count") or 0.0),
+            float(movie.get("popularity") or 0.0),
+            float(movie.get("vote_average") or 0.0),
+        ),
+        reverse=True,
+    )
+
+    for movie in credit_items:
+        normalized_movie = normalize_tmdb_movie(movie if isinstance(movie, dict) else {})
+        if not normalized_movie:
+            continue
+        movie_id = int(normalized_movie["id"])
+        if movie_id in seen_movie_ids:
+            continue
+        seen_movie_ids.add(movie_id)
+        normalized_movie["release_date"] = str(movie.get("release_date") or "")[:4]
+        normalized_movie["character"] = normalize_preference_label(str(movie.get("character") or ""))
+        normalized_movie["job"] = normalize_preference_label(str(movie.get("job") or ""))
+        known_movies.append(normalized_movie)
+        if len(known_movies) >= 18:
+            break
+
+    return {
+        "id": int(data["id"]),
+        "name": normalize_preference_label(str(data.get("name") or "")),
+        "biography": str(data.get("biography") or "").strip(),
+        "birthday": str(data.get("birthday") or "").strip() or None,
+        "deathday": str(data.get("deathday") or "").strip() or None,
+        "place_of_birth": str(data.get("place_of_birth") or "").strip() or None,
+        "known_for_department": normalize_preference_label(str(data.get("known_for_department") or "")) or None,
+        "photo_url": (
+            f"https://image.tmdb.org/t/p/w500{data.get('profile_path')}"
+            if data.get("profile_path")
+            else None
+        ),
+        "known_for_movies": known_movies,
+    }
 
 # --- Helpers Playlists ---
 def get_or_create_watch_later_id(cursor, user_id):
@@ -5582,6 +5654,14 @@ def search_soundtracks_endpoint(query: str):
 @app.get("/movie/{id}")
 def movie_detail(id: int):
     return get_tmdb_details(id)
+
+
+@app.get("/person/{person_id}")
+def person_detail(person_id: int, current_user: dict = Depends(get_current_user)):
+    person = get_tmdb_person_details(int(person_id))
+    if not person:
+        raise HTTPException(status_code=404, detail="Personne introuvable.")
+    return person
 
 @app.get("/movies/news")
 def news():

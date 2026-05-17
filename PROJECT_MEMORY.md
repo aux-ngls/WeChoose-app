@@ -33,6 +33,7 @@ The mobile app currently includes:
 - pull-to-refresh on dynamic mobile screens such as search, social, messages, playlists, and profiles;
 - profile page with profile picture, description, favorite identity content, playlists, and user reviews;
 - movie detail sheet used consistently when opening a movie;
+- actor/person detail pages linked from movie casts and profile key people;
 - full-screen stack screens such as movie details, playlists, profiles, settings, review creation, and conversations should feel native on iPhone, with return by left-edge swipe;
 - ratings with half-star precision;
 - ratings are meant to represent one personal movie rating across Tinder, movie details, and reviews;

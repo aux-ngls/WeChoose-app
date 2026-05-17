@@ -9,6 +9,7 @@ import ConversationScreen from '../screens/ConversationScreen';
 import CreateReviewScreen from '../screens/CreateReviewScreen';
 import MovieDetailsScreen from '../screens/MovieDetailsScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import PersonDetailsScreen from '../screens/PersonDetailsScreen';
 import PlaylistDetailsScreen from '../screens/PlaylistDetailsScreen';
 import ShareMovieScreen from '../screens/ShareMovieScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -98,6 +99,7 @@ export default function AppNavigator() {
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} options={{ animation: 'fade', animationDuration: 180 }} />
             <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={edgeSwipeScreenOptions} />
+            <Stack.Screen name="PersonDetails" component={PersonDetailsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="ShareMovie" component={ShareMovieScreen} options={sheetOptions} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={edgeSwipeScreenOptions} />

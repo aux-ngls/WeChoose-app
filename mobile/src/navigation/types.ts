@@ -14,6 +14,7 @@ export type RootStackParamList = {
   Tutorial: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   MovieDetails: { movieId: number; title?: string; source?: 'tinder' | 'default' };
+  PersonDetails: { personId: number; name?: string; photoUrl?: string | null };
   PlaylistDetails: { playlistId: number; name?: string };
   ShareMovie: {
     movieId: number;

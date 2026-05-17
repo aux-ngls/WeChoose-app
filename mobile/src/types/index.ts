@@ -196,6 +196,7 @@ export interface MovieWatchProviders {
 }
 
 export interface MovieCastMember {
+  id: number | null;
   name: string;
   character: string;
   photo: string | null;
@@ -219,6 +220,24 @@ export interface MovieDetails {
 
 export interface UserMovieRating {
   rating: number | null;
+}
+
+export interface PersonKnownMovie extends SearchMovie {
+  release_date?: string;
+  character?: string;
+  job?: string;
+}
+
+export interface PersonDetails {
+  id: number;
+  name: string;
+  biography: string;
+  birthday: string | null;
+  deathday: string | null;
+  place_of_birth: string | null;
+  known_for_department: string | null;
+  photo_url: string | null;
+  known_for_movies: PersonKnownMovie[];
 }
 
 export interface TestAiOverview {

@@ -53,6 +53,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - changed Tinder pass filtering from a permanent block to a 14-day cooldown plus mild score penalty, allowing strong older passed films to reappear later.
 - prevented Tinder left-swipe on already rated movies from adding a negative recommendation signal; it now only advances to the next card.
 - removed already rated movies from the mobile Tinder stack/cache and added a final backend recommendation guard against rated cards.
+- added mobile actor/person detail pages with biography, profile photo, key metadata, known movies, and links from movie casts plus profile key people.
 
 ## Important Recent Commits
 

@@ -7,6 +7,7 @@ import type {
   DirectMessage,
   MovieDetails,
   OnboardingPreferencesResponse,
+  PersonDetails,
   PlaylistSummary,
   ProfilePreferencesPayload,
   ProfileShowcasePerson,
@@ -193,6 +194,10 @@ export async function recordRecommendationImpression(token: string, movie: Searc
 
 export async function fetchMovieDetails(token: string, movieId: number): Promise<MovieDetails> {
   return request<MovieDetails>(`/movie/${movieId}`, undefined, token);
+}
+
+export async function fetchPersonDetails(token: string, personId: number): Promise<PersonDetails> {
+  return request<PersonDetails>(`/person/${personId}`, undefined, token);
 }
 
 export async function fetchUserMovieRating(token: string, movieId: number): Promise<UserMovieRating> {
