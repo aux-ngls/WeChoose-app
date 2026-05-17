@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
@@ -158,11 +158,6 @@ export default function SocialScreen() {
     return () => subscription.remove();
   }, [loadFeed, loadNotifications]);
 
-  const stats = useMemo(() => ({
-    reviews: reviews.length,
-    liked: reviews.filter((review) => review.liked_by_me).length,
-  }), [reviews]);
-
   const toggleReview = useCallback(async (reviewId: number) => {
     if (!session) {
       return;
@@ -316,11 +311,6 @@ export default function SocialScreen() {
         icon="people"
         accent="violet"
         title="Social"
-        trailing={
-          <View style={[styles.statsBadge, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-            <Text style={[styles.statsBadgeLabel, { color: theme.colors.text }]}>{unreadNotifications || stats.reviews}</Text>
-          </View>
-        }
       />
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
@@ -357,17 +347,6 @@ export default function SocialScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.colors.accentText} />
       </Pressable>
-
-      <View style={styles.summaryRow}>
-        <View style={[styles.summaryCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-          <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{stats.reviews}</Text>
-          <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>critiques</Text>
-        </View>
-        <View style={[styles.summaryCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-          <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{stats.liked}</Text>
-          <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>likées</Text>
-        </View>
-      </View>
 
       {loading && reviews.length === 0 ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text> : null}
 
@@ -490,22 +469,6 @@ export default function SocialScreen() {
 }
 
 const styles = StyleSheet.create({
-  statsBadge: {
-    minWidth: 36,
-    height: 36,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  statsBadgeLabel: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800',
-  },
   notificationsCard: {
     gap: 10,
     borderRadius: 22,
@@ -571,31 +534,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '700',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  summaryCard: {
-    flex: 1,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    padding: 16,
-  },
-  summaryValue: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  summaryLabel: {
-    marginTop: 6,
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   helperText: {
     color: '#94a3b8',

@@ -37,7 +37,7 @@ except Exception:
 # --- CONFIGURATION SÉCURITÉ ---
 SECRET_KEY = "votre_super_cle_secrete_a_changer_en_prod"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 heures
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 180 # 180 jours, adapté à une app mobile
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -3287,6 +3287,10 @@ def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_cu
         (current_user["id"], movie_id, rounded_rating, title, poster),
     )
     cursor.execute(
+        "UPDATE reviews SET rating = ? WHERE user_id = ? AND movie_id = ?",
+        (rounded_rating, current_user["id"], movie_id),
+    )
+    cursor.execute(
         "DELETE FROM playlist_items WHERE playlist_id = ? AND movie_id = ?",
         (watch_later_id, movie_id),
     )
@@ -4763,8 +4767,9 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     review_title = review.title.strip()
     review_content = review.content.strip()
     poster_url = review.poster_url.strip()
+    review_rating = round(float(review.rating) * 2) / 2
 
-    if review.rating < 0.5 or review.rating > 5:
+    if review_rating < 0.5 or review_rating > 5:
         raise HTTPException(status_code=400, detail="La note doit être comprise entre 0,5 et 5")
     if len(review_title) < 1:
         raise HTTPException(status_code=400, detail="Le titre du film est requis")
@@ -4785,7 +4790,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
             review.movie_id,
             review_title,
             poster_url,
-            review.rating,
+            review_rating,
             review_content,
         ),
     )
@@ -4798,7 +4803,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         (
             current_user["id"],
             review.movie_id,
-            review.rating,
+            review_rating,
             review_title,
             poster_url,
         ),
@@ -4848,8 +4853,9 @@ def update_review(
     current_user: dict = Depends(get_current_user),
 ):
     review_content = payload.content.strip()
+    review_rating = round(float(payload.rating) * 2) / 2
 
-    if payload.rating < 0.5 or payload.rating > 5:
+    if review_rating < 0.5 or review_rating > 5:
         raise HTTPException(status_code=400, detail="La note doit être comprise entre 0,5 et 5")
     if len(review_content) < 1:
         raise HTTPException(status_code=400, detail="La critique ne peut pas être vide")
@@ -4876,7 +4882,7 @@ def update_review(
         SET rating = ?, content = ?
         WHERE id = ? AND user_id = ?
         """,
-        (payload.rating, review_content, review_id, current_user["id"]),
+        (review_rating, review_content, review_id, current_user["id"]),
     )
     cursor.execute(
         """
@@ -4886,7 +4892,7 @@ def update_review(
         (
             current_user["id"],
             review_row["movie_id"],
-            payload.rating,
+            review_rating,
             review_row["title"],
             review_row["poster_url"],
         ),

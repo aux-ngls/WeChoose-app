@@ -30,6 +30,7 @@ import {
   fetchPlaylists,
   fetchUserMovieRating,
   rateMovie,
+  removeMovieRating,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
@@ -272,25 +273,31 @@ export default function MovieDetailsScreen({
       return;
     }
 
+    const previousRating = userRating;
+    const nextRating = previousRating === value ? 0 : value;
     setActionLoading(true);
-    setUserRating(value);
+    setUserRating(nextRating);
     try {
-      await rateMovie(session.token, movie.id, value);
-      if (route.params.source === 'tinder') {
+      if (nextRating === 0) {
+        await removeMovieRating(session.token, movie.id);
+      } else {
+        await rateMovie(session.token, movie.id, nextRating);
+      }
+      if (route.params.source === 'tinder' && nextRating > 0) {
         DeviceEventEmitter.emit(TINDER_MOVIE_ACTION_EVENT, {
           type: 'rated',
           movieId: movie.id,
-          rating: value,
+          rating: nextRating,
         });
       }
-      setFeedback(`Note enregistree : ${value.toFixed(1)} / 5.`);
+      setFeedback(nextRating === 0 ? 'Note supprimée.' : `Note enregistrée : ${nextRating.toFixed(1)} / 5.`);
       setError('');
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 401) {
         await signOut();
         return;
       }
-      setUserRating(0);
+      setUserRating(previousRating);
       setError("Impossible d'enregistrer la note.");
     } finally {
       setActionLoading(false);

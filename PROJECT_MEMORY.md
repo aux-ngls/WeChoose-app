@@ -1,6 +1,6 @@
 # Qulte - Project Memory
 
-Last updated: 2026-05-06
+Last updated: 2026-05-17
 Current branch: main
 Current stable commit: be9c7a9
 
@@ -35,6 +35,7 @@ The mobile app currently includes:
 - movie detail sheet used consistently when opening a movie;
 - full-screen stack screens such as movie details, playlists, profiles, settings, review creation, and conversations should feel native on iPhone, with return by left-edge swipe;
 - ratings with half-star precision;
+- ratings are meant to represent one personal movie rating across Tinder, movie details, and reviews;
 - playlists, custom playlist creation, adding movies to playlists, and removing movies;
 - social feed with expandable reviews and comments;
 - private messages with movie sharing;
@@ -75,6 +76,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Tinder should feel instant, with movies preloaded and no visible waiting.
 - Conversations should feel like a normal messaging app: fluid send, latest messages visible, clean day separators.
 - User-facing French copy in the mobile app should be fully accented, clean, and natural rather than ASCII-only.
+- Mobile sessions should feel persistent; backend access tokens are long-lived for app usage rather than daily login.
 
 ## Known Sensitive Areas
 
@@ -85,6 +87,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Keyboard handling in messages and review creation.
 - Account deletion, block/report flows, and support/privacy URLs for App Review.
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
+- Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
 - Onboarding signals: movies chosen during onboarding should guide recommendations but should not be proposed back to the user.
 - First-run copy should clearly explain the product loop: choose taste signals, swipe/rate films, Qulte adapts, then users can organize, review, follow and message.
 - The first onboarding screen should explain the core concept before asking for favorite films: Tinder-like movie cards, swipe/pass/watch-later behavior, star ratings as strong signals, AI adaptation, and social discovery.

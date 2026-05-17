@@ -1,6 +1,6 @@
 # Qulte - Releases And Stable Points
 
-Last updated: 2026-05-06
+Last updated: 2026-05-17
 
 ## Maintenance Rule
 
@@ -43,6 +43,10 @@ These changes should be recorded as part of the next stable checkpoint:
 - fixed the mobile conversation composer so it stays above the iOS keyboard after the global bottom safe-area strip removal.
 - relaxed mobile review creation/editing to allow 0.5-star reviews and short non-empty text, aligned with the backend.
 - changed mobile review creation from a vertical sheet to a full-screen horizontal stack screen to avoid accidental down-swipe dismissal and the black top seam.
+- extended backend access-token lifetime from 24 hours to 180 days to reduce repeated mobile logins.
+- removed the visible Social stats cards/header badge above the review feed.
+- unified rating writes so Tinder/movie-detail ratings update the user's existing review rating for that movie, while review creation/editing continues to update the user's movie rating.
+- allowed users to clear a movie rating from the movie detail screen by tapping the currently selected star value again.
 
 ## Important Recent Commits
 
