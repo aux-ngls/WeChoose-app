@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Reliure",
+    "slug": "reliure-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "reliure",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09090b"
+    },
+    "ios": {
+      "icon": "./assets/icon.png",
+      "supportsTablet": false,
+      "bundleIdentifier": "dev.dury.reliure"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#09090b"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "dev.dury.reliure"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e4c3cef8-be8d-4183-86ba-2baa7ba5fddb"
+      }
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Reliure utilise ta galerie pour choisir ta photo de profil."
+        }
+      ]
+    ]
+  }
+}

@@ -1,6 +1,0 @@
-node_modules/
-.expo/
-dist/
-dist-verify/
-*.log
-*.tar.gz

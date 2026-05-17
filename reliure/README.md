@@ -1,104 +1,42 @@
 # Reliure
 
-Reliure est une application mobile Expo independante inspiree de Qulte, adaptee aux livres.
+Reliure est le fork livres de Qulte. Contrairement au premier prototype, cette version reprend la structure de Qulte autant que possible:
 
-## Fonctionnalites
+- `mobile/`: app Expo/React Native derivee de `mobile/`.
+- `backend/`: API FastAPI derivee de `backend/`.
 
-- Onboarding initial avec pseudo, genres favoris et premiers livres.
-- Decouverte de livres avec une pile de cartes swipeable.
-- Ajout aux etageres: a lire, en cours, lus, favoris.
-- Notes locales avec profil de gouts.
-- Recherche Open Library sans cle API.
-- Stockage local avec AsyncStorage.
-- Compatible Expo Go, Android export et web Expo.
+## Lancement mobile
 
-## Lancer l'application
+Terminal 1:
 
 ```bash
-npm install
-npm start -- --port 8082
-```
-
-Expo affiche ensuite un QR code a scanner avec Expo Go.
-
-Pour lancer dans un navigateur via Expo:
-
-```bash
-npm run web
-```
-
-## Workflow de mise a jour
-
-Le plus simple:
-
-```bash
-cd ~/reliure
+cd ~/Qulte/reliure/mobile
 npm run dev:auto
 ```
 
-`dev:auto` essaie le tunnel Expo. Si ngrok plante, il relance automatiquement en LAN.
+`dev:auto` tente le tunnel Expo puis bascule automatiquement en LAN si ngrok echoue.
 
-Tu peux aussi double-cliquer sur:
-
-```bash
-Lancer Reliure.command
-```
-
-Pour installer ou remettre les dependances:
+Terminal 2, pour recuperer les mises a jour:
 
 ```bash
-cd ~/reliure
-npm run install:update
-```
-
-ou double-cliquer sur:
-
-```bash
-Mettre a jour Reliure.command
-```
-
-Si tu veux garder le fonctionnement a deux terminaux:
-
-Terminal 1, tu laisses Expo tourner:
-
-```bash
-cd ~/reliure
-npm run dev:auto
-```
-
-Si le tunnel ngrok tombe ou affiche une erreur, utilise le mode LAN:
-
-```bash
-cd ~/reliure
-npm run dev:lan
-```
-
-Si le tunnel garde un mauvais cache:
-
-```bash
-cd ~/reliure
-npm run dev:tunnel:clear
-```
-
-Terminal 2, tu appliques les mises a jour:
-
-```bash
-cd ~/reliure
+cd ~/Qulte/reliure/mobile
 npm run update
 ```
 
-`npm run update` fait automatiquement:
-
-- `git pull --ff-only` si le dossier Reliure est un repo Git.
-- `npm install`
-- `npm run typecheck`
-
-Si Reliure vient d'une archive `.tar.gz`, remplace d'abord le dossier par la nouvelle archive, puis lance `npm run update`.
-
-## Generer une archive de mise a jour
+## Backend local
 
 ```bash
-npm run release
+cd ~/Qulte/reliure
+npm run backend
 ```
 
-La commande cree une archive versionnee et une copie `reliure-mobile-latest.tar.gz` dans le dossier parent.
+Puis lance le mobile avec:
+
+```bash
+cd ~/Qulte/reliure/mobile
+EXPO_PUBLIC_API_URL=http://ADRESSE_IP_DU_MAC:8092 npm run dev:auto
+```
+
+## Etat de migration
+
+Cette base est volontairement un fork structurel de Qulte. La prochaine etape consiste a remplacer les donnees et endpoints cinema par le domaine livre en gardant les memes contrats autant que possible.
