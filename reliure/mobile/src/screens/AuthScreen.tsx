@@ -112,7 +112,7 @@ export default function AuthScreen() {
           <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
             {mode === 'login'
               ? 'Recos, playlists, messages.'
-              : 'Crée ton univers ciné.'}
+              : 'Crée ton univers lecture.'}
           </Text>
         </View>
       </View>

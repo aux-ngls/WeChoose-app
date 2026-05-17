@@ -24,7 +24,7 @@ const PRINCIPLES: Array<{
   },
   {
     icon: 'people-outline',
-    title: 'Le cinéma devient social',
+    title: 'La lecture devient sociale',
     text: 'Critiques, profils et messages te permettent de découvrir aussi par les autres.',
   },
 ];
@@ -40,9 +40,9 @@ const STEPS: Array<{
     text: 'Le cœur de Reliure : une recommandation arrive, tu la notes, tu la passes ou tu la gardes pour plus tard.',
   },
   {
-    icon: 'film-outline',
-    title: 'Fiche film',
-    text: 'Bande-annonce, casting, plateformes, playlists et partage : tout part de la même fiche.',
+    icon: 'book-outline',
+    title: 'Fiche livre',
+    text: 'Résumé, auteur, note, playlists et partage : tout part de la même fiche.',
   },
   {
     icon: 'people-outline',
@@ -52,12 +52,12 @@ const STEPS: Array<{
   {
     icon: 'chatbubble-ellipses-outline',
     title: 'Messages',
-    text: 'Discute en privé et partage directement un film quand tu veux convaincre quelqu’un de le voir.',
+    text: 'Discute en privé et partage directement un livre quand tu veux convaincre quelqu’un de le lire.',
   },
   {
     icon: 'person-circle-outline',
     title: 'Profil',
-    text: 'Retrouve tes playlists, tes critiques et les films ou artistes qui définissent ton univers cinéma.',
+    text: 'Retrouve tes playlists, tes critiques et les livres ou auteurs qui définissent ton univers lecture.',
   },
 ];
 

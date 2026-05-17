@@ -18,7 +18,7 @@ import type { BlockedUser } from '../types';
 
 const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { value: 'system', label: 'Automatique', detail: 'Suit le réglage de ton iPhone.', icon: 'phone-portrait-outline' },
-  { value: 'dark', label: 'Sombre', detail: "Garde l'ambiance cinéma nocturne.", icon: 'moon-outline' },
+  { value: 'dark', label: 'Sombre', detail: "Garde l'ambiance lecture nocturne.", icon: 'moon-outline' },
   { value: 'light', label: 'Clair', detail: 'Base claire pour la future interface.', icon: 'sunny-outline' },
 ];
 

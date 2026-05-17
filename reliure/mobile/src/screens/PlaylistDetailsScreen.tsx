@@ -167,7 +167,7 @@ export default function PlaylistDetailsScreen({
         await signOut();
         return;
       }
-      setError('Impossible de retirer ce film.');
+      setError('Impossible de retirer ce livre.');
     }
   };
 
@@ -217,7 +217,7 @@ export default function PlaylistDetailsScreen({
         </Pressable>
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>{route.params.name ?? 'Playlist'}</Text>
-          <Text style={[styles.headerMeta, { color: theme.colors.textMuted }]}>{movies.length} film(s)</Text>
+          <Text style={[styles.headerMeta, { color: theme.colors.textMuted }]}>{movies.length} livre(s)</Text>
         </View>
         <View style={styles.iconSpacer} />
       </View>
@@ -235,7 +235,7 @@ export default function PlaylistDetailsScreen({
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={styles.headerContent}>
-            <SearchField value={query} onChangeText={setQuery} placeholder="Filtrer les films" />
+            <SearchField value={query} onChangeText={setQuery} placeholder="Filtrer les livres" />
             <View style={styles.filtersRow}>
               {SORT_OPTIONS.map((option) => (
                 <Pressable
@@ -321,7 +321,7 @@ export default function PlaylistDetailsScreen({
         )}
         ListEmptyComponent={
           !loading ? (
-            <EmptyStateCard title="Aucun film" />
+            <EmptyStateCard title="Aucun livre" />
           ) : null
         }
       />

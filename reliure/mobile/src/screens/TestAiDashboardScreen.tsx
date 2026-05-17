@@ -73,7 +73,7 @@ function ModeRow({ metric }: { metric: TestAiModeMetric }) {
       <View style={styles.modeRowMain}>
         <Text style={[styles.modeTitle, { color: theme.colors.text }]}>{formatMode(metric.mode)}</Text>
         <Text style={[styles.modeDetail, { color: theme.colors.textMuted }]}>
-          {metric.shown_count} films montrés, {metric.response_count} retours
+          {metric.shown_count} livres montrés, {metric.response_count} retours
         </Text>
       </View>
       <View style={styles.modeStats}>
@@ -181,14 +181,14 @@ export default function TestAiDashboardScreen() {
         <>
           <View style={styles.metricsGrid}>
             <MetricTile
-              label="Films montrés"
+              label="Livres montrés"
               value={String(payload.overview.shown_count)}
               detail={`${payload.overview.response_count} retours réels`}
             />
             <MetricTile
               label="Taux de retour"
               value={formatPercent(payload.overview.response_rate)}
-              detail="Films qui ont provoqué une action"
+              detail="Livres qui ont provoqué une action"
             />
             <MetricTile
               label="Taux positif"
@@ -198,7 +198,7 @@ export default function TestAiDashboardScreen() {
             <MetricTile
               label="Note moyenne"
               value={formatAverageRating(payload.overview.average_rating)}
-              detail="Sur les films notés après reco"
+              detail="Sur les livres notés après reco"
             />
           </View>
 
@@ -218,7 +218,7 @@ export default function TestAiDashboardScreen() {
           </View>
 
           <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Films qui marchent le mieux</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Livres qui marchent le mieux</Text>
             <View style={styles.stackList}>
               {payload.top_movies.length > 0 ? (
                 payload.top_movies.map((movie, index) => (
@@ -245,7 +245,7 @@ export default function TestAiDashboardScreen() {
                 ))
               ) : (
                 <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-                  Les meilleurs films apparaîtront ici après quelques notes ou ajouts en playlist.
+                  Les meilleurs livres apparaîtront ici après quelques notes ou ajouts en playlist.
                 </Text>
               )}
             </View>
@@ -288,7 +288,7 @@ export default function TestAiDashboardScreen() {
                 ))
               ) : (
                 <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-                  Quand une reco basée sur un film-source fonctionne bien, elle remontera ici.
+                  Quand une reco basée sur un livre-source fonctionne bien, elle remontera ici.
                 </Text>
               )}
             </View>

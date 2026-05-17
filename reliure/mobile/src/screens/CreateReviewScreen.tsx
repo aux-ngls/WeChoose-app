@@ -34,7 +34,7 @@ export default function CreateReviewScreen({
   const initialMovie = route.params?.movieId
     ? {
         id: route.params.movieId,
-        title: route.params.title ?? 'Film',
+        title: route.params.title ?? 'Livre',
         poster_url: route.params.posterUrl ?? '',
         rating: route.params.rating ?? 0,
       }
@@ -72,7 +72,7 @@ export default function CreateReviewScreen({
             await signOut();
             return;
           }
-          setError('Impossible de rechercher ce film.');
+          setError('Impossible de rechercher ce livre.');
         } finally {
           setLoading(false);
         }
@@ -101,7 +101,7 @@ export default function CreateReviewScreen({
 
     const trimmedContent = reviewContent.trim();
     if (!selectedMovie) {
-      setError('Choisis un film avant de publier ta critique.');
+      setError('Choisis un livre avant de publier ta critique.');
       return;
     }
     if (trimmedContent.length < 1) {
@@ -171,14 +171,14 @@ export default function CreateReviewScreen({
 
       <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.rowBetween}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Film</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Livre</Text>
           {resultsLabel ? <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>{resultsLabel}</Text> : null}
         </View>
         {!isEditMode ? (
           <SearchField
             value={query}
             onChangeText={setQuery}
-            placeholder={selectedMovie ? 'Choisir un autre film' : 'Chercher un film'}
+            placeholder={selectedMovie ? 'Choisir un autre livre' : 'Chercher un livre'}
           />
         ) : null}
 
@@ -235,7 +235,7 @@ export default function CreateReviewScreen({
             ))}
           </View>
         ) : !loading && !selectedMovie && query.trim().length >= 2 ? (
-          <EmptyStateCard title="Aucun film" />
+          <EmptyStateCard title="Aucun livre" />
         ) : null}
       </View>
 

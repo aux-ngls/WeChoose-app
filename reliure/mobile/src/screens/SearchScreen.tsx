@@ -76,7 +76,7 @@ export default function SearchScreen() {
         await signOut();
         return;
       }
-      setError(mode === 'movies' ? 'Impossible de rechercher ce film.' : 'Impossible de rechercher cet utilisateur.');
+      setError(mode === 'movies' ? 'Impossible de rechercher ce livre.' : 'Impossible de rechercher cet utilisateur.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -146,7 +146,7 @@ export default function SearchScreen() {
             />
             <View style={[styles.modeSwitcher, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
               {[
-                ['movies', 'Films', 'film-outline'],
+                ['movies', 'Livres', 'book-outline'],
                 ['users', 'Utilisateurs', 'people-outline'],
               ].map(([mode, label, icon]) => {
                 const isActive = searchMode === mode;
@@ -169,7 +169,7 @@ export default function SearchScreen() {
             <SearchField
               value={query}
               onChangeText={setQuery}
-              placeholder={searchMode === 'movies' ? 'Chercher un film' : 'Chercher un utilisateur'}
+              placeholder={searchMode === 'movies' ? 'Chercher un livre' : 'Chercher un utilisateur'}
               icon={searchMode === 'movies' ? 'search' : 'person-outline'}
             />
             {error ? <InlineBanner message={error} tone="error" /> : null}
@@ -222,9 +222,9 @@ export default function SearchScreen() {
         ListEmptyComponent={
           !loading ? (
             query.trim().length >= 2 ? (
-              <EmptyStateCard title={searchMode === 'movies' ? 'Aucun film' : 'Aucun profil'} />
+              <EmptyStateCard title={searchMode === 'movies' ? 'Aucun livre' : 'Aucun profil'} />
             ) : (
-              <EmptyStateCard title="Cherche un film ou un profil" />
+              <EmptyStateCard title="Cherche un livre ou un profil" />
             )
           ) : null
         }

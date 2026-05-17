@@ -63,7 +63,7 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ApiError('Le serveur met trop de temps a repondre.', 408);
     }
-    throw new ApiError("Impossible de joindre le serveur Reliure. Lance l'application avec npm start depuis reliure/mobile.", 0);
+    throw new ApiError("Impossible de joindre le serveur Reliure. Vérifie ta connexion puis relance l'application.", 0);
   } finally {
     clearTimeout(timeout);
   }
@@ -168,7 +168,7 @@ export async function fetchMovieFeed(
     params.set('exclude_ids', options.excludeIds.join(','));
   }
 
-  return request<SearchMovie[]>(`/movies/feed?${params.toString()}`, undefined, token);
+  return request<SearchMovie[]>(`/books/feed?${params.toString()}`, undefined, token);
 }
 
 export async function recordRecommendationImpression(token: string, movie: SearchMovie, mode = 'tinder'): Promise<void> {
@@ -193,7 +193,7 @@ export async function recordRecommendationImpression(token: string, movie: Searc
 }
 
 export async function fetchMovieDetails(token: string, movieId: number): Promise<MovieDetails> {
-  return request<MovieDetails>(`/movie/${movieId}`, undefined, token);
+  return request<MovieDetails>(`/book/${movieId}`, undefined, token);
 }
 
 export async function fetchPersonDetails(token: string, personId: number): Promise<PersonDetails> {
@@ -201,15 +201,15 @@ export async function fetchPersonDetails(token: string, personId: number): Promi
 }
 
 export async function fetchUserMovieRating(token: string, movieId: number): Promise<UserMovieRating> {
-  return request<UserMovieRating>(`/movies/user-rating/${movieId}`, undefined, token);
+  return request<UserMovieRating>(`/books/user-rating/${movieId}`, undefined, token);
 }
 
 export async function rateMovie(token: string, movieId: number, rating: number): Promise<void> {
-  await request<null>(`/movies/rate/${movieId}/${rating}`, { method: 'POST' }, token);
+  await request<null>(`/books/rate/${movieId}/${rating}`, { method: 'POST' }, token);
 }
 
 export async function removeMovieRating(token: string, movieId: number): Promise<void> {
-  await request<null>(`/movies/rate/${movieId}`, { method: 'DELETE' }, token);
+  await request<null>(`/books/rate/${movieId}`, { method: 'DELETE' }, token);
 }
 
 export interface DislikeMovieResponse {
@@ -217,11 +217,11 @@ export interface DislikeMovieResponse {
 }
 
 export async function dislikeMovie(token: string, movieId: number): Promise<DislikeMovieResponse> {
-  return request<DislikeMovieResponse>(`/movies/dislike/${movieId}`, { method: 'POST' }, token);
+  return request<DislikeMovieResponse>(`/books/dislike/${movieId}`, { method: 'POST' }, token);
 }
 
 export async function undoDislikeMovie(token: string, movieId: number): Promise<void> {
-  await request<null>(`/movies/dislike/${movieId}`, { method: 'DELETE' }, token);
+  await request<null>(`/books/dislike/${movieId}`, { method: 'DELETE' }, token);
 }
 
 export async function addToWatchLater(token: string, movieId: number): Promise<void> {
@@ -233,7 +233,7 @@ export async function addMovieToPlaylist(token: string, playlistId: number, movi
 }
 
 export async function searchMovies(token: string, query: string): Promise<SearchMovie[]> {
-  return request<SearchMovie[]>(`/search?query=${encodeURIComponent(query)}`, undefined, token);
+  return request<SearchMovie[]>(`/books/search?query=${encodeURIComponent(query)}`, undefined, token);
 }
 
 export async function fetchSocialFeed(token: string): Promise<SocialReview[]> {

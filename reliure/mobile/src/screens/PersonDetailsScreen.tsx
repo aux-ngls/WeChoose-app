@@ -100,7 +100,7 @@ export default function PersonDetailsScreen({
           <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
-          {person?.name ?? route.params.name ?? 'Fiche acteur'}
+          {person?.name ?? route.params.name ?? 'Fiche auteur'}
         </Text>
         <View style={styles.iconSpacer} />
       </View>
@@ -139,7 +139,7 @@ export default function PersonDetailsScreen({
 
           {person.known_for_movies.length > 0 ? (
             <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Films marquants</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Livres marquants</Text>
               <View style={styles.moviesGrid}>
                 {person.known_for_movies.slice(0, 12).map((movie) => (
                   <View key={movie.id} style={styles.movieCell}>

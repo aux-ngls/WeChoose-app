@@ -85,7 +85,7 @@ export default function ShareMovieScreen({
         await signOut();
         return;
       }
-      setError("Impossible de partager ce film.");
+      setError("Impossible de partager ce livre.");
     } finally {
       setSharingUserIds((current) => current.filter((id) => id !== user.id));
     }

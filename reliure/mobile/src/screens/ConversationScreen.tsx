@@ -461,7 +461,7 @@ export default function ConversationScreen({
                   >
                     <Image source={{ uri: message.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
                     <View style={styles.sharedMovieBody}>
-                      <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partagé</Text>
+                      <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Livre partagé</Text>
                       <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{message.movie.title}</Text>
                       {message.movie.rating > 0 ? (
                         <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{message.movie.rating.toFixed(1)} / 10</Text>

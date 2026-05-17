@@ -23,18 +23,18 @@ const MAX_FAVORITE_MOVIES = 8;
 const MAX_FAVORITE_PEOPLE = 6;
 
 const GENRES = [
-  'Action',
-  'Aventure',
-  'Animation',
-  'Comédie',
-  'Crime',
-  'Documentaire',
+  'Littérature',
+  'Classiques',
+  'Polar',
   'Drame',
-  'Fantastique',
-  'Horreur',
-  'Mystère',
+  'Fantasy',
+  'Science-fiction',
   'Romance',
-  'Science-Fiction',
+  'Essai',
+  'Biographie',
+  'BD',
+  'Manga',
+  'Poésie',
   'Thriller',
 ];
 
@@ -45,13 +45,13 @@ const APP_PRINCIPLE_STEPS: Array<{
 }> = [
   {
     icon: 'swap-horizontal-outline',
-    title: 'Un Tinder de films',
-    text: 'Un film apparaît, tu décides vite : tu le passes, tu le gardes pour plus tard ou tu ouvres sa fiche.',
+    title: 'Un Tinder de livres',
+    text: 'Un livre apparaît, tu décides vite : tu le passes, tu le gardes pour plus tard ou tu ouvres sa fiche.',
   },
   {
     icon: 'star-half-outline',
     title: 'Les étoiles remplacent les likes',
-    text: 'Quand tu as vu un film, note-le précisément. C’est le signal le plus fort pour comprendre tes goûts.',
+    text: 'Quand tu as lu un livre, note-le précisément. C’est le signal le plus fort pour comprendre tes goûts.',
   },
   {
     icon: 'sparkles-outline',
@@ -158,7 +158,7 @@ export default function OnboardingScreen() {
             await signOut();
             return;
           }
-          setError('Impossible de rechercher ce film.');
+          setError('Impossible de rechercher ce livre.');
         } finally {
           setSearchingMovies(false);
         }
@@ -245,7 +245,7 @@ export default function OnboardingScreen() {
     }
 
     if (movies.length < MIN_FAVORITE_MOVIES) {
-      setError(`Choisis encore ${missingMoviesCount} film${missingMoviesCount > 1 ? 's' : ''} pour lancer une IA correcte.`);
+      setError(`Choisis encore ${missingMoviesCount} livre${missingMoviesCount > 1 ? 's' : ''} pour lancer une IA correcte.`);
       return;
     }
 
@@ -274,7 +274,7 @@ export default function OnboardingScreen() {
     return (
       <AppScreen scroll={false} contentStyle={styles.centered}>
         <ActivityIndicator color={theme.colors.text} />
-        <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Préparation de ton profil cinéma...</Text>
+        <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Préparation de ton profil lecture...</Text>
       </AppScreen>
     );
   }
@@ -284,11 +284,11 @@ export default function OnboardingScreen() {
       <AppScreen contentStyle={styles.introScreen}>
         <View style={[styles.introHero, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
           <View style={[styles.introHeroIcon, { backgroundColor: theme.colors.accent }]}>
-            <Ionicons name="film" size={24} color={theme.colors.accentText} />
+            <Ionicons name="book" size={24} color={theme.colors.accentText} />
           </View>
           <Text style={[styles.introTitle, { color: theme.colors.text }]}>Reliure, c’est quoi ?</Text>
           <Text style={[styles.introText, { color: theme.colors.textSoft }]}>
-            Une app pour trouver quoi regarder, retenir les films qui t’attirent et recevoir des recommandations qui apprennent vraiment de toi.
+            Une app pour trouver quoi lire, retenir les livres qui t’attirent et recevoir des recommandations qui apprennent vraiment de toi.
           </Text>
         </View>
 
@@ -312,7 +312,7 @@ export default function OnboardingScreen() {
         <View style={[styles.introReminder, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <Ionicons name="information-circle-outline" size={18} color={theme.colors.secondaryAccent} />
           <Text style={[styles.introReminderText, { color: theme.colors.textSoft }]}>
-            Sur l’écran suivant, choisis 5 films que tu aimes. Ils servent uniquement à lancer tes premières recommandations.
+            Sur l’écran suivant, choisis 5 livres que tu aimes. Ils servent uniquement à lancer tes premières recommandations.
           </Text>
         </View>
 
@@ -329,14 +329,14 @@ export default function OnboardingScreen() {
       <ScreenHeader
         icon="sparkles"
         accent="pink"
-        title="Construis ton goût cinéma"
+        title="Construis ton goût littéraire"
         subtitle="Ces choix servent à lancer tes premières recommandations."
       />
 
       <View style={styles.progressRow}>
         <View style={[styles.progressPill, { borderColor: movies.length >= MIN_FAVORITE_MOVIES ? theme.colors.success : theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <Text style={[styles.progressValue, { color: theme.colors.text }]}>{movies.length}/{MIN_FAVORITE_MOVIES}</Text>
-          <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>films requis</Text>
+          <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>livres requis</Text>
         </View>
         <View style={[styles.progressPill, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <Text style={[styles.progressValue, { color: theme.colors.text }]}>{people.length}</Text>
@@ -353,7 +353,7 @@ export default function OnboardingScreen() {
       <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Tes 5 films préférés</Text>
+            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Tes 5 livres préférés</Text>
             <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>
               {missingMoviesCount > 0 ? `Encore ${missingMoviesCount} à choisir pour démarrer` : 'Base IA prête'}
             </Text>
@@ -363,7 +363,7 @@ export default function OnboardingScreen() {
           </View>
         </View>
 
-        <SearchField value={movieQuery} onChangeText={setMovieQuery} placeholder="Chercher un film indispensable" />
+        <SearchField value={movieQuery} onChangeText={setMovieQuery} placeholder="Chercher un livre indispensable" />
         {searchingMovies ? <ActivityIndicator color={theme.colors.text} style={{ marginTop: 6 }} /> : null}
 
         {movieResults.length > 0 ? (
@@ -400,20 +400,20 @@ export default function OnboardingScreen() {
             ))}
           </View>
         ) : (
-          <EmptyStateCard title="Ajoute tes films cultes" />
+          <EmptyStateCard title="Ajoute tes livres cultes" />
         )}
       </View>
 
       <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Acteurs et réalisateurs</Text>
+            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>Auteurs et autrices</Text>
             <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>Optionnel : quelques noms suffisent à reconnaître tes univers.</Text>
           </View>
           <Text style={[styles.counterLabel, { color: theme.colors.textMuted }]}>{people.length}/{MAX_FAVORITE_PEOPLE}</Text>
         </View>
 
-        <SearchField value={personQuery} onChangeText={setPersonQuery} placeholder="Chercher une personne" icon="person-outline" />
+        <SearchField value={personQuery} onChangeText={setPersonQuery} placeholder="Chercher un auteur" icon="person-outline" />
         {searchingPeople ? <ActivityIndicator color={theme.colors.text} style={{ marginTop: 6 }} /> : null}
 
         {personResults.length > 0 ? (
@@ -423,7 +423,7 @@ export default function OnboardingScreen() {
                 <Image source={{ uri: person.photo_url || FALLBACK_POSTER }} style={styles.personImage} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.personName, { color: theme.colors.text }]} numberOfLines={1}>{person.name}</Text>
-                  <Text style={[styles.personMeta, { color: theme.colors.textMuted }]}>{person.known_for_department ?? 'Cinéma'}</Text>
+                  <Text style={[styles.personMeta, { color: theme.colors.textMuted }]}>{person.known_for_department ?? 'Auteur'}</Text>
                 </View>
                 <Ionicons name="add" size={18} color={theme.colors.accent} />
               </Pressable>

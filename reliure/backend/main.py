@@ -55,7 +55,7 @@ app = FastAPI(title="Reliure API")
 WATCH_LATER_SYSTEM_ID = -1
 FAVORITES_SYSTEM_ID = -2
 HISTORY_SYSTEM_ID = -3
-WATCH_LATER_NAME = "À regarder plus tard"
+WATCH_LATER_NAME = "À lire plus tard"
 NOW_PLAYING_CACHE_TTL_SECONDS = 300
 NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
@@ -236,7 +236,7 @@ def get_display_movie_title(movie_id: int) -> str:
     if summary and summary.get("title"):
         return str(summary["title"])
 
-    return f"Film #{movie_id}"
+    return f"Livre #{movie_id}"
 
 
 def init_db():
@@ -784,6 +784,40 @@ def search_tmdb_people(query: str) -> tuple[dict, ...]:
         if serialized
     ]
     return tuple(serialized_people)
+
+
+@lru_cache(maxsize=256)
+def search_catalog_authors(query: str) -> tuple[dict, ...]:
+    normalized_query = normalize_preference_label(query).lower()
+    if len(normalized_query) < 2 or movies_df.empty or "author" not in movies_df.columns:
+        return ()
+
+    matches = movies_df[
+        movies_df["author"].astype(str).str.lower().str.contains(normalized_query, regex=False)
+    ]
+
+    authors: list[dict] = []
+    seen_names: set[str] = set()
+    for _, row in matches.iterrows():
+        name = normalize_preference_label(str(row.get("author") or ""))
+        if not name:
+            continue
+        dedupe_key = name.lower()
+        if dedupe_key in seen_names:
+            continue
+        seen_names.add(dedupe_key)
+        authors.append(
+            {
+                "id": None,
+                "name": name,
+                "photo_url": None,
+                "known_for_department": "Auteur",
+            }
+        )
+        if len(authors) >= 8:
+            break
+
+    return tuple(authors)
 
 
 @lru_cache(maxsize=256)
@@ -2278,7 +2312,7 @@ def serialize_comment_row(row: sqlite3.Row) -> dict:
 
 def build_notification_message(row: sqlite3.Row) -> str:
     actor_username = row["actor_username"]
-    review_title = row["review_title"] or "ce film"
+    review_title = row["review_title"] or "ce livre"
     notification_type = row["type"]
 
     if notification_type == "follow":
@@ -3262,7 +3296,7 @@ def get_all_playlists(current_user: dict = Depends(get_current_user)):
     return [
         {
             "id": WATCH_LATER_SYSTEM_ID,
-            "name": "⏰ À regarder plus tard",
+            "name": "À lire plus tard",
             "type": "system",
             "system_key": "watch-later",
             "readonly": False,
@@ -3413,7 +3447,7 @@ def reorder_playlist(
 ):
     ordered_movie_ids = payload.get("movie_ids")
     if not isinstance(ordered_movie_ids, list) or not all(isinstance(movie_id, int) for movie_id in ordered_movie_ids):
-        raise HTTPException(status_code=400, detail="Liste de films invalide")
+        raise HTTPException(status_code=400, detail="Liste de livres invalide")
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -3426,7 +3460,7 @@ def reorder_playlist(
     existing_movie_ids = {int(row[0]) for row in cursor.fetchall()}
     if existing_movie_ids != set(ordered_movie_ids):
         conn.close()
-        raise HTTPException(status_code=400, detail="La liste des films ne correspond pas à la playlist")
+        raise HTTPException(status_code=400, detail="La liste des livres ne correspond pas à la playlist")
 
     for index, movie_id in enumerate(ordered_movie_ids, start=1):
         cursor.execute(
@@ -3521,6 +3555,21 @@ def get_user_movie_rating(movie_id: int, current_user: dict = Depends(get_curren
     row = cursor.fetchone()
     conn.close()
     return {"rating": float(row[0]) if row else None}
+
+
+@app.post("/books/rate/{book_id}/{rating}")
+def rate_book(book_id: int, rating: float, current_user: dict = Depends(get_current_user)):
+    return rate_movie(book_id, rating, current_user)
+
+
+@app.delete("/books/rate/{book_id}")
+def delete_book_rating(book_id: int, current_user: dict = Depends(get_current_user)):
+    return delete_movie_rating(book_id, current_user)
+
+
+@app.get("/books/user-rating/{book_id}")
+def get_user_book_rating(book_id: int, current_user: dict = Depends(get_current_user)):
+    return get_user_movie_rating(book_id, current_user)
 
 # --- 7. RECOMMANDATIONS ---
 def compute_recommendation_feed(
@@ -4223,6 +4272,21 @@ def compute_recommendation_feed(
 
 @app.get("/movies/feed")
 def get_movie_feed(
+    limit: int = 10,
+    exclude_ids: Optional[str] = None,
+    mode: str = "core",
+    current_user: dict = Depends(get_current_user),
+):
+    return compute_recommendation_feed(
+        current_user_id=current_user["id"],
+        limit=limit,
+        exclude_ids=exclude_ids,
+        mode=mode,
+    )
+
+
+@app.get("/books/feed")
+def get_book_feed(
     limit: int = 10,
     exclude_ids: Optional[str] = None,
     mode: str = "core",
@@ -5011,7 +5075,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     if review_rating < 0.5 or review_rating > 5:
         raise HTTPException(status_code=400, detail="La note doit être comprise entre 0,5 et 5")
     if len(review_title) < 1:
-        raise HTTPException(status_code=400, detail="Le titre du film est requis")
+        raise HTTPException(status_code=400, detail="Le titre du livre est requis")
     if len(review_content) < 1:
         raise HTTPException(status_code=400, detail="La critique ne peut pas être vide")
     ensure_clean_ugc_text(review_title)
@@ -5309,7 +5373,7 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
         conn.close()
         raise HTTPException(status_code=404, detail="Critique introuvable")
     review_owner_id = int(review_row["user_id"])
-    review_title = str(review_row["title"] or "ce film")
+    review_title = str(review_row["title"] or "ce livre")
     ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
 
     cursor.execute(
@@ -5718,6 +5782,11 @@ def search(query: str):
     return [{"id": m['id'], "title": m['title'], "poster_url": "https://image.tmdb.org/t/p/w500"+m['poster_path'] if m.get('poster_path') else "", "rating": m['vote_average']} for m in res]
 
 
+@app.get("/books/search")
+def search_books(query: str):
+    return search(query)
+
+
 @app.get("/downloads/mobile")
 def download_mobile_archive():
     if not os.path.exists(MOBILE_ARCHIVE_PATH):
@@ -5731,7 +5800,7 @@ def download_mobile_archive():
 
 @app.get("/search/people")
 def search_people(query: str):
-    return list(search_tmdb_people(query))[:8]
+    return list(search_catalog_authors(query))[:8]
 
 
 @app.get("/search/soundtracks")
@@ -5740,6 +5809,11 @@ def search_soundtracks_endpoint(query: str):
 
 @app.get("/movie/{id}")
 def movie_detail(id: int):
+    return get_tmdb_details(id)
+
+
+@app.get("/book/{id}")
+def book_detail(id: int):
     return get_tmdb_details(id)
 
 
@@ -5799,7 +5873,7 @@ def mobile_trailer_player(video_id: str = Query("", alias="videoId")):
   </head>
   <body>
     <div id="player"></div>
-    <div id="empty">Bande-annonce indisponible.</div>
+    <div id="empty">Aperçu indisponible.</div>
     <script>
       const videoId = {json.dumps(safe_video_id)};
       const playerHost = document.getElementById('player');
@@ -5871,6 +5945,11 @@ def dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user))
     return {"status": "passed"}
 
 
+@app.post("/books/dislike/{book_id}")
+def dislike_book(book_id: int, current_user: dict = Depends(get_current_user)):
+    return dislike_movie(book_id, current_user)
+
+
 @app.delete("/movies/dislike/{movie_id}")
 def undo_dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
@@ -5884,3 +5963,8 @@ def undo_dislike_movie(movie_id: int, current_user: dict = Depends(get_current_u
     conn.commit()
     conn.close()
     return {"status": "removed"}
+
+
+@app.delete("/books/dislike/{book_id}")
+def undo_dislike_book(book_id: int, current_user: dict = Depends(get_current_user)):
+    return undo_dislike_movie(book_id, current_user)

@@ -132,7 +132,7 @@ export default function MovieDetailsScreen({
           return;
         }
         if (active) {
-          setError('Impossible de charger cette fiche film.');
+          setError('Impossible de charger cette fiche livre.');
         }
       } finally {
         if (active) {
@@ -152,7 +152,7 @@ export default function MovieDetailsScreen({
     }
     const parts = [
       movie.release_date,
-      movie.runtime ? `${movie.runtime} min` : '',
+      movie.runtime ? `${movie.runtime} pages` : '',
       movie.rating ? `${movie.rating.toFixed(1)} / 10` : '',
     ]
       .map((part) => part.trim())
@@ -182,14 +182,14 @@ export default function MovieDetailsScreen({
           movieId: movie.id,
         });
       }
-      setFeedback('Ajouté à regarder plus tard.');
+      setFeedback('Ajouté à ta pile à lire.');
       setError('');
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 401) {
         await signOut();
         return;
       }
-      setError("Impossible d'ajouter ce film à ta liste.");
+      setError("Impossible d'ajouter ce livre à ta liste.");
     } finally {
       setActionLoading(false);
     }
@@ -239,7 +239,7 @@ export default function MovieDetailsScreen({
         await signOut();
         return;
       }
-      setError("Impossible d'ajouter ce film à cette playlist.");
+      setError("Impossible d'ajouter ce livre à cette playlist.");
     } finally {
       setActionLoading(false);
     }
@@ -313,7 +313,7 @@ export default function MovieDetailsScreen({
 
   const openTrailer = () => {
     if (!trailerPlayerUrl) {
-      setError('Bande-annonce indisponible dans l application.');
+      setError("Aperçu indisponible dans l'application.");
       return;
     }
 
@@ -377,7 +377,7 @@ export default function MovieDetailsScreen({
             <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
-            {movie?.title ?? route.params.title ?? 'Fiche film'}
+            {movie?.title ?? route.params.title ?? 'Fiche livre'}
           </Text>
           <View style={styles.iconSpacer} />
         </View>
@@ -419,7 +419,7 @@ export default function MovieDetailsScreen({
                   <View style={[styles.movieActionIcon, styles.movieActionIconPrimary]}>
                     <Ionicons name="time-outline" size={21} color={theme.colors.accentText} />
                   </View>
-                  <Text style={[styles.movieActionLabel, styles.movieActionLabelPrimary, { color: theme.colors.accentText }]} numberOfLines={1}>Plus tard</Text>
+                  <Text style={[styles.movieActionLabel, styles.movieActionLabelPrimary, { color: theme.colors.accentText }]} numberOfLines={1}>À lire</Text>
                 </Pressable>
                 <Pressable style={[styles.movieActionButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]} onPress={() => void openPlaylistPicker()}>
                   <View style={[styles.movieActionIcon, { backgroundColor: theme.rgba.card }]}>
@@ -432,7 +432,7 @@ export default function MovieDetailsScreen({
                     <View style={[styles.movieActionIcon, { backgroundColor: theme.rgba.card }]}>
                       <Ionicons name="play-circle-outline" size={22} color={theme.colors.text} />
                     </View>
-                    <Text style={[styles.movieActionLabel, { color: theme.colors.text }]} numberOfLines={1}>Trailer</Text>
+                    <Text style={[styles.movieActionLabel, { color: theme.colors.text }]} numberOfLines={1}>Aperçu</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -473,14 +473,14 @@ export default function MovieDetailsScreen({
 
             {movie.overview ? (
               <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Synopsis</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Résumé</Text>
                 <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.overview}</Text>
               </View>
             ) : null}
 
             {movie.directors.length > 0 ? (
               <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Réalisation</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Auteur</Text>
                 <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.directors.join(', ')}</Text>
               </View>
             ) : null}
@@ -488,7 +488,7 @@ export default function MovieDetailsScreen({
             {providers.length > 0 ? (
               <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
                 <View style={styles.rowBetween}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Ou le regarder</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Où le trouver</Text>
                   {movie.watch_providers.link ? (
                     <Pressable onPress={() => void openProviderLink()}>
                       <Text style={[styles.inlineLink, { color: theme.colors.secondaryAccent }]}>Voir</Text>
@@ -518,7 +518,7 @@ export default function MovieDetailsScreen({
 
             {movie.cast.length > 0 ? (
               <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Casting</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Autour du livre</Text>
                 <FlatList
                   horizontal
                   data={movie.cast}
@@ -554,7 +554,7 @@ export default function MovieDetailsScreen({
       <Modal visible={showTrailer} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.trailerModal}>
           <View style={styles.trailerHeader}>
-            <Text style={styles.trailerTitle} numberOfLines={1}>{movie?.title ?? 'Bande-annonce'}</Text>
+            <Text style={styles.trailerTitle} numberOfLines={1}>{movie?.title ?? 'Aperçu'}</Text>
             <Pressable style={styles.iconButton} onPress={() => setShowTrailer(false)}>
               <Ionicons name="close" size={22} color="#ffffff" />
             </Pressable>
@@ -569,7 +569,7 @@ export default function MovieDetailsScreen({
             />
           ) : (
             <View style={styles.stateCard}>
-              <Text style={styles.stateText}>Aucune bande-annonce disponible.</Text>
+              <Text style={styles.stateText}>Aucun aperçu disponible.</Text>
             </View>
           )}
         </View>

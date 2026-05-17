@@ -284,7 +284,7 @@ export default function UserProfileScreen() {
 
           {profile.profile_movies.length > 0 ? (
             <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Films totems</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Livres totems</Text>
               <View style={styles.posterGrid}>
                 {profile.profile_movies.slice(0, 6).map((movie) => (
                   <View key={movie.id} style={styles.posterCell}>
@@ -297,7 +297,7 @@ export default function UserProfileScreen() {
 
           {profile.profile_people.length > 0 ? (
             <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Personnes clés</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Auteurs clés</Text>
               <FlatList
                 data={profile.profile_people}
                 horizontal

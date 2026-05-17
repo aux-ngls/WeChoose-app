@@ -623,7 +623,7 @@ export default function ProfileScreen() {
                   ]}
                   numberOfLines={4}
                 >
-                  {profileDescription || 'Ajoute une courte description pour raconter ton univers ciné.'}
+                  {profileDescription || 'Ajoute une courte description pour raconter ton univers lecture.'}
                 </Text>
               </View>
             </View>
@@ -651,7 +651,7 @@ export default function ProfileScreen() {
                   <TextInput
                     value={draftDescription}
                     onChangeText={(value) => setDraftDescription(value.slice(0, 180))}
-                    placeholder="Ex. : romance tragique, thrillers nerveux et BO qui restent en tête..."
+                    placeholder="Ex. : classiques mordants, fantasy ample et essais qui changent le regard..."
                     placeholderTextColor={theme.colors.textMuted}
                     multiline
                     maxLength={180}
@@ -669,14 +669,14 @@ export default function ProfileScreen() {
                   <TextInput
                     value={draftGenresText}
                     onChangeText={setDraftGenresText}
-                    placeholder="Comédie, thriller, romance..."
+                    placeholder="Polar, fantasy, romance..."
                     placeholderTextColor={theme.colors.textMuted}
                     style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                   />
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Films totems</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Livres totems</Text>
                   <View style={styles.selectedRow}>
                     {draftMovies.map((movie) => (
                       <Pressable
@@ -693,7 +693,7 @@ export default function ProfileScreen() {
                     <TextInput
                       value={movieQuery}
                       onChangeText={setMovieQuery}
-                      placeholder="Chercher un film"
+                      placeholder="Chercher un livre"
                       placeholderTextColor={theme.colors.textMuted}
                       style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                     />
@@ -713,7 +713,7 @@ export default function ProfileScreen() {
                 </View>
 
                 <View style={styles.editorBlock}>
-                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Personnes clés</Text>
+                  <Text style={[styles.editorLabel, { color: theme.colors.textSoft }]}>Auteurs clés</Text>
                   <View style={styles.selectedPeopleRow}>
                     {draftPeople.map((person) => (
                       <Pressable
@@ -730,7 +730,7 @@ export default function ProfileScreen() {
                     <TextInput
                       value={personQuery}
                       onChangeText={setPersonQuery}
-                      placeholder="Chercher une personne"
+                      placeholder="Chercher un auteur"
                       placeholderTextColor={theme.colors.textMuted}
                       style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
                     />
@@ -802,7 +802,7 @@ export default function ProfileScreen() {
 
             {profile.profile_movies.length > 0 ? (
               <View style={styles.subsection}>
-                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Films totems</Text>
+                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Livres totems</Text>
                 <View style={styles.posterGrid}>
                   {profile.profile_movies.slice(0, 6).map((movie) => (
                     <View key={movie.id} style={styles.posterCell}>
@@ -818,7 +818,7 @@ export default function ProfileScreen() {
 
             {profile.profile_people.length > 0 ? (
               <View style={styles.subsection}>
-                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Personnes clés</Text>
+                <Text style={[styles.subsectionTitle, { color: theme.colors.textSoft }]}>Auteurs clés</Text>
                 <FlatList
                   data={profile.profile_people}
                   horizontal
@@ -912,7 +912,7 @@ export default function ProfileScreen() {
                   <View style={styles.playlistHeader}>
                     <View>
                       <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
-                      <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.count} film(s)</Text>
+                      <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.count} livre(s)</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
                   </View>
