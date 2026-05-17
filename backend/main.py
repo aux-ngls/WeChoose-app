@@ -12,7 +12,7 @@ from functools import lru_cache
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pandas as pd
 import pickle
@@ -5662,6 +5662,98 @@ def person_detail(person_id: int, current_user: dict = Depends(get_current_user)
     if not person:
         raise HTTPException(status_code=404, detail="Personne introuvable.")
     return person
+
+
+@app.get("/mobile-trailer-player.html", response_class=HTMLResponse)
+def mobile_trailer_player(video_id: str = Query("", alias="videoId")):
+    safe_video_id = re.sub(r"[^a-zA-Z0-9_-]", "", video_id or "")
+    return f"""<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <title>Qulte Trailer Player</title>
+    <style>
+      html, body {{
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }}
+
+      body {{
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+      }}
+
+      #player, #empty {{
+        width: 100%;
+        height: 100%;
+      }}
+
+      #empty {{
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        color: rgba(255,255,255,0.86);
+        text-align: center;
+        line-height: 1.5;
+        background:
+          radial-gradient(circle at top, rgba(244,114,182,0.18), transparent 42%),
+          #050507;
+      }}
+    </style>
+  </head>
+  <body>
+    <div id="player"></div>
+    <div id="empty">Bande-annonce indisponible.</div>
+    <script>
+      const videoId = {json.dumps(safe_video_id)};
+      const playerHost = document.getElementById('player');
+      const empty = document.getElementById('empty');
+
+      function showEmpty() {{
+        playerHost.style.display = 'none';
+        empty.style.display = 'flex';
+      }}
+
+      if (!videoId) {{
+        showEmpty();
+      }} else {{
+        window.onYouTubeIframeAPIReady = function onYouTubeIframeAPIReady() {{
+          new window.YT.Player('player', {{
+            width: '100%',
+            height: '100%',
+            videoId,
+            host: 'https://www.youtube.com',
+            playerVars: {{
+              autoplay: 1,
+              playsinline: 1,
+              rel: 0,
+              origin: window.location.origin,
+              widget_referrer: window.location.href,
+            }},
+            events: {{
+              onError: showEmpty,
+            }},
+          }});
+        }};
+
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.async = true;
+        script.onerror = showEmpty;
+        document.head.appendChild(script);
+      }}
+    </script>
+  </body>
+</html>"""
 
 @app.get("/movies/news")
 def news():

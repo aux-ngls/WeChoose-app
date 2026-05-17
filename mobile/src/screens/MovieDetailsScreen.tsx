@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { WEB_URL } from '../api/config';
+import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
 import StarRatingInput from '../components/StarRatingInput';
@@ -165,7 +165,7 @@ export default function MovieDetailsScreen({
     if (!videoId) {
       return null;
     }
-    return `${WEB_URL}/mobile-trailer-player.html?videoId=${encodeURIComponent(videoId)}`;
+    return `${API_URL}/mobile-trailer-player.html?videoId=${encodeURIComponent(videoId)}`;
   }, [movie?.trailer_url]);
 
   const handleWatchLater = async () => {

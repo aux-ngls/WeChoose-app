@@ -54,6 +54,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - prevented Tinder left-swipe on already rated movies from adding a negative recommendation signal; it now only advances to the next card.
 - removed already rated movies from the mobile Tinder stack/cache and added a final backend recommendation guard against rated cards.
 - added mobile actor/person detail pages with biography, profile photo, key metadata, known movies, and links from movie casts plus profile key people.
+- moved the mobile trailer player to the backend API domain so trailers keep working even if the web frontend is unavailable.
 
 ## Important Recent Commits
 
