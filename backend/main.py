@@ -4066,6 +4066,7 @@ def compute_recommendation_feed(
         fallback_pool = fallback_pool.sort_values("quality_score", ascending=False)
         selected_ids.extend([int(row["id"]) for _, row in fallback_pool.head(limit - len(selected_ids)).iterrows()])
 
+    selected_ids = [movie_id for movie_id in selected_ids if movie_id not in blocked_ids]
     selected_rows = movies_df[movies_df["id"].isin(selected_ids)].copy()
     selected_rows["selection_rank"] = selected_rows["id"].apply(
         lambda movie_id: selected_ids.index(int(movie_id))

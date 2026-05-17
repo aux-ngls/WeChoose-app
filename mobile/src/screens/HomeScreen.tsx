@@ -40,7 +40,7 @@ const TARGET_STACK_SIZE = 14;
 const REFILL_THRESHOLD = 8;
 const FEED_BATCH_SIZE = 24;
 const CACHE_MAX_SIZE = 32;
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const SWIPE_THRESHOLD = 110;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
 const OFFSCREEN_DISTANCE = 420;
@@ -118,6 +118,7 @@ export default function HomeScreen() {
   const onboardingExcludedMovieIdsRef = useRef<Set<number>>(new Set());
   const hasLoadedOnboardingExcludesRef = useRef(false);
   const moviesRef = useRef(movies);
+  const submittingRef = useRef(submitting);
   const lastFetchAtRef = useRef(initialCache?.fetchedAt ?? 0);
   const lastRecordedImpressionMovieIdRef = useRef<number | null>(null);
   const pan = useRef(new Animated.ValueXY()).current;
@@ -138,30 +139,8 @@ export default function HomeScreen() {
   }, [currentMovie?.id, pan]);
 
   useEffect(() => {
-    if (!session || !currentMovie) {
-      return;
-    }
-
-    let active = true;
-    const movieId = currentMovie.id;
-
-    void (async () => {
-      try {
-        const payload = await fetchUserMovieRating(session.token, movieId);
-        if (active && moviesRef.current[0]?.id === movieId) {
-          setSelectedRating(payload.rating ?? 0);
-        }
-      } catch (ratingError) {
-        if (ratingError instanceof ApiError && ratingError.status === 401) {
-          await signOut();
-        }
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [currentMovie?.id, session, signOut]);
+    submittingRef.current = submitting;
+  }, [submitting]);
 
   useEffect(() => {
     if (!session || !currentMovie || lastRecordedImpressionMovieIdRef.current === currentMovie.id) {
@@ -351,19 +330,75 @@ export default function HomeScreen() {
     }
   }, [loadFeed]);
 
+  const removeMovieFromTinderStack = useCallback((movieId: number) => {
+    setMovies((current) => {
+      if (!current.some((movie) => movie.id === movieId)) {
+        return current;
+      }
+
+      const next = current.filter((movie) => movie.id !== movieId);
+      moviesRef.current = next;
+      refillIfNeeded(next);
+      return next;
+    });
+  }, [refillIfNeeded]);
+
+  useEffect(() => {
+    if (!session || !currentMovie) {
+      return;
+    }
+
+    let active = true;
+    const movieId = currentMovie.id;
+
+    void (async () => {
+      try {
+        const payload = await fetchUserMovieRating(session.token, movieId);
+        if (!active || moviesRef.current[0]?.id !== movieId) {
+          return;
+        }
+
+        const rating = payload.rating ?? 0;
+        if (rating > 0) {
+          if (submittingRef.current) {
+            setSelectedRating(rating);
+            return;
+          }
+          rememberExcludedMovieIds([movieId]);
+          removeMovieFromTinderStack(movieId);
+          return;
+        }
+
+        setSelectedRating(0);
+      } catch (ratingError) {
+        if (ratingError instanceof ApiError && ratingError.status === 401) {
+          await signOut();
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [currentMovie?.id, rememberExcludedMovieIds, removeMovieFromTinderStack, session, signOut]);
+
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener(
       TINDER_MOVIE_ACTION_EVENT,
       (event: { type: 'rated' | 'watch-later'; movieId: number; rating?: number }) => {
         rememberExcludedMovieIds([event.movieId]);
+        if (event.type === 'rated') {
+          const rating = event.rating ?? 0;
+          setSelectedRating(rating);
+          if (rating > 0) {
+            removeMovieFromTinderStack(event.movieId);
+          }
+          return;
+        }
+
         setMovies((current) => {
           const activeMovie = current[0];
           if (!activeMovie || activeMovie.id !== event.movieId) {
-            return current;
-          }
-
-          if (event.type === 'rated') {
-            setSelectedRating(event.rating ?? 0);
             return current;
           }
 
@@ -377,7 +412,7 @@ export default function HomeScreen() {
     );
 
     return () => subscription.remove();
-  }, [refillIfNeeded, rememberExcludedMovieIds]);
+  }, [refillIfNeeded, rememberExcludedMovieIds, removeMovieFromTinderStack]);
 
   const consumeMovie = useCallback(() => {
     setMovies((current) => {

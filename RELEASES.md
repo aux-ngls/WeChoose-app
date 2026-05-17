@@ -52,6 +52,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - fixed Tinder pass/swipe-left so it records a pass recommendation signal instead of creating a fake 1-star movie rating; undoing a pass now undoes that pass signal.
 - changed Tinder pass filtering from a permanent block to a 14-day cooldown plus mild score penalty, allowing strong older passed films to reappear later.
 - prevented Tinder left-swipe on already rated movies from adding a negative recommendation signal; it now only advances to the next card.
+- removed already rated movies from the mobile Tinder stack/cache and added a final backend recommendation guard against rated cards.
 
 ## Important Recent Commits
 
