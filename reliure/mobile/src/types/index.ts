@@ -3,6 +3,7 @@ export interface SearchMovie {
   title: string;
   poster_url: string;
   rating: number;
+  author?: string;
   recommendation_reason?: string;
   recommendation_variant?: string;
   recommendation_seed_movie_id?: number | null;

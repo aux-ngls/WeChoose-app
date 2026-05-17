@@ -22,6 +22,10 @@ const MIN_FAVORITE_MOVIES = 5;
 const MAX_FAVORITE_MOVIES = 8;
 const MAX_FAVORITE_PEOPLE = 6;
 
+function formatBookMeta(movie: SearchMovie): string {
+  return [movie.author, movie.release_date?.slice(0, 4)].filter(Boolean).join(' · ');
+}
+
 const GENRES = [
   'Littérature',
   'Classiques',
@@ -377,7 +381,10 @@ export default function OnboardingScreen() {
                 <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.resultTitle, { color: theme.colors.text }]} numberOfLines={1}>{movie.title}</Text>
-                  <Text style={[styles.resultMeta, { color: theme.colors.ratingText }]}>{movie.rating.toFixed(1)} / 10</Text>
+                  {formatBookMeta(movie) ? (
+                    <Text style={[styles.resultMeta, { color: theme.colors.textSoft }]} numberOfLines={1}>{formatBookMeta(movie)}</Text>
+                  ) : null}
+                  <Text style={[styles.resultRating, { color: theme.colors.ratingText }]}>{movie.rating.toFixed(1)} / 10</Text>
                 </View>
                 <Ionicons name="add-circle" size={22} color={theme.colors.accent} />
               </Pressable>
@@ -662,6 +669,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   resultMeta: {
+    color: '#cbd5e1',
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  resultRating: {
     color: '#fde68a',
     marginTop: 4,
     fontSize: 12,

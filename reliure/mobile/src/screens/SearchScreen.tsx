@@ -30,6 +30,10 @@ function resolveMediaUrl(url: string | null | undefined): string | null {
   return `${API_URL}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
+function formatBookMeta(movie: SearchMovie): string {
+  return [movie.author, movie.release_date?.slice(0, 4)].filter(Boolean).join(' · ');
+}
+
 export default function SearchScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
@@ -189,6 +193,9 @@ export default function SearchScreen() {
               <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               <View style={styles.itemBody}>
                 <Text style={[styles.itemTitle, { color: theme.colors.text }]}>{item.movie.title}</Text>
+                {formatBookMeta(item.movie) ? (
+                  <Text style={[styles.bookMeta, { color: theme.colors.textSoft }]} numberOfLines={1}>{formatBookMeta(item.movie)}</Text>
+                ) : null}
                 <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                   <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.movie.rating.toFixed(1)} / 10</Text>
                 </View>
@@ -330,6 +337,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 17,
     fontWeight: '800',
+  },
+  bookMeta: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '700',
   },
   ratingPill: {
     alignSelf: 'flex-start',

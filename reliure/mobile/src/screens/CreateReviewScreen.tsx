@@ -23,6 +23,10 @@ import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie } from '../types';
 import { PROFILE_REFRESH_EVENT, SOCIAL_REFRESH_EVENT } from '../utils/events';
 
+function formatBookMeta(movie: SearchMovie): string {
+  return [movie.author, movie.release_date?.slice(0, 4)].filter(Boolean).join(' · ');
+}
+
 export default function CreateReviewScreen({
   navigation,
   route,
@@ -228,6 +232,9 @@ export default function CreateReviewScreen({
                 <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
                 <View style={styles.resultBody}>
                   <Text style={[styles.resultTitle, { color: theme.colors.text }]}>{movie.title}</Text>
+                  {formatBookMeta(movie) ? (
+                    <Text style={[styles.resultMeta, { color: theme.colors.textSoft }]} numberOfLines={1}>{formatBookMeta(movie)}</Text>
+                  ) : null}
                   <Text style={[styles.resultHint, { color: theme.colors.textMuted }]}>Sélectionner pour critiquer</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
@@ -405,6 +412,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '800',
+  },
+  resultMeta: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: '700',
   },
   resultHint: {
     color: '#94a3b8',

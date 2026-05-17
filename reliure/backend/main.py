@@ -67,6 +67,7 @@ PASS_REACTION_TYPES = {"pass"}
 PASS_RECONSIDER_COOLDOWN_DAYS = 14
 MOBILE_ARCHIVE_PATH = os.getenv("MOBILE_ARCHIVE_PATH", "/home/wechoose/reliure/mobile.tar.gz")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OPEN_LIBRARY_ID_OFFSET = 900_000_000
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
 AVATAR_PUBLIC_PREFIX = "/uploads/avatars"
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
@@ -211,6 +212,164 @@ def normalize_tmdb_movie(movie: dict) -> Optional[dict]:
         "title": str(title),
         "poster_url": f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else "https://via.placeholder.com/500",
         "rating": float(movie.get("vote_average") or 0.0),
+    }
+
+
+def stable_open_library_id(work_key: str) -> int:
+    digits = re.sub(r"\D", "", work_key or "")
+    if digits:
+        return OPEN_LIBRARY_ID_OFFSET + int(digits)
+    return OPEN_LIBRARY_ID_OFFSET + (abs(hash(work_key)) % 10_000_000)
+
+
+def open_library_work_key_from_id(book_id: int) -> Optional[str]:
+    if int(book_id) < OPEN_LIBRARY_ID_OFFSET:
+        return None
+    return f"/works/OL{int(book_id) - OPEN_LIBRARY_ID_OFFSET}W"
+
+
+def serialize_open_library_book(doc: dict) -> Optional[dict]:
+    work_key = str(doc.get("key") or "")
+    title = str(doc.get("title") or "").strip()
+    if not work_key or not title:
+        return None
+
+    authors = doc.get("author_name") if isinstance(doc.get("author_name"), list) else []
+    author = str(authors[0]).strip() if authors else ""
+    cover_id = doc.get("cover_i")
+    year = doc.get("first_publish_year")
+    rating = float(doc.get("ratings_average") or 0.0)
+    if 0 < rating <= 5:
+        rating *= 2
+    if rating <= 0:
+        rating = 7.0
+    first_sentence = doc.get("first_sentence")
+    if isinstance(first_sentence, list):
+        first_sentence = next((str(item).strip() for item in first_sentence if str(item).strip()), "")
+    elif not isinstance(first_sentence, str):
+        first_sentence = ""
+
+    return {
+        "id": stable_open_library_id(work_key),
+        "title": title,
+        "author": author,
+        "poster_url": f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else "https://via.placeholder.com/500x750?text=Book",
+        "rating": round(rating, 1),
+        "release_date": str(year or ""),
+        "overview": str(first_sentence or ""),
+        "primary_genre": "Livre",
+        "open_library_key": work_key,
+    }
+
+
+def normalize_open_library_description(value) -> str:
+    if isinstance(value, str):
+        text = value
+    elif isinstance(value, dict):
+        text = str(value.get("value") or "")
+    elif isinstance(value, list):
+        text = " ".join(str(item).strip() for item in value if str(item).strip())
+    else:
+        return ""
+
+    text = re.sub(r"\[([^\]]+)\]\[\d+\]", r"\1", text)
+    text = re.sub(r"\n\s*\[\d+\]:\s*\S+", "", text)
+    text = re.sub(r"[*_`#>]+", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+@lru_cache(maxsize=512)
+def fetch_open_library_author_name(author_key: str) -> str:
+    normalized_key = str(author_key or "").strip()
+    if not normalized_key.startswith("/authors/"):
+        return ""
+    try:
+        response = requests.get(f"https://openlibrary.org{normalized_key}.json", timeout=3)
+        data = response.json()
+    except Exception:
+        return ""
+    return str(data.get("name") or "").strip() if isinstance(data, dict) else ""
+
+
+@lru_cache(maxsize=512)
+def fetch_open_library_search(query: str, limit: int = 10) -> tuple[dict, ...]:
+    normalized_query = query.strip()
+    if len(normalized_query) < 2:
+        return ()
+
+    try:
+        response = requests.get(
+            "https://openlibrary.org/search.json",
+            params={
+                "q": normalized_query,
+                "limit": limit,
+                "fields": "key,title,author_name,first_publish_year,cover_i,ratings_average,ratings_count,number_of_pages_median,subject,isbn,first_sentence",
+            },
+            timeout=4,
+        )
+        docs = response.json().get("docs", [])
+    except Exception:
+        docs = []
+
+    serialized = [
+        book
+        for book in (serialize_open_library_book(doc if isinstance(doc, dict) else {}) for doc in docs)
+        if book
+    ]
+    return tuple(serialized[:limit])
+
+
+@lru_cache(maxsize=512)
+def fetch_open_library_work_details(work_key: str) -> Optional[dict]:
+    normalized_key = str(work_key or "").strip()
+    if not normalized_key.startswith("/works/"):
+        return None
+
+    try:
+        response = requests.get(f"https://openlibrary.org{normalized_key}.json", timeout=4)
+        data = response.json()
+    except Exception:
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    title = str(data.get("title") or "").strip()
+    if not title:
+        return None
+
+    description = normalize_open_library_description(data.get("description"))
+    subjects = [
+        str(subject).strip()
+        for subject in (data.get("subjects") or [])
+        if str(subject).strip()
+    ][:5]
+    author_names = []
+    for item in data.get("authors") or []:
+        author_ref = item.get("author") if isinstance(item, dict) else {}
+        author_key = author_ref.get("key") if isinstance(author_ref, dict) else ""
+        author_name = fetch_open_library_author_name(str(author_key or ""))
+        if author_name:
+            author_names.append(author_name)
+        if len(author_names) >= 2:
+            break
+    covers = data.get("covers") if isinstance(data.get("covers"), list) else []
+    cover_id = next((cover for cover in covers if isinstance(cover, int)), None)
+
+    return {
+        "id": stable_open_library_id(normalized_key),
+        "title": title,
+        "overview": description or "Ce livre n'a pas encore de résumé détaillé dans Open Library.",
+        "rating": 7.0,
+        "poster_url": f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else "https://via.placeholder.com/500x750?text=Book",
+        "trailer_url": None,
+        "cast": [],
+        "release_date": "",
+        "runtime": 0,
+        "tagline": "Une piste de lecture trouvée dans Open Library.",
+        "genres": subjects[:4] or ["Livre"],
+        "directors": author_names,
+        "watch_providers": get_tmdb_watch_providers(0),
     }
 
 
@@ -1506,7 +1665,7 @@ def fetch_poster_from_tmdb(movie_id):
 
 @lru_cache(maxsize=512)
 def get_tmdb_watch_providers(movie_id: int) -> dict:
-    if get_catalog_row(int(movie_id)):
+    if int(movie_id) == 0 or get_catalog_row(int(movie_id)):
         return {
             "region": "",
             "link": "",
@@ -1581,6 +1740,10 @@ def get_tmdb_details(movie_id):
             "directors": [str(catalog_row.get("author") or "")],
             "watch_providers": get_tmdb_watch_providers(int(movie_id)),
         }
+
+    work_key = open_library_work_key_from_id(int(movie_id))
+    if work_key:
+        return fetch_open_library_work_details(work_key)
 
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR&append_to_response=videos,credits"
@@ -4119,8 +4282,12 @@ def compute_recommendation_feed(
         payload = {
             "id": movie_id,
             "title": str(row["title"]),
+            "author": str(row.get("author") or ""),
             "poster_url": fetch_poster_from_tmdb(movie_id),
             "rating": float(row["vote_average"]),
+            "release_date": str(row.get("release_date") or ""),
+            "overview": str(row.get("overview") or ""),
+            "primary_genre": str(row.get("primary_genre") or ""),
             "recommendation_reason": build_recommendation_reason(
                 movie_id=movie_id,
                 positive_indices=positive_indices,
@@ -5762,24 +5929,39 @@ async def realtime_websocket(websocket: WebSocket, token: str = Query(...)):
 @app.get("/search")
 def search(query: str):
     normalized_query = query.strip().lower()
+    results: list[dict] = []
     if normalized_query and not movies_df.empty:
         matches = movies_df[
             movies_df["title"].astype(str).str.lower().str.contains(normalized_query, regex=False)
             | movies_df.get("author", "").astype(str).str.lower().str.contains(normalized_query, regex=False)
-        ].head(10)
-        return [
-            {
+        ].head(14)
+        for _, row in matches.iterrows():
+            results.append({
                 "id": int(row["id"]),
                 "title": str(row["title"]),
+                "author": str(row.get("author") or ""),
                 "poster_url": str(row.get("poster_url") or row.get("cover_url") or ""),
                 "rating": float(row.get("vote_average") or 0),
-            }
-            for _, row in matches.iterrows()
-        ]
+                "release_date": str(row.get("release_date") or ""),
+                "overview": str(row.get("overview") or ""),
+                "primary_genre": str(row.get("primary_genre") or ""),
+            })
 
-    url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&language=fr-FR&query={query}"
-    res = requests.get(url).json().get('results', [])[:10]
-    return [{"id": m['id'], "title": m['title'], "poster_url": "https://image.tmdb.org/t/p/w500"+m['poster_path'] if m.get('poster_path') else "", "rating": m['vote_average']} for m in res]
+    remote_results = list(fetch_open_library_search(query, 16))
+    seen_keys: set[str] = set()
+    merged_results: list[dict] = []
+    for item in [*results, *remote_results]:
+        title_key = re.sub(r"\W+", "", str(item.get("title") or "").lower())
+        author_key = re.sub(r"\W+", "", str(item.get("author") or "").lower())
+        dedupe_key = f"{title_key}:{author_key}"
+        if not title_key or dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+        merged_results.append(item)
+        if len(merged_results) >= 20:
+            break
+
+    return merged_results
 
 
 @app.get("/books/search")
