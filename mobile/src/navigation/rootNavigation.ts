@@ -41,7 +41,7 @@ export function navigateFromNotificationData(data: NotificationData) {
   }
 
   if (route?.startsWith('/social')) {
-    navigationRef.navigate('MainTabs', { screen: 'Social' });
+    navigationRef.navigate('Notifications');
   }
 }
 

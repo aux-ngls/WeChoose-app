@@ -4,7 +4,7 @@ import { Audio, type AVPlaybackStatus, InterruptionModeAndroid, InterruptionMode
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, DeviceEventEmitter, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, DeviceEventEmitter, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
@@ -19,7 +19,6 @@ import {
   fetchPlaylists,
   fetchSocialNotifications,
   fetchSocialProfile,
-  markSocialNotificationsRead,
   saveProfilePreferences,
   searchMovies,
   searchPeople,
@@ -36,7 +35,6 @@ import {
   type ProfileShowcasePerson,
   type ProfileShowcaseSoundtrack,
   type SearchMovie,
-  type SocialNotification,
   type SocialProfile,
 } from '../types';
 import { formatDate } from '../utils/format';
@@ -113,10 +111,7 @@ export default function ProfileScreen() {
   const [showAllPlaylists, setShowAllPlaylists] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [expandedProfileReviewId, setExpandedProfileReviewId] = useState<number | null>(null);
-  const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const profileRef = useRef(profile);
 
@@ -206,26 +201,17 @@ export default function ProfileScreen() {
     }
   }, [session, signOut]);
 
-  const loadNotifications = useCallback(async (options?: { silent?: boolean }) => {
+  const loadNotificationBadge = useCallback(async () => {
     if (!session) {
       return;
     }
 
-    if (!options?.silent) {
-      setLoadingNotifications(true);
-    }
-
     try {
-      const payload = await fetchSocialNotifications(session.token, 20);
-      setNotifications(payload.items);
+      const payload = await fetchSocialNotifications(session.token, 1);
       setUnreadNotifications(payload.unread_count ?? 0);
     } catch (notificationError) {
       if (notificationError instanceof ApiError && notificationError.status === 401) {
         await signOut();
-      }
-    } finally {
-      if (!options?.silent) {
-        setLoadingNotifications(false);
       }
     }
   }, [session, signOut]);
@@ -233,58 +219,34 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadProfile();
-      void loadNotifications({ silent: true });
-    }, [loadNotifications, loadProfile]),
+      void loadNotificationBadge();
+    }, [loadNotificationBadge, loadProfile]),
   );
 
   useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener(PROFILE_REFRESH_EVENT, () => {
+    const profileSubscription = DeviceEventEmitter.addListener(PROFILE_REFRESH_EVENT, () => {
       void loadProfile({ force: true });
     });
-    return () => subscription.remove();
-  }, [loadProfile]);
+    const notificationsSubscription = DeviceEventEmitter.addListener(NOTIFICATIONS_REFRESH_EVENT, () => {
+      void loadNotificationBadge();
+    });
+    return () => {
+      profileSubscription.remove();
+      notificationsSubscription.remove();
+    };
+  }, [loadNotificationBadge, loadProfile]);
 
   const refreshProfile = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.all([
         loadProfile({ force: true }),
-        loadNotifications({ silent: true }),
+        loadNotificationBadge(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadNotifications, loadProfile]);
-
-  const toggleNotificationsPanel = useCallback(async () => {
-    const shouldOpen = !showNotifications;
-    setShowNotifications(shouldOpen);
-    if (shouldOpen) {
-      await loadNotifications();
-    }
-  }, [loadNotifications, showNotifications]);
-
-  const handleMarkNotificationsRead = useCallback(async () => {
-    if (!session) {
-      return;
-    }
-
-    try {
-      await markSocialNotificationsRead(session.token);
-      setNotifications([]);
-      setUnreadNotifications(0);
-      DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
-    } catch (notificationError) {
-      if (notificationError instanceof ApiError && notificationError.status === 401) {
-        await signOut();
-      }
-    }
-  }, [session, signOut]);
-
-  const openNotification = useCallback((notification: SocialNotification) => {
-    setShowNotifications(false);
-    navigation.navigate('UserProfile', { username: notification.actor.username });
-  }, [navigation]);
+  }, [loadNotificationBadge, loadProfile]);
 
   const handlePlaybackStatus = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) {
@@ -591,7 +553,7 @@ export default function ProfileScreen() {
               <View style={styles.profileTopActions}>
                 <Pressable
                   style={[styles.profileNotificationButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.rgba.card }]}
-                  onPress={() => void toggleNotificationsPanel()}
+                  onPress={() => navigation.navigate('Notifications')}
                 >
                   <Ionicons
                     name={unreadNotifications > 0 ? 'notifications' : 'notifications-outline'}
@@ -673,49 +635,6 @@ export default function ProfileScreen() {
               </Pressable>
             ) : null}
           </LinearGradient>
-
-          {showNotifications ? (
-            <View style={[styles.notificationsPanel, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <View style={styles.notificationsHeader}>
-                <View style={styles.notificationsTitleRow}>
-                  <Ionicons name="notifications-outline" size={18} color={theme.colors.accent} />
-                  <Text style={[styles.notificationsTitle, { color: theme.colors.text }]}>Notifications</Text>
-                </View>
-                {notifications.length > 0 || unreadNotifications > 0 ? (
-                  <Pressable onPress={() => void handleMarkNotificationsRead()}>
-                    <Text style={[styles.notificationsAction, { color: theme.colors.secondaryAccent }]}>Tout lire</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-
-              {loadingNotifications ? (
-                <View style={styles.notificationsState}>
-                  <ActivityIndicator color={theme.colors.text} />
-                </View>
-              ) : notifications.length > 0 ? (
-                <View style={styles.notificationsList}>
-                  {notifications.map((notification) => (
-                    <Pressable
-                      key={notification.id}
-                      style={[styles.notificationRow, { backgroundColor: theme.rgba.cardStrong }]}
-                      onPress={() => openNotification(notification)}
-                    >
-                      <View style={[styles.notificationDot, { backgroundColor: notification.is_read ? theme.rgba.border : theme.colors.accent }]} />
-                      <View style={styles.notificationBody}>
-                        <Text style={[styles.notificationText, { color: theme.colors.textSoft }]} numberOfLines={3}>{notification.message}</Text>
-                        <Text style={[styles.notificationDate, { color: theme.colors.textMuted }]}>{formatDate(notification.created_at)}</Text>
-                      </View>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.notificationsState}>
-                  <Ionicons name="checkmark-circle-outline" size={24} color={theme.colors.textMuted} />
-                  <Text style={[styles.notificationsEmptyText, { color: theme.colors.textMuted }]}>Aucune notification.</Text>
-                </View>
-              )}
-            </View>
-          ) : null}
 
           <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             {isEditingShowcase ? (
@@ -1312,70 +1231,6 @@ const styles = StyleSheet.create({
     color: '#f9a8d4',
     fontSize: 12,
     fontWeight: '900',
-  },
-  notificationsPanel: {
-    gap: 12,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 14,
-  },
-  notificationsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  notificationsTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  notificationsTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  notificationsAction: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  notificationsList: {
-    gap: 8,
-  },
-  notificationsState: {
-    minHeight: 62,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  notificationsEmptyText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  notificationRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    borderRadius: 17,
-    padding: 11,
-  },
-  notificationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 5,
-  },
-  notificationBody: {
-    flex: 1,
-    gap: 4,
-  },
-  notificationText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
-  notificationDate: {
-    fontSize: 11,
-    fontWeight: '700',
   },
   helperText: {
     color: '#94a3b8',

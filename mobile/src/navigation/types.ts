@@ -22,6 +22,7 @@ export type RootStackParamList = {
     posterUrl: string;
     rating: number;
   };
+  Notifications: undefined;
   Settings: undefined;
   TestAiDashboard: undefined;
   UserProfile: {

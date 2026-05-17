@@ -56,6 +56,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - added mobile actor/person detail pages with biography, profile photo, key metadata, known movies, and links from movie casts plus profile key people.
 - moved the mobile trailer player to the backend API domain so trailers keep working even if the web frontend is unavailable.
 - moved social notifications out of the Social feed into a profile-header bell with unread badges, keeping direct-message notifications separate.
+- changed the profile notification bell to open a dedicated full notifications page instead of an inline profile panel.
 
 ## Important Recent Commits
 

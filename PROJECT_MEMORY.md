@@ -40,7 +40,7 @@ The mobile app currently includes:
 - ratings are meant to represent one personal movie rating across Tinder, movie details, and reviews;
 - playlists, custom playlist creation, adding movies to playlists, and removing movies;
 - social feed with expandable reviews and comments;
-- social notifications are grouped in the profile header bell; direct-message unread state remains separate in Messages.
+- social notifications are opened from the profile header bell into a dedicated notifications page; direct-message unread state remains separate in Messages.
 - private messages with movie sharing;
 - user profile navigation from social areas;
 - app settings, including theme mode, notification controls, tutorial replay, and recommendation cache tools;
