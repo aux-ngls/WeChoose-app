@@ -12,15 +12,13 @@ import {
   createReviewComment,
   fetchReviewComments,
   fetchSocialFeed,
-  fetchSocialNotifications,
-  markSocialNotificationsRead,
   reportReview,
   toggleReviewLike,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SocialComment, type SocialNotification, type SocialReview } from '../types';
+import { FALLBACK_POSTER, type SocialComment, type SocialReview } from '../types';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { formatDate } from '../utils/format';
 import { SOCIAL_REFRESH_EVENT } from '../utils/events';
@@ -28,8 +26,6 @@ import { SOCIAL_REFRESH_EVENT } from '../utils/events';
 interface SocialCache {
   username: string;
   reviews: SocialReview[];
-  notifications: SocialNotification[];
-  unreadNotifications: number;
 }
 
 let socialCache: SocialCache | null = null;
@@ -40,8 +36,6 @@ export default function SocialScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const initialCache = socialCache?.username === session?.username ? socialCache : null;
   const [reviews, setReviews] = useState<SocialReview[]>(() => initialCache?.reviews ?? []);
-  const [notifications, setNotifications] = useState<SocialNotification[]>(() => initialCache?.notifications ?? []);
-  const [unreadNotifications, setUnreadNotifications] = useState(() => initialCache?.unreadNotifications ?? 0);
   const [loading, setLoading] = useState(() => !initialCache);
   const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
   const [commentsByReview, setCommentsByReview] = useState<Record<number, SocialComment[]>>({});
@@ -53,20 +47,10 @@ export default function SocialScreen() {
   const [feedback, setFeedback] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const reviewsRef = useRef(reviews);
-  const notificationsRef = useRef(notifications);
-  const unreadNotificationsRef = useRef(unreadNotifications);
 
   useEffect(() => {
     reviewsRef.current = reviews;
   }, [reviews]);
-
-  useEffect(() => {
-    notificationsRef.current = notifications;
-  }, [notifications]);
-
-  useEffect(() => {
-    unreadNotificationsRef.current = unreadNotifications;
-  }, [unreadNotifications]);
 
   useEffect(() => {
     if (!feedback) {
@@ -84,8 +68,6 @@ export default function SocialScreen() {
     socialCache = {
       username: session.username,
       reviews: next.reviews ?? reviewsRef.current,
-      notifications: next.notifications ?? notificationsRef.current,
-      unreadNotifications: next.unreadNotifications ?? unreadNotificationsRef.current,
     };
   }, [session]);
 
@@ -114,49 +96,27 @@ export default function SocialScreen() {
     }
   }, [session, signOut, updateSocialCache]);
 
-  const loadNotifications = useCallback(async () => {
-    if (!session) {
-      return;
-    }
-
-    try {
-      const payload = await fetchSocialNotifications(session.token);
-      updateSocialCache({
-        notifications: payload.items,
-        unreadNotifications: payload.unread_count,
-      });
-      setNotifications(payload.items);
-      setUnreadNotifications(payload.unread_count);
-    } catch (notificationError) {
-      if (notificationError instanceof ApiError && notificationError.status === 401) {
-        await signOut();
-      }
-    }
-  }, [session, signOut, updateSocialCache]);
-
   const refreshSocial = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([loadFeed(), loadNotifications()]);
+      await loadFeed();
     } finally {
       setRefreshing(false);
     }
-  }, [loadFeed, loadNotifications]);
+  }, [loadFeed]);
 
   useFocusEffect(
     useCallback(() => {
       void loadFeed();
-      void loadNotifications();
-    }, [loadFeed, loadNotifications]),
+    }, [loadFeed]),
   );
 
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener(SOCIAL_REFRESH_EVENT, () => {
       void loadFeed();
-      void loadNotifications();
     });
     return () => subscription.remove();
-  }, [loadFeed, loadNotifications]);
+  }, [loadFeed]);
 
   const toggleReview = useCallback(async (reviewId: number) => {
     if (!session) {
@@ -257,23 +217,6 @@ export default function SocialScreen() {
     }
   }, [commentDrafts, session, signOut, submittingCommentIds, updateSocialCache]);
 
-  const handleMarkNotificationsRead = useCallback(async () => {
-    if (!session) {
-      return;
-    }
-
-    try {
-      await markSocialNotificationsRead(session.token);
-      updateSocialCache({ notifications: [], unreadNotifications: 0 });
-      setNotifications([]);
-      setUnreadNotifications(0);
-    } catch (notificationError) {
-      if (notificationError instanceof ApiError && notificationError.status === 401) {
-        await signOut();
-      }
-    }
-  }, [session, signOut, updateSocialCache]);
-
   const handleReportReview = useCallback(async (review: SocialReview, reason: ReportReason) => {
     if (!session || review.author.username === session.username) {
       return;
@@ -315,27 +258,6 @@ export default function SocialScreen() {
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
       {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
-
-      {notifications.length > 0 ? (
-        <View style={[styles.notificationsCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-          <View style={styles.notificationsHeader}>
-            <Text style={[styles.notificationsTitle, { color: theme.colors.text }]}>Notifications</Text>
-            <Pressable onPress={() => void handleMarkNotificationsRead()}>
-              <Text style={[styles.notificationsAction, { color: theme.colors.secondaryAccent }]}>Tout lire</Text>
-            </Pressable>
-          </View>
-          {notifications.map((notification) => (
-            <Pressable
-              key={notification.id}
-              style={[styles.notificationRow, { backgroundColor: theme.rgba.cardStrong }]}
-              onPress={() => navigation.navigate('UserProfile', { username: notification.actor.username })}
-            >
-              <Text style={[styles.notificationText, { color: theme.colors.textSoft }]} numberOfLines={2}>{notification.message}</Text>
-              <Text style={[styles.notificationDate, { color: theme.colors.textMuted }]}>{formatDate(notification.created_at)}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
 
       <Pressable style={[styles.composeButton, { backgroundColor: theme.colors.accent }]} onPress={() => navigation.navigate('CreateReview')}>
         <View style={styles.composeButtonIcon}>
@@ -469,40 +391,6 @@ export default function SocialScreen() {
 }
 
 const styles = StyleSheet.create({
-  notificationsCard: {
-    gap: 10,
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 12,
-  },
-  notificationsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  notificationsTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  notificationsAction: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  notificationRow: {
-    borderRadius: 16,
-    padding: 10,
-    gap: 4,
-  },
-  notificationText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
-  notificationDate: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
   composeButton: {
     flexDirection: 'row',
     alignItems: 'center',

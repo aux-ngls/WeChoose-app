@@ -1,7 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { DeviceEventEmitter, StyleSheet, View } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -9,8 +9,9 @@ import SearchScreen from '../screens/SearchScreen';
 import SocialScreen from '../screens/SocialScreen';
 import type { MainTabParamList } from './types';
 import { useAuth } from '../auth/AuthContext';
-import { ApiError, fetchUnreadDirectMessagesCount } from '../api/client';
+import { ApiError, fetchSocialNotifications, fetchUnreadDirectMessagesCount } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -26,6 +27,7 @@ export default function MainTabs() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [socialUnreadCount, setSocialUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!session) {
@@ -44,15 +46,30 @@ export default function MainTabs() {
           await signOut();
         }
       }
+
+      try {
+        const payload = await fetchSocialNotifications(session.token, 1);
+        if (active) {
+          setSocialUnreadCount(payload.unread_count ?? 0);
+        }
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          await signOut();
+        }
+      }
     };
 
     void refresh();
+    const subscription = DeviceEventEmitter.addListener(NOTIFICATIONS_REFRESH_EVENT, () => {
+      void refresh();
+    });
     const interval = setInterval(() => {
       void refresh();
     }, 12000);
 
     return () => {
       active = false;
+      subscription.remove();
       clearInterval(interval);
     };
   }, [session, signOut]);
@@ -102,9 +119,13 @@ export default function MainTabs() {
             ? unreadCount > 99
               ? '99+'
               : unreadCount
+            : route.name === 'Profile' && socialUnreadCount > 0
+              ? socialUnreadCount > 99
+                ? '99+'
+                : socialUnreadCount
             : undefined,
         tabBarBadgeStyle:
-          route.name === 'Messages'
+          route.name === 'Messages' || route.name === 'Profile'
             ? {
                 backgroundColor: '#ef4444',
                 color: '#ffffff',

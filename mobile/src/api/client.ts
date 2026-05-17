@@ -316,8 +316,8 @@ export async function toggleReviewLike(
   );
 }
 
-export async function fetchSocialNotifications(token: string): Promise<SocialNotificationsPayload> {
-  return request<SocialNotificationsPayload>('/social/notifications?limit=12', undefined, token);
+export async function fetchSocialNotifications(token: string, limit = 12): Promise<SocialNotificationsPayload> {
+  return request<SocialNotificationsPayload>(`/social/notifications?limit=${limit}`, undefined, token);
 }
 
 export async function markSocialNotificationsRead(token: string): Promise<{ updated: number }> {
