@@ -207,8 +207,12 @@ export async function removeMovieRating(token: string, movieId: number): Promise
   await request<null>(`/movies/rate/${movieId}`, { method: 'DELETE' }, token);
 }
 
-export async function dislikeMovie(token: string, movieId: number): Promise<void> {
-  await request<null>(`/movies/dislike/${movieId}`, { method: 'POST' }, token);
+export interface DislikeMovieResponse {
+  status: 'passed' | 'skipped_rated' | string;
+}
+
+export async function dislikeMovie(token: string, movieId: number): Promise<DislikeMovieResponse> {
+  return request<DislikeMovieResponse>(`/movies/dislike/${movieId}`, { method: 'POST' }, token);
 }
 
 export async function undoDislikeMovie(token: string, movieId: number): Promise<void> {

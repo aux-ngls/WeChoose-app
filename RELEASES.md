@@ -51,6 +51,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - blocked deletion of a movie rating when it is tied to an existing review, with a clear mobile error message asking the user to edit or delete the review first.
 - fixed Tinder pass/swipe-left so it records a pass recommendation signal instead of creating a fake 1-star movie rating; undoing a pass now undoes that pass signal.
 - changed Tinder pass filtering from a permanent block to a 14-day cooldown plus mild score penalty, allowing strong older passed films to reappear later.
+- prevented Tinder left-swipe on already rated movies from adding a negative recommendation signal; it now only advances to the next card.
 
 ## Important Recent Commits
 

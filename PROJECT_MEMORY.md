@@ -90,6 +90,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
 - Rating deletion rule: a movie rating cannot be removed if it is linked to an existing review; the user must edit or delete the review first so reviews never become note-less.
 - Tinder pass/swipe-left is not a movie rating. It records a mild negative recommendation signal and uses a short cooldown; older passed films may reappear if the algorithm scores them well.
+- If a Tinder movie is already rated, swiping left should only skip to the next card and must not record a negative recommendation signal.
 - Onboarding signals: movies chosen during onboarding should guide recommendations but should not be proposed back to the user.
 - First-run copy should clearly explain the product loop: choose taste signals, swipe/rate films, Qulte adapts, then users can organize, review, follow and message.
 - The first onboarding screen should explain the core concept before asking for favorite films: Tinder-like movie cards, swipe/pass/watch-later behavior, star ratings as strong signals, AI adaptation, and social discovery.

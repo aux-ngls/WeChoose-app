@@ -49,7 +49,7 @@ const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
 type SwipeDirection = 'left' | 'right';
 
 interface UndoableAction {
-  type: 'swipe-left' | 'swipe-right' | 'rating';
+  type: 'swipe-left' | 'swipe-right' | 'skip-left' | 'rating';
   movie: SearchMovie;
   rating?: number;
 }
@@ -419,16 +419,23 @@ export default function HomeScreen() {
     });
   }, [pan]);
 
-  const persistSwipeAction = useCallback(async (direction: SwipeDirection, movie: SearchMovie) => {
+  const persistSwipeAction = useCallback(async (
+    direction: SwipeDirection,
+    movie: SearchMovie,
+  ): Promise<UndoableAction['type']> => {
     if (!session) {
-      return;
+      return direction === 'right' ? 'swipe-right' : 'skip-left';
     }
     if (direction === 'right') {
       await addToWatchLater(session.token, movie.id);
-      return;
+      return 'swipe-right';
     }
-    await dislikeMovie(session.token, movie.id);
-  }, [session]);
+    if (selectedRating > 0) {
+      return 'skip-left';
+    }
+    const response = await dislikeMovie(session.token, movie.id);
+    return response.status === 'skipped_rated' ? 'skip-left' : 'swipe-left';
+  }, [selectedRating, session]);
 
   const undoSwipeAction = useCallback(async (action: UndoableAction) => {
     if (!session) {
@@ -442,6 +449,10 @@ export default function HomeScreen() {
 
     if (action.type === 'swipe-left') {
       await undoDislikeMovie(session.token, action.movie.id);
+      return;
+    }
+
+    if (action.type === 'skip-left') {
       return;
     }
 
@@ -467,9 +478,9 @@ export default function HomeScreen() {
     });
 
     try {
-      await persistSwipeAction(direction, movie);
+      const actionType = await persistSwipeAction(direction, movie);
       setLastUndoableAction({
-        type: direction === 'right' ? 'swipe-right' : 'swipe-left',
+        type: actionType,
         movie,
       });
     } catch (submitError) {
