@@ -88,6 +88,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Account deletion, block/report flows, and support/privacy URLs for App Review.
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
+- Rating deletion rule: a movie rating cannot be removed if it is linked to an existing review; the user must edit or delete the review first so reviews never become note-less.
 - Onboarding signals: movies chosen during onboarding should guide recommendations but should not be proposed back to the user.
 - First-run copy should clearly explain the product loop: choose taste signals, swipe/rate films, Qulte adapts, then users can organize, review, follow and message.
 - The first onboarding screen should explain the core concept before asking for favorite films: Tinder-like movie cards, swipe/pass/watch-later behavior, star ratings as strong signals, AI adaptation, and social discovery.

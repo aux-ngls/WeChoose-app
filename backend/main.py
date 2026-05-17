@@ -3311,6 +3311,16 @@ def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
+        "SELECT id FROM reviews WHERE user_id = ? AND movie_id = ? LIMIT 1",
+        (current_user["id"], movie_id),
+    )
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail="Cette note est liée à une critique. Modifie ou supprime la critique pour retirer la note.",
+        )
+    cursor.execute(
         "DELETE FROM user_ratings WHERE user_id = ? AND movie_id = ?",
         (current_user["id"], movie_id),
     )

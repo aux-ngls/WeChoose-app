@@ -283,7 +283,7 @@ export default function MovieDetailsScreen({
       } else {
         await rateMovie(session.token, movie.id, nextRating);
       }
-      if (route.params.source === 'tinder' && nextRating > 0) {
+      if (route.params.source === 'tinder') {
         DeviceEventEmitter.emit(TINDER_MOVIE_ACTION_EVENT, {
           type: 'rated',
           movieId: movie.id,
@@ -298,7 +298,7 @@ export default function MovieDetailsScreen({
         return;
       }
       setUserRating(previousRating);
-      setError("Impossible d'enregistrer la note.");
+      setError(actionError instanceof ApiError ? actionError.message : "Impossible d'enregistrer la note.");
     } finally {
       setActionLoading(false);
     }

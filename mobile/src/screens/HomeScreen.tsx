@@ -22,6 +22,7 @@ import {
   addToWatchLater,
   ApiError,
   fetchMovieFeed,
+  fetchUserMovieRating,
   getOnboardingPreferences,
   rateMovie,
   recordRecommendationImpression,
@@ -133,6 +134,32 @@ export default function HomeScreen() {
     pan.setValue({ x: 0, y: 0 });
     setSelectedRating(0);
   }, [currentMovie?.id, pan]);
+
+  useEffect(() => {
+    if (!session || !currentMovie) {
+      return;
+    }
+
+    let active = true;
+    const movieId = currentMovie.id;
+
+    void (async () => {
+      try {
+        const payload = await fetchUserMovieRating(session.token, movieId);
+        if (active && moviesRef.current[0]?.id === movieId) {
+          setSelectedRating(payload.rating ?? 0);
+        }
+      } catch (ratingError) {
+        if (ratingError instanceof ApiError && ratingError.status === 401) {
+          await signOut();
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [currentMovie?.id, session, signOut]);
 
   useEffect(() => {
     if (!session || !currentMovie || lastRecordedImpressionMovieIdRef.current === currentMovie.id) {

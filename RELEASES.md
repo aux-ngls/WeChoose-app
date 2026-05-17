@@ -47,6 +47,8 @@ These changes should be recorded as part of the next stable checkpoint:
 - removed the visible Social stats cards/header badge above the review feed.
 - unified rating writes so Tinder/movie-detail ratings update the user's existing review rating for that movie, while review creation/editing continues to update the user's movie rating.
 - allowed users to clear a movie rating from the movie detail screen by tapping the currently selected star value again.
+- synced the Tinder star control with the current movie's saved rating, including rating changes or clears made from the movie detail screen.
+- blocked deletion of a movie rating when it is tied to an existing review, with a clear mobile error message asking the user to edit or delete the review first.
 
 ## Important Recent Commits
 
