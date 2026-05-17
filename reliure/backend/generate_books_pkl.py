@@ -153,10 +153,16 @@ def clean_text(value: Any) -> str:
         value = value.get("value", "")
     if not isinstance(value, str):
         return ""
-    text = re.sub(r"\[([^\]]+)\]\[\d+\]", r"\1", value)
+    text = re.sub(r"\[Source\]\[\d+\]", "", value, flags=re.IGNORECASE)
+    text = re.sub(r"\(Source:\s*\[[^\]]+\]\([^)]+\)\)", "", text, flags=re.IGNORECASE)
+    text = text.split("----------", 1)[0]
+    text = re.sub(r"-{3,}\s*See also:.*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[([^\]]+)\]\[\d+\]", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = re.sub(r"\n\s*\[\d+\]:\s*\S+", "", text)
     text = re.sub(r"[*_`#>]+", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\bSource\b\.?$", "", text, flags=re.IGNORECASE).strip()
 
 
 def fetch_open_library_doc(title: str, author: str) -> dict[str, Any]:

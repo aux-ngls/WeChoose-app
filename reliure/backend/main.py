@@ -272,10 +272,16 @@ def normalize_open_library_description(value) -> str:
     else:
         return ""
 
+    text = re.sub(r"\[Source\]\[\d+\]", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\(Source:\s*\[[^\]]+\]\([^)]+\)\)", "", text, flags=re.IGNORECASE)
+    text = text.split("----------", 1)[0]
+    text = re.sub(r"-{3,}\s*See also:.*$", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\[([^\]]+)\]\[\d+\]", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = re.sub(r"\n\s*\[\d+\]:\s*\S+", "", text)
     text = re.sub(r"[*_`#>]+", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\bSource\b\.?$", "", text, flags=re.IGNORECASE).strip()
 
 
 @lru_cache(maxsize=512)
@@ -355,6 +361,8 @@ def fetch_open_library_work_details(work_key: str) -> Optional[dict]:
             break
     covers = data.get("covers") if isinstance(data.get("covers"), list) else []
     cover_id = next((cover for cover in covers if isinstance(cover, int)), None)
+    publish_date = str(data.get("first_publish_date") or data.get("created", {}).get("value") or "")
+    publish_year_match = re.search(r"\d{4}", publish_date)
 
     return {
         "id": stable_open_library_id(normalized_key),
@@ -364,7 +372,7 @@ def fetch_open_library_work_details(work_key: str) -> Optional[dict]:
         "poster_url": f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else "https://via.placeholder.com/500x750?text=Book",
         "trailer_url": None,
         "cast": [],
-        "release_date": "",
+        "release_date": publish_year_match.group(0) if publish_year_match else "",
         "runtime": 0,
         "tagline": "Une piste de lecture trouvée dans Open Library.",
         "genres": subjects[:4] or ["Livre"],
