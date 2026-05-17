@@ -11,10 +11,10 @@ Terminal 1:
 
 ```bash
 cd ~/Qulte/reliure/mobile
-npm run dev:auto
+npm start
 ```
 
-`dev:auto` tente le tunnel Expo puis bascule automatiquement en LAN si ngrok echoue.
+`npm start` lance automatiquement le backend Reliure local, configure l'URL API pour le telephone, puis demarre Expo en LAN sur le port 8082.
 
 Terminal 2, pour recuperer les mises a jour:
 
@@ -25,16 +25,11 @@ npm run update
 
 ## Backend local
 
+Si tu veux lancer le backend a part, tu peux encore utiliser:
+
 ```bash
 cd ~/Qulte/reliure
 npm run backend
-```
-
-Puis lance le mobile avec:
-
-```bash
-cd ~/Qulte/reliure/mobile
-EXPO_PUBLIC_API_URL=http://ADRESSE_IP_DU_MAC:8092 npm run dev:auto
 ```
 
 ## Etat de migration

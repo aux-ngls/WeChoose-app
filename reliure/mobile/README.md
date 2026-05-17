@@ -1,49 +1,25 @@
-# Qulte Mobile
+# Reliure Mobile
 
-Base React Native/Expo du projet Qulte, developpee en parallele du site web existant.
+Application Expo/React Native de Reliure, derivee de la structure mobile Qulte.
 
 ## Lancer l'app
 
 ```bash
-cd /home/wechoose/mobile
-npm install
-npm run start
+cd ~/Qulte/reliure/mobile
+npm start
 ```
 
-Puis :
+La commande demarre aussi le backend local Reliure et transmet automatiquement l'URL API a Expo.
 
-- `a` pour Android
-- `i` pour iPhone (macOS requis pour le simulateur iOS natif)
-- ou scanner le QR code avec `Expo Go`
+Puis:
 
-## Configuration API
+- scanner le QR code avec Expo Go
+- ou appuyer sur `a` pour Android
+- ou appuyer sur `i` pour iPhone si le simulateur iOS est disponible
 
-Par defaut, l'app pointe vers :
-
-- `https://api.wechoose.dury.dev`
-
-Tu peux surcharger l'URL avec :
+## Mises a jour
 
 ```bash
-EXPO_PUBLIC_API_URL=https://api.wechoose.dury.dev npm run start
+cd ~/Qulte/reliure/mobile
+npm run update
 ```
-
-## Ce qui est deja porte
-
-- auth mobile (login / signup)
-- onboarding de base
-- shell de navigation mobile
-- accueil branche au feed de recommandations
-- recherche film
-- feed social simple
-- inbox simple
-- profil perso simple
-
-## Ce qu'il reste a porter
-
-- fiche film complete
-- vraie messagerie avec fil detaille
-- playlists detaillees
-- interaction sociale complete
-- notifications natives
-- design system mobile avance

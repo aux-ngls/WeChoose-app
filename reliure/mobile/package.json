@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "dev": "expo start --lan --port 8082",
+    "start": "bash scripts/start-auto.sh",
+    "dev": "bash scripts/start-auto.sh",
+    "expo": "expo start",
     "dev:auto": "bash scripts/start-auto.sh",
     "dev:lan": "expo start --lan --port 8082",
     "dev:tunnel": "expo start --tunnel --port 8082",

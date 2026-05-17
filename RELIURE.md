@@ -13,10 +13,10 @@ Terminal 1:
 
 ```bash
 cd ~/Qulte/reliure/mobile
-npm run dev:auto
+npm start
 ```
 
-`dev:auto` essaie Expo en tunnel. Si ngrok echoue, il relance automatiquement en LAN.
+`npm start` lance automatiquement le backend Reliure local, configure l'URL API pour le telephone, puis demarre Expo en LAN sur le port 8082.
 
 Terminal 2, quand il y a des mises a jour:
 
@@ -36,5 +36,5 @@ Cette commande fait:
 ```bash
 cd ~/Qulte/reliure/mobile
 npm install
-npm run dev:auto
+npm start
 ```

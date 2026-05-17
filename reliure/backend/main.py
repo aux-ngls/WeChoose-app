@@ -25,6 +25,11 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 
 try:
+    import bcrypt as bcrypt_backend
+except Exception:
+    bcrypt_backend = None
+
+try:
     from cryptography.hazmat.primitives import serialization
     from py_vapid import Vapid02
     from pywebpush import WebPushException, webpush
@@ -39,7 +44,7 @@ SECRET_KEY = "votre_super_cle_secrete_a_changer_en_prod"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 180 # 180 jours, adapté à une app mobile
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
@@ -1043,7 +1048,22 @@ def serialize_profile_preferences(preferences: dict) -> dict:
     }
 
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    if not hashed_password:
+        return False
+
+    hashed_text = str(hashed_password)
+    if hashed_text.startswith(("$2a$", "$2b$", "$2y$")):
+        if bcrypt_backend is None:
+            return False
+        try:
+            return bcrypt_backend.checkpw(
+                plain_password.encode("utf-8"),
+                hashed_text.encode("utf-8"),
+            )
+        except (TypeError, ValueError):
+            return False
+
+    return pwd_context.verify(plain_password, hashed_text)
 
 def get_password_hash(password):
     return pwd_context.hash(password)
@@ -1083,6 +1103,12 @@ def get_user_from_token(token: str) -> dict:
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     return get_user_from_token(token)
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "app": "reliure"}
+
 
 # --- 4. ROUTES AUTH ---
 @app.post("/auth/signup", response_model=Token)

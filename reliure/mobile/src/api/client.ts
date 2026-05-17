@@ -63,7 +63,7 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ApiError('Le serveur met trop de temps a repondre.', 408);
     }
-    throw error;
+    throw new ApiError("Impossible de joindre le serveur Reliure. Lance l'application avec npm start depuis reliure/mobile.", 0);
   } finally {
     clearTimeout(timeout);
   }
