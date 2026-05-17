@@ -9,7 +9,7 @@ cd ~/Qulte/reliure/mobile
 npm start
 ```
 
-La commande demarre aussi le backend local Reliure et transmet automatiquement l'URL API a Expo.
+La commande demarre aussi le backend local Reliure, affiche un QR code Reliure et transmet automatiquement l'URL API a Expo.
 
 Puis:
 

@@ -83,9 +83,11 @@ case "$EXPO_MODE" in
     npx expo start --tunnel --port "$MOBILE_PORT"
     ;;
   localhost)
+    node scripts/print-expo-qr.cjs "exp://127.0.0.1:$MOBILE_PORT"
     npx expo start --localhost --port "$MOBILE_PORT"
     ;;
   lan|*)
+    node scripts/print-expo-qr.cjs "exp://$HOST_IP:$MOBILE_PORT"
     npx expo start --lan --port "$MOBILE_PORT" --clear
     ;;
 esac
