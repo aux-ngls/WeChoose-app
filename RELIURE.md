@@ -16,7 +16,11 @@ cd ~/Qulte/reliure/mobile
 npm start
 ```
 
-`npm start` lance automatiquement le backend Reliure local, affiche un QR code Reliure, configure l'URL API pour le telephone, puis demarre Expo en LAN sur le port 8082.
+`npm start` lance Expo comme Qulte. L'app pointe par defaut vers l'API en ligne:
+
+```bash
+https://api.wechoose.dury.dev/reliure
+```
 
 Terminal 2, quand il y a des mises a jour:
 
@@ -37,4 +41,13 @@ Cette commande fait:
 cd ~/Qulte/reliure/mobile
 npm install
 npm start
+```
+
+## Backend local optionnel
+
+Le backend local reste disponible si on veut tester une modification API avant de la publier:
+
+```bash
+cd ~/Qulte/reliure/mobile
+npm run dev:local
 ```

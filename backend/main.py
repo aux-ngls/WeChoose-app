@@ -1,6 +1,7 @@
 import ast
 import base64
 from collections import defaultdict
+import importlib.util
 import json
 import os
 import re
@@ -5797,3 +5798,25 @@ def undo_dislike_movie(movie_id: int, current_user: dict = Depends(get_current_u
     conn.commit()
     conn.close()
     return {"status": "removed"}
+
+
+def mount_reliure_api():
+    reliure_main_path = os.getenv(
+        "RELIURE_BACKEND_MAIN",
+        "/home/wechoose/reliure/backend/main.py",
+    )
+    if not os.path.exists(reliure_main_path):
+        return
+
+    spec = importlib.util.spec_from_file_location("reliure_backend_main", reliure_main_path)
+    if not spec or not spec.loader:
+        return
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    reliure_app = getattr(module, "app", None)
+    if reliure_app is not None:
+        app.mount("/reliure", reliure_app)
+
+
+mount_reliure_api()
