@@ -5756,6 +5756,192 @@ def mobile_trailer_player(video_id: str = Query("", alias="videoId")):
   </body>
 </html>"""
 
+
+@app.get("/support", response_class=HTMLResponse)
+def support_page():
+    return """<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Qulte - Support</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0b10;
+        --panel: rgba(255,255,255,0.06);
+        --border: rgba(255,255,255,0.12);
+        --text: #f6f1eb;
+        --muted: #d0c4bc;
+        --accent: #f1788f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(241,120,143,0.18), transparent 34%),
+          radial-gradient(circle at bottom left, rgba(120,164,255,0.12), transparent 32%),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      main {
+        width: min(860px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0 72px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        padding: 24px;
+        backdrop-filter: blur(18px);
+      }
+      h1, h2 { line-height: 1.15; margin: 0 0 14px; }
+      h1 { font-size: clamp(2rem, 5vw, 3.4rem); }
+      h2 { font-size: 1.1rem; margin-top: 26px; }
+      p { margin: 0 0 14px; color: var(--muted); }
+      ul { margin: 0; padding-left: 20px; color: var(--muted); }
+      li + li { margin-top: 8px; }
+      a { color: var(--accent); text-decoration: none; }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid rgba(241,120,143,0.24);
+        border-radius: 999px;
+        padding: 8px 12px;
+        margin-bottom: 16px;
+        color: var(--text);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <div class="eyebrow">Qulte · Support</div>
+        <h1>Besoin d'aide ?</h1>
+        <p>Cette page de support concerne l'application mobile Qulte, disponible sur iPhone. Si tu rencontres un bug, un probleme d'acces a ton compte, un souci lie aux messages, aux notifications ou a la gestion de ton profil, tu peux nous contacter directement.</p>
+
+        <h2>Contacter l'equipe</h2>
+        <p>Email de support : <a href="mailto:qulte.developpeur@gmail.com">qulte.developpeur@gmail.com</a></p>
+        <p>Nous faisons le maximum pour repondre dans les meilleurs delais, en particulier pour les demandes liees a la securite du compte, aux contenus signales ou a la suppression de donnees.</p>
+
+        <h2>Dans ton message, indique si possible</h2>
+        <ul>
+          <li>le modele de ton iPhone et la version iOS ;</li>
+          <li>le nom de ton compte Qulte ;</li>
+          <li>une description claire du probleme ;</li>
+          <li>les etapes pour reproduire le bug ;</li>
+          <li>une capture d'ecran si cela peut aider.</li>
+        </ul>
+
+        <h2>Compte, donnees et moderation</h2>
+        <p>Depuis l'application, tu peux gerer ton compte, modifier ton profil et demander la suppression de ton compte. Si un contenu te semble inapproprie ou si tu rencontres un probleme avec un autre utilisateur, utilise les outils de signalement ou ecris-nous directement.</p>
+
+        <h2>Service</h2>
+        <p>Qulte evolue regulierement. Certaines fonctionnalites peuvent etre temporairement indisponibles pendant une maintenance, une mise a jour ou une intervention technique. Lorsqu'un incident important est identifie, nous faisons le necessaire pour retablir le service aussi vite que possible.</p>
+      </div>
+    </main>
+  </body>
+</html>"""
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_page():
+    return """<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Qulte - Politique de confidentialite</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0b10;
+        --panel: rgba(255,255,255,0.06);
+        --border: rgba(255,255,255,0.12);
+        --text: #f6f1eb;
+        --muted: #d0c4bc;
+        --accent: #f1788f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(241,120,143,0.18), transparent 34%),
+          radial-gradient(circle at bottom left, rgba(120,164,255,0.12), transparent 32%),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.65;
+      }
+      main {
+        width: min(900px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0 72px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        padding: 24px;
+        backdrop-filter: blur(18px);
+      }
+      h1, h2 { line-height: 1.15; margin: 0 0 14px; }
+      h1 { font-size: clamp(2rem, 5vw, 3.2rem); }
+      h2 { font-size: 1.1rem; margin-top: 26px; }
+      p { margin: 0 0 14px; color: var(--muted); }
+      ul { margin: 0 0 14px; padding-left: 20px; color: var(--muted); }
+      li + li { margin-top: 8px; }
+      a { color: var(--accent); text-decoration: none; }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid rgba(241,120,143,0.24);
+        border-radius: 999px;
+        padding: 8px 12px;
+        margin-bottom: 16px;
+        color: var(--text);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <div class="eyebrow">Qulte · Confidentialite</div>
+        <h1>Politique de confidentialite</h1>
+        <p>Qulte est une application mobile consacree a la recommandation de films, a la creation de playlists, aux critiques et aux interactions sociales entre utilisateurs. Cette politique explique de maniere generale quelles donnees peuvent etre traitees dans le cadre du service et dans quel but.</p>
+
+        <h2>Donnees pouvant etre traitees</h2>
+        <ul>
+          <li>donnees de compte, comme ton nom d'utilisateur et tes informations d'authentification ;</li>
+          <li>contenus que tu publies dans l'application, comme tes critiques, commentaires, messages et elements de profil ;</li>
+          <li>interactions fonctionnelles, comme tes notes, playlists, films mis de cote, suivis, likes et notifications ;</li>
+          <li>donnees techniques minimales necessaires au bon fonctionnement et a la securite du service.</li>
+        </ul>
+
+        <h2>Finalites</h2>
+        <p>Ces donnees sont utilisees pour fournir les fonctionnalites essentielles de Qulte, personnaliser l'experience de recommandation, permettre les echanges entre utilisateurs, prevenir les abus, assurer la securite du service et ameliorer la stabilite de l'application.</p>
+
+        <h2>Partage et sous-traitance</h2>
+        <p>Qulte peut s'appuyer sur des services techniques tiers indispensables au fonctionnement du produit, notamment pour l'hebergement, la diffusion de notifications, ou l'acces a des donnees cinema. Les donnees ne sont pas vendues en tant que telles a des tiers a des fins publicitaires externes.</p>
+
+        <h2>Suppression et droits</h2>
+        <p>Depuis l'application, tu peux demander la suppression de ton compte. Si tu souhaites exercer un droit d'acces, de rectification ou de suppression concernant tes donnees, tu peux egalement nous contacter a l'adresse suivante : <a href="mailto:qulte.developpeur@gmail.com">qulte.developpeur@gmail.com</a>.</p>
+
+        <h2>Securite</h2>
+        <p>Des mesures raisonnables sont mises en oeuvre pour proteger les comptes, les donnees et l'integrite du service. Aucune solution technique n'offrant une securite absolue, nous encourageons aussi les utilisateurs a choisir un mot de passe robuste et a nous signaler rapidement tout comportement suspect.</p>
+
+        <h2>Mises a jour</h2>
+        <p>Cette politique peut evoluer pour refleter les changements du service, de l'infrastructure ou des obligations applicables. La version publiee sur cette page fait foi pour les informations generales communiquees aux utilisateurs et a Apple dans le cadre de la distribution de l'application.</p>
+      </div>
+    </main>
+  </body>
+</html>"""
+
 @app.get("/movies/news")
 def news():
     url = f"https://api.themoviedb.org/3/movie/now_playing?api_key={TMDB_API_KEY}&language=fr-FR&page=1"

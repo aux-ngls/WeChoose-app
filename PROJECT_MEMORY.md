@@ -35,6 +35,7 @@ The mobile app currently includes:
 - movie detail sheet used consistently when opening a movie;
 - actor/person detail pages linked from movie casts and profile key people;
 - mobile trailers should load through the backend-hosted `/mobile-trailer-player.html` player, not the frontend website domain, to avoid web frontend outages breaking video playback.
+- support and privacy pages used by the mobile app and App Store submission should be served from the API domain when the frontend website is unstable.
 - full-screen stack screens such as movie details, playlists, profiles, settings, review creation, and conversations should feel native on iPhone, with return by left-edge swipe;
 - ratings with half-star precision;
 - ratings are meant to represent one personal movie rating across Tinder, movie details, and reviews;

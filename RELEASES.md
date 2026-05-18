@@ -57,6 +57,8 @@ These changes should be recorded as part of the next stable checkpoint:
 - moved the mobile trailer player to the backend API domain so trailers keep working even if the web frontend is unavailable.
 - moved social notifications out of the Social feed into a profile-header bell with unread badges, keeping direct-message notifications separate.
 - changed the profile notification bell to open a dedicated full notifications page instead of an inline profile panel.
+- added stable API-hosted support/privacy pages for App Store metadata and switched the mobile settings links to those API URLs.
+- locked iOS production EAS builds to the Xcode 26 image to match Apple's 2026 submission requirements.
 
 ## Important Recent Commits
 

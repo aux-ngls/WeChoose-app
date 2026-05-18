@@ -6,7 +6,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { WEB_URL } from '../api/config';
+import { API_URL } from '../api/config';
 import { ApiError, deleteAccount, fetchBlockedUsers, resetTestUserData, unblockUser } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import AppScreen from '../components/AppScreen';
@@ -233,11 +233,11 @@ export default function SettingsScreen() {
   };
 
   const openSupportPage = async () => {
-    await Linking.openURL(`${WEB_URL}/support`);
+    await Linking.openURL(`${API_URL}/support`);
   };
 
   const openPrivacyPage = async () => {
-    await Linking.openURL(`${WEB_URL}/privacy`);
+    await Linking.openURL(`${API_URL}/privacy`);
   };
 
   const handleUnblockUser = async (targetUserId: number) => {
