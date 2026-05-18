@@ -15,6 +15,7 @@
     "ios": {
       "icon": "./assets/icon.png",
       "supportsTablet": false,
+      "requireFullScreen": true,
       "bundleIdentifier": "dev.dury.qulte"
     },
     "android": {
