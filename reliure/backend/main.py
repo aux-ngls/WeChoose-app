@@ -1,6 +1,7 @@
 import ast
 import base64
 from collections import defaultdict
+import hashlib
 import json
 import os
 import re
@@ -48,6 +49,7 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
+GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "").strip()
 WEB_PUSH_SUBJECT = os.getenv("WEB_PUSH_SUBJECT", "").strip() or "mailto:reliure.developpeur@gmail.com"
 app = FastAPI(title="Reliure API")
@@ -68,6 +70,8 @@ PASS_RECONSIDER_COOLDOWN_DAYS = 14
 MOBILE_ARCHIVE_PATH = os.getenv("MOBILE_ARCHIVE_PATH", "/home/wechoose/reliure/mobile.tar.gz")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OPEN_LIBRARY_ID_OFFSET = 900_000_000
+GOOGLE_BOOKS_ID_OFFSET = 1_800_000_000
+GOOGLE_BOOKS_PROVIDER = "google_books"
 PUBLIC_API_BASE_URL = os.getenv("RELIURE_PUBLIC_API_BASE_URL", "https://api.wechoose.dury.dev/reliure").rstrip("/")
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
 AVATAR_PUBLIC_PREFIX = "/uploads/avatars"
@@ -234,6 +238,11 @@ def normalize_open_library_cover_size(size: str) -> str:
     return normalized_size if normalized_size in {"S", "M", "L"} else "L"
 
 
+def normalize_release_year(value) -> str:
+    match = re.search(r"\d{4}", str(value or ""))
+    return match.group(0) if match else ""
+
+
 def open_library_cover_source_url(cover_id: int, size: str = "L") -> str:
     return f"https://covers.openlibrary.org/b/id/{int(cover_id)}-{normalize_open_library_cover_size(size)}.jpg?default=false"
 
@@ -260,6 +269,21 @@ def cover_url_for_client(url: str) -> str:
         return build_open_library_cover_url(archive_match.group(1), archive_match.group(2))
 
     return raw_url
+
+
+def google_books_enabled() -> bool:
+    return bool(GOOGLE_BOOKS_API_KEY)
+
+
+def normalize_google_books_thumbnail(image_links) -> str:
+    if not isinstance(image_links, dict):
+        return "https://via.placeholder.com/500x750?text=Book"
+
+    for key in ("extraLarge", "large", "medium", "thumbnail", "smallThumbnail"):
+        raw_url = str(image_links.get(key) or "").strip()
+        if raw_url:
+            return raw_url.replace("http://", "https://")
+    return "https://via.placeholder.com/500x750?text=Book"
 
 
 def serialize_open_library_book(doc: dict) -> Optional[dict]:
@@ -415,6 +439,141 @@ def fetch_open_library_work_details(work_key: str) -> Optional[dict]:
     }
 
 
+def normalize_google_books_description(value) -> str:
+    return normalize_open_library_description(value)
+
+
+def serialize_google_book(item: dict) -> Optional[dict]:
+    if not isinstance(item, dict):
+        return None
+
+    volume_id = str(item.get("id") or "").strip()
+    volume_info = item.get("volumeInfo") if isinstance(item.get("volumeInfo"), dict) else {}
+    title = str(volume_info.get("title") or "").strip()
+    if not volume_id or not title:
+        return None
+
+    authors = volume_info.get("authors") if isinstance(volume_info.get("authors"), list) else []
+    author = str(authors[0]).strip() if authors else ""
+    categories = volume_info.get("categories") if isinstance(volume_info.get("categories"), list) else []
+    overview = normalize_google_books_description(
+        volume_info.get("description") or volume_info.get("subtitle") or ""
+    )
+    rating = float(volume_info.get("averageRating") or 0.0)
+    if 0 < rating <= 5:
+        rating *= 2
+    if rating <= 0:
+        rating = 7.0
+
+    return {
+        "id": get_external_book_numeric_id(GOOGLE_BOOKS_PROVIDER, volume_id),
+        "title": title,
+        "author": author,
+        "poster_url": normalize_google_books_thumbnail(volume_info.get("imageLinks")),
+        "rating": round(rating, 1),
+        "release_date": normalize_release_year(volume_info.get("publishedDate")),
+        "overview": overview,
+        "primary_genre": str(categories[0]).strip() if categories else "Livre",
+    }
+
+
+@lru_cache(maxsize=512)
+def fetch_google_books_search(query: str, limit: int = 10) -> tuple[dict, ...]:
+    normalized_query = query.strip()
+    if len(normalized_query) < 2 or not google_books_enabled():
+        return ()
+
+    params = {
+        "q": normalized_query,
+        "maxResults": max(1, min(int(limit), 20)),
+        "printType": "books",
+        "projection": "full",
+        "orderBy": "relevance",
+        "key": GOOGLE_BOOKS_API_KEY,
+    }
+    try:
+        response = requests.get(
+            "https://www.googleapis.com/books/v1/volumes",
+            params=params,
+            timeout=4,
+        )
+        if response.status_code >= 400:
+            return ()
+        payload = response.json()
+    except Exception:
+        return ()
+
+    items = payload.get("items") if isinstance(payload, dict) else []
+    serialized = [
+        book
+        for book in (serialize_google_book(item) for item in (items or []))
+        if book
+    ]
+    return tuple(serialized[:limit])
+
+
+@lru_cache(maxsize=512)
+def fetch_google_book_details(volume_id: str) -> Optional[dict]:
+    normalized_volume_id = str(volume_id or "").strip()
+    if not normalized_volume_id or not google_books_enabled():
+        return None
+
+    try:
+        response = requests.get(
+            f"https://www.googleapis.com/books/v1/volumes/{normalized_volume_id}",
+            params={"projection": "full", "key": GOOGLE_BOOKS_API_KEY},
+            timeout=4,
+        )
+        if response.status_code >= 400:
+            return None
+        payload = response.json()
+    except Exception:
+        return None
+
+    volume_info = payload.get("volumeInfo") if isinstance(payload, dict) else {}
+    if not isinstance(volume_info, dict):
+        return None
+
+    title = str(volume_info.get("title") or "").strip()
+    if not title:
+        return None
+
+    authors = [
+        str(author).strip()
+        for author in (volume_info.get("authors") or [])
+        if str(author).strip()
+    ][:3]
+    categories = [
+        str(category).strip()
+        for category in (volume_info.get("categories") or [])
+        if str(category).strip()
+    ][:4]
+    overview = normalize_google_books_description(
+        volume_info.get("description") or volume_info.get("subtitle") or ""
+    )
+    rating = float(volume_info.get("averageRating") or 0.0)
+    if 0 < rating <= 5:
+        rating *= 2
+    if rating <= 0:
+        rating = 7.0
+
+    return {
+        "id": get_external_book_numeric_id(GOOGLE_BOOKS_PROVIDER, normalized_volume_id),
+        "title": title,
+        "overview": overview or "Ce livre n'a pas encore de résumé détaillé dans Google Books.",
+        "rating": round(rating, 1),
+        "poster_url": normalize_google_books_thumbnail(volume_info.get("imageLinks")),
+        "trailer_url": None,
+        "cast": [],
+        "release_date": normalize_release_year(volume_info.get("publishedDate")),
+        "runtime": int(volume_info.get("pageCount") or 0),
+        "tagline": str(volume_info.get("subtitle") or "Une piste de lecture trouvée dans Google Books.").strip(),
+        "genres": categories or ["Livre"],
+        "directors": authors,
+        "watch_providers": get_tmdb_watch_providers(0),
+    }
+
+
 @lru_cache(maxsize=2048)
 def get_tmdb_movie_summary(movie_id: int) -> Optional[dict]:
     try:
@@ -433,11 +592,91 @@ def get_display_movie_title(movie_id: int) -> str:
         if title:
             return title
 
+    external_reference = get_external_book_reference(int(movie_id))
+    if external_reference:
+        provider, external_id = external_reference
+        if provider == GOOGLE_BOOKS_PROVIDER:
+            details = fetch_google_book_details(external_id)
+            if details and details.get("title"):
+                return str(details["title"])
+
     summary = get_tmdb_movie_summary(int(movie_id))
     if summary and summary.get("title"):
         return str(summary["title"])
 
     return f"Livre #{movie_id}"
+
+
+def get_external_book_hash_base(provider: str) -> int:
+    if provider == GOOGLE_BOOKS_PROVIDER:
+        return GOOGLE_BOOKS_ID_OFFSET
+    raise ValueError(f"Unsupported external provider: {provider}")
+
+
+@lru_cache(maxsize=4096)
+def get_external_book_reference(numeric_id: int) -> Optional[tuple[str, str]]:
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT provider, external_id FROM external_book_ids WHERE numeric_id = ?",
+        (int(numeric_id),),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return (str(row["provider"]), str(row["external_id"]))
+
+
+@lru_cache(maxsize=4096)
+def get_external_book_numeric_id(provider: str, external_id: str) -> int:
+    normalized_provider = str(provider or "").strip()
+    normalized_external_id = str(external_id or "").strip()
+    if not normalized_provider or not normalized_external_id:
+        raise ValueError("External provider and external id are required")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT numeric_id FROM external_book_ids WHERE provider = ? AND external_id = ?",
+        (normalized_provider, normalized_external_id),
+    )
+    existing_row = cursor.fetchone()
+    if existing_row:
+        conn.close()
+        return int(existing_row["numeric_id"])
+
+    hash_base = get_external_book_hash_base(normalized_provider)
+    digest = hashlib.sha1(f"{normalized_provider}:{normalized_external_id}".encode("utf-8")).hexdigest()
+    candidate_id = hash_base + int(digest[:10], 16)
+
+    for attempt in range(64):
+        numeric_id = candidate_id + attempt
+        cursor.execute(
+            "SELECT provider, external_id FROM external_book_ids WHERE numeric_id = ?",
+            (numeric_id,),
+        )
+        collision_row = cursor.fetchone()
+        if collision_row:
+            if (
+                str(collision_row["provider"]) == normalized_provider
+                and str(collision_row["external_id"]) == normalized_external_id
+            ):
+                conn.close()
+                return int(numeric_id)
+            continue
+
+        cursor.execute(
+            "INSERT INTO external_book_ids (numeric_id, provider, external_id) VALUES (?, ?, ?)",
+            (numeric_id, normalized_provider, normalized_external_id),
+        )
+        conn.commit()
+        conn.close()
+        get_external_book_reference.cache_clear()
+        return int(numeric_id)
+
+    conn.close()
+    raise RuntimeError("Unable to allocate a stable external book id")
 
 
 def init_db():
@@ -621,6 +860,17 @@ def init_db():
                         value TEXT,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
 
+    # Table EXTERNAL_BOOK_IDS
+    cursor.execute('''CREATE TABLE IF NOT EXISTS external_book_ids (
+                        numeric_id INTEGER PRIMARY KEY,
+                        provider TEXT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(provider, external_id))''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_external_book_ids_provider_external ON external_book_ids(provider, external_id)"
+    )
+
     # Table RECOMMENDATION_IMPRESSIONS
     cursor.execute('''CREATE TABLE IF NOT EXISTS recommendation_impressions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -666,6 +916,10 @@ def init_db():
 init_db()
 
 # --- 2. IA ---
+if google_books_enabled():
+    print("📚 Google Books fallback active")
+else:
+    print("📚 Google Books fallback inactive (GOOGLE_BOOKS_API_KEY manquante)")
 print("⏳ Chargement IA Reliure...")
 try:
     data_path = os.getenv("RELIURE_DATA_PATH", os.path.join(BASE_DIR, "books.pkl"))
@@ -1699,6 +1953,14 @@ def fetch_poster_from_tmdb(movie_id):
     if catalog_row:
         return cover_url_for_client(str(catalog_row.get("poster_url") or catalog_row.get("cover_url") or "https://via.placeholder.com/500"))
 
+    external_reference = get_external_book_reference(int(movie_id))
+    if external_reference:
+        provider, external_id = external_reference
+        if provider == GOOGLE_BOOKS_PROVIDER:
+            details = fetch_google_book_details(external_id)
+            if details:
+                return str(details.get("poster_url") or "https://via.placeholder.com/500x750?text=Book")
+
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR"
         data = requests.get(url, timeout=1).json()
@@ -1786,6 +2048,12 @@ def get_tmdb_details(movie_id):
     work_key = open_library_work_key_from_id(int(movie_id))
     if work_key:
         return fetch_open_library_work_details(work_key)
+
+    external_reference = get_external_book_reference(int(movie_id))
+    if external_reference:
+        provider, external_id = external_reference
+        if provider == GOOGLE_BOOKS_PROVIDER:
+            return fetch_google_book_details(external_id)
 
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR&append_to_response=videos,credits"
@@ -5989,7 +6257,10 @@ def search(query: str):
                 "primary_genre": str(row.get("primary_genre") or ""),
             })
 
-    remote_results = list(fetch_open_library_search(query, 16))
+    remote_results = [
+        *list(fetch_google_books_search(query, 12)),
+        *list(fetch_open_library_search(query, 12)),
+    ]
     seen_keys: set[str] = set()
     merged_results: list[dict] = []
     for item in [*results, *remote_results]:
