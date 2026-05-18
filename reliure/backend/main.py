@@ -2045,15 +2045,15 @@ def get_tmdb_details(movie_id):
             "watch_providers": get_tmdb_watch_providers(int(movie_id)),
         }
 
-    work_key = open_library_work_key_from_id(int(movie_id))
-    if work_key:
-        return fetch_open_library_work_details(work_key)
-
     external_reference = get_external_book_reference(int(movie_id))
     if external_reference:
         provider, external_id = external_reference
         if provider == GOOGLE_BOOKS_PROVIDER:
             return fetch_google_book_details(external_id)
+
+    work_key = open_library_work_key_from_id(int(movie_id))
+    if work_key:
+        return fetch_open_library_work_details(work_key)
 
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR&append_to_response=videos,credits"
