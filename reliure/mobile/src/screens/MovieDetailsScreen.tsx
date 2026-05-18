@@ -63,6 +63,16 @@ function extractYouTubeVideoId(url: string | null | undefined): string | null {
   return null;
 }
 
+function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `${API_URL}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
 export default function MovieDetailsScreen({
   navigation,
   route,
@@ -80,6 +90,7 @@ export default function MovieDetailsScreen({
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [posterLoadFailed, setPosterLoadFailed] = useState(false);
   const playlistTranslateY = useState(() => new Animated.Value(0))[0];
 
   useEffect(() => {
@@ -114,6 +125,7 @@ export default function MovieDetailsScreen({
     setFeedback('');
     setShowPlaylistPicker(false);
     setNewPlaylistName('');
+    setPosterLoadFailed(false);
 
     void (async () => {
       try {
@@ -167,6 +179,13 @@ export default function MovieDetailsScreen({
     }
     return `${API_URL}/mobile-trailer-player.html?videoId=${encodeURIComponent(videoId)}`;
   }, [movie?.trailer_url]);
+
+  const heroPosterUrl = useMemo(() => {
+    if (!movie || posterLoadFailed) {
+      return null;
+    }
+    return resolveMediaUrl(movie.poster_url);
+  }, [movie, posterLoadFailed]);
 
   const handleWatchLater = async () => {
     if (!session || !movie) {
@@ -390,7 +409,19 @@ export default function MovieDetailsScreen({
         ) : movie ? (
           <>
             <View style={[styles.heroCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+              {heroPosterUrl ? (
+                <Image
+                  source={{ uri: heroPosterUrl }}
+                  style={styles.heroPoster}
+                  resizeMode="cover"
+                  onError={() => setPosterLoadFailed(true)}
+                />
+              ) : (
+                <View style={[styles.heroPoster, styles.heroPosterFallback, { backgroundColor: theme.rgba.cardStrong }]}>
+                  <Ionicons name="book-outline" size={44} color={theme.colors.textMuted} />
+                  <Text style={[styles.heroPosterFallbackTitle, { color: theme.colors.textSoft }]} numberOfLines={3}>{movie.title}</Text>
+                </View>
+              )}
               <View style={styles.heroBody}>
                 <Text style={[styles.movieTitle, { color: theme.colors.text }]}>{movie.title}</Text>
                 {metaLine ? <Text style={[styles.metaLine, { color: theme.colors.textSoft }]}>{metaLine}</Text> : null}
@@ -678,6 +709,20 @@ const styles = StyleSheet.create({
   heroPoster: {
     width: '100%',
     aspectRatio: 0.82,
+  },
+  heroPosterFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  heroPosterFallbackTitle: {
+    color: '#cbd5e1',
+    maxWidth: 220,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
   },
   heroBody: {
     padding: 18,

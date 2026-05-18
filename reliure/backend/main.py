@@ -12,7 +12,7 @@ from functools import lru_cache
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pandas as pd
 import pickle
@@ -68,6 +68,7 @@ PASS_RECONSIDER_COOLDOWN_DAYS = 14
 MOBILE_ARCHIVE_PATH = os.getenv("MOBILE_ARCHIVE_PATH", "/home/wechoose/reliure/mobile.tar.gz")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OPEN_LIBRARY_ID_OFFSET = 900_000_000
+PUBLIC_API_BASE_URL = os.getenv("RELIURE_PUBLIC_API_BASE_URL", "https://api.wechoose.dury.dev/reliure").rstrip("/")
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
 AVATAR_PUBLIC_PREFIX = "/uploads/avatars"
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
@@ -228,6 +229,39 @@ def open_library_work_key_from_id(book_id: int) -> Optional[str]:
     return f"/works/OL{int(book_id) - OPEN_LIBRARY_ID_OFFSET}W"
 
 
+def normalize_open_library_cover_size(size: str) -> str:
+    normalized_size = str(size or "L").upper()
+    return normalized_size if normalized_size in {"S", "M", "L"} else "L"
+
+
+def open_library_cover_source_url(cover_id: int, size: str = "L") -> str:
+    return f"https://covers.openlibrary.org/b/id/{int(cover_id)}-{normalize_open_library_cover_size(size)}.jpg?default=false"
+
+
+def build_open_library_cover_url(cover_id, size: str = "L") -> str:
+    try:
+        normalized_cover_id = int(cover_id)
+    except (TypeError, ValueError):
+        return "https://via.placeholder.com/500x750?text=Book"
+    return f"{PUBLIC_API_BASE_URL}/books/cover/openlibrary/{normalized_cover_id}?size={normalize_open_library_cover_size(size)}"
+
+
+def cover_url_for_client(url: str) -> str:
+    raw_url = str(url or "").strip()
+    if not raw_url:
+        return "https://via.placeholder.com/500x750?text=Book"
+
+    cover_match = re.search(r"covers\.openlibrary\.org/b/id/(\d+)-([SML])\.jpg", raw_url, flags=re.IGNORECASE)
+    if cover_match:
+        return build_open_library_cover_url(cover_match.group(1), cover_match.group(2))
+
+    archive_match = re.search(r"/(\d+)-([SML])\.jpg", raw_url, flags=re.IGNORECASE)
+    if "archive.org/" in raw_url and archive_match:
+        return build_open_library_cover_url(archive_match.group(1), archive_match.group(2))
+
+    return raw_url
+
+
 def serialize_open_library_book(doc: dict) -> Optional[dict]:
     work_key = str(doc.get("key") or "")
     title = str(doc.get("title") or "").strip()
@@ -253,7 +287,7 @@ def serialize_open_library_book(doc: dict) -> Optional[dict]:
         "id": stable_open_library_id(work_key),
         "title": title,
         "author": author,
-        "poster_url": f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else "https://via.placeholder.com/500x750?text=Book",
+        "poster_url": build_open_library_cover_url(cover_id) if cover_id else "https://via.placeholder.com/500x750?text=Book",
         "rating": round(rating, 1),
         "release_date": str(year or ""),
         "overview": str(first_sentence or ""),
@@ -369,7 +403,7 @@ def fetch_open_library_work_details(work_key: str) -> Optional[dict]:
         "title": title,
         "overview": description or "Ce livre n'a pas encore de résumé détaillé dans Open Library.",
         "rating": 7.0,
-        "poster_url": f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else "https://via.placeholder.com/500x750?text=Book",
+        "poster_url": build_open_library_cover_url(cover_id) if cover_id else "https://via.placeholder.com/500x750?text=Book",
         "trailer_url": None,
         "cast": [],
         "release_date": publish_year_match.group(0) if publish_year_match else "",
@@ -1663,7 +1697,7 @@ def get_catalog_row(movie_id: int) -> Optional[dict]:
 def fetch_poster_from_tmdb(movie_id):
     catalog_row = get_catalog_row(int(movie_id))
     if catalog_row:
-        return str(catalog_row.get("poster_url") or catalog_row.get("cover_url") or "https://via.placeholder.com/500")
+        return cover_url_for_client(str(catalog_row.get("poster_url") or catalog_row.get("cover_url") or "https://via.placeholder.com/500"))
 
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR"
@@ -1738,7 +1772,7 @@ def get_tmdb_details(movie_id):
             "title": str(catalog_row.get("title") or ""),
             "overview": str(catalog_row.get("overview") or ""),
             "rating": float(catalog_row.get("vote_average") or 0),
-            "poster_url": str(catalog_row.get("poster_url") or catalog_row.get("cover_url") or ""),
+            "poster_url": cover_url_for_client(str(catalog_row.get("poster_url") or catalog_row.get("cover_url") or "")),
             "trailer_url": None,
             "cast": [],
             "release_date": str(catalog_row.get("release_date") or ""),
@@ -2427,7 +2461,7 @@ def serialize_review_row(row: sqlite3.Row) -> dict:
         "id": row["id"],
         "movie_id": row["movie_id"],
         "title": row["title"],
-        "poster_url": row["poster_url"],
+        "poster_url": cover_url_for_client(row["poster_url"]),
         "rating": row["rating"],
         "content": row["content"],
         "created_at": row["created_at"],
@@ -5948,7 +5982,7 @@ def search(query: str):
                 "id": int(row["id"]),
                 "title": str(row["title"]),
                 "author": str(row.get("author") or ""),
-                "poster_url": str(row.get("poster_url") or row.get("cover_url") or ""),
+                "poster_url": cover_url_for_client(str(row.get("poster_url") or row.get("cover_url") or "")),
                 "rating": float(row.get("vote_average") or 0),
                 "release_date": str(row.get("release_date") or ""),
                 "overview": str(row.get("overview") or ""),
@@ -5975,6 +6009,32 @@ def search(query: str):
 @app.get("/books/search")
 def search_books(query: str):
     return search(query)
+
+
+@app.get("/books/cover/openlibrary/{cover_id}")
+def open_library_cover_proxy(cover_id: int, size: str = "L"):
+    normalized_size = normalize_open_library_cover_size(size)
+    source_url = open_library_cover_source_url(cover_id, normalized_size)
+    try:
+        response = requests.get(
+            source_url,
+            allow_redirects=True,
+            headers={"User-Agent": "Reliure/1.0 (book discovery app; contact: reliure.developpeur@gmail.com)"},
+            timeout=8,
+        )
+        content_type = str(response.headers.get("content-type") or "image/jpeg")
+        if response.status_code >= 400 or "image" not in content_type.lower() or len(response.content) < 32:
+            raise HTTPException(status_code=404, detail="Couverture introuvable")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=404, detail="Couverture introuvable")
+
+    return Response(
+        content=response.content,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/downloads/mobile")
