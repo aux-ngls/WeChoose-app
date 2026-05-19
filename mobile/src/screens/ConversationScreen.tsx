@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Alert,
   FlatList,
   Image,
@@ -586,6 +587,32 @@ export default function ConversationScreen({
                 overshootLeft={false}
                 leftThreshold={28}
                 friction={1.45}
+                renderLeftActions={(progress, dragX) => {
+                  const translateX = dragX.interpolate({
+                    inputRange: [0, 72],
+                    outputRange: [-14, 0],
+                    extrapolate: 'clamp',
+                  });
+                  const opacity = progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 1],
+                    extrapolate: 'clamp',
+                  });
+
+                  return (
+                    <Animated.View
+                      style={[
+                        styles.replySwipeHint,
+                        {
+                          opacity,
+                          transform: [{ translateX }],
+                        },
+                      ]}
+                    >
+                      <Ionicons name="return-up-back-outline" size={18} color={theme.colors.secondaryAccent} />
+                    </Animated.View>
+                  );
+                }}
                 onSwipeableOpenStartDrag={() => {
                   setSwipePreviewTarget(message);
                 }}
@@ -790,6 +817,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600',
+  },
+  replySwipeHint: {
+    width: 28,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bubble: {
     borderRadius: 24,
