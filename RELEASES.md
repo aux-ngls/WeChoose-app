@@ -1,6 +1,6 @@
 # Qulte - Releases And Stable Points
 
-Last updated: 2026-05-17
+Last updated: 2026-05-19
 
 ## Maintenance Rule
 
@@ -10,12 +10,14 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Current Stable State
 
-Commit: `be9c7a9`
+Commit: `4c9ea6a`
 
 Summary:
-- removed the bottom safe-area strip globally in the mobile app;
-- validated with `npm run typecheck`;
-- pushed to `origin/main`.
+- audited the main app/API user flows with temporary accounts;
+- cleaned visible French copy in mobile errors, backend notifications, and API-hosted support/privacy pages;
+- optimized recommendation feed poster loading by fetching TMDB posters concurrently;
+- removed one web lint warning from the playlist page;
+- validated with mobile typecheck, backend compile, frontend lint/build, support/privacy/trailer endpoint smoke checks, and a full API smoke scenario.
 
 ## Latest Workspace Changes
 
@@ -59,9 +61,12 @@ These changes should be recorded as part of the next stable checkpoint:
 - changed the profile notification bell to open a dedicated full notifications page instead of an inline profile panel.
 - added stable API-hosted support/privacy pages for App Store metadata and switched the mobile settings links to those API URLs.
 - locked iOS production EAS builds to the Xcode 26 image to match Apple's 2026 submission requirements.
+- audited the main mobile/API user journey with temporary accounts and optimized backend poster fetching for faster first Tinder feed responses.
+- polished remaining French copy in mobile/backend visible surfaces, including social notifications, support/privacy pages, and movie detail labels.
 
 ## Important Recent Commits
 
+- `4c9ea6a` - Audit core app flows and polish copy
 - `be9c7a9` - Remove bottom safe area strip globally
 - `38a1d07` - Fix movie details bottom safe area
 - `d32feb0` - Remove artificial bottom seam

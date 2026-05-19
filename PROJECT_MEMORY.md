@@ -1,8 +1,8 @@
 # Qulte - Project Memory
 
-Last updated: 2026-05-17
+Last updated: 2026-05-19
 Current branch: main
-Current stable commit: be9c7a9
+Current stable commit: 4c9ea6a
 
 ## Maintenance Rule
 
@@ -52,6 +52,7 @@ The mobile app currently includes:
 - App Store Connect copy and privacy guidance are maintained in `APP_STORE_CONNECT.md`;
 - push notification groundwork;
 - TestFlight / EAS build flow.
+- latest audit checkpoint validated the main mobile/API flows with temporary users, cleaned remaining visible French copy issues, and optimized first Tinder poster loading by parallelizing TMDB poster fetches.
 
 The web site remains active and should not be removed while the mobile app is being improved.
 
@@ -81,6 +82,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Conversations should feel like a normal messaging app: fluid send, latest messages visible, clean day separators.
 - User-facing French copy in the mobile app should be fully accented, clean, and natural rather than ASCII-only.
 - Mobile sessions should feel persistent; backend access tokens are long-lived for app usage rather than daily login.
+- First Tinder load should stay as hidden as possible: the app caches/preloads locally, and the backend now fetches recommendation poster URLs in parallel to reduce cold-start waiting.
 
 ## Known Sensitive Areas
 
