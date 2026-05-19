@@ -380,6 +380,7 @@ def init_db():
                         movie_poster_url TEXT,
                         movie_rating REAL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    ensure_column("direct_messages", "reply_to_message_id", "INTEGER")
 
     # Table MOBILE_DEVICES
     cursor.execute('''CREATE TABLE IF NOT EXISTS mobile_devices (
@@ -2245,6 +2246,7 @@ def serialize_notification_row(row: sqlite3.Row) -> dict:
             if row["review_id"] is not None
             else None
         ),
+        "comment_id": row["comment_id"],
         "comment_preview": comment_preview[:120],
     }
 
@@ -2759,6 +2761,7 @@ def normalize_direct_pair(user_one_id: int, user_two_id: int) -> tuple[int, int]
 
 
 def serialize_direct_message_row(row: sqlite3.Row, current_user_id: int) -> dict:
+    row_keys = set(row.keys())
     return {
         "id": row["id"],
         "content": row["content"] or "",
@@ -2776,6 +2779,28 @@ def serialize_direct_message_row(row: sqlite3.Row, current_user_id: int) -> dict
                 "rating": row["movie_rating"],
             }
             if row["movie_id"] is not None
+            else None
+        ),
+        "reply_to_message": (
+            {
+                "id": row["reply_message_id"],
+                "content": row["reply_message_content"] or "",
+                "sender": {
+                    "id": row["reply_sender_id"],
+                    "username": row["reply_sender_username"],
+                },
+                "movie": (
+                    {
+                        "id": row["reply_movie_id"],
+                        "title": row["reply_movie_title"],
+                        "poster_url": row["reply_movie_poster_url"],
+                        "rating": row["reply_movie_rating"],
+                    }
+                    if row["reply_movie_id"] is not None
+                    else None
+                ),
+            }
+            if "reply_message_id" in row_keys and row["reply_message_id"] is not None
             else None
         ),
     }
@@ -3147,6 +3172,7 @@ class MessageCreate(BaseModel):
     movie_title: Optional[str] = None
     movie_poster_url: Optional[str] = None
     movie_rating: Optional[float] = None
+    reply_to_message_id: Optional[int] = None
 
 
 class MobileDeviceRegister(BaseModel):
@@ -4931,6 +4957,17 @@ def social_feed(limit: int = 30, current_user: dict = Depends(get_current_user))
     return reviews
 
 
+@app.get("/social/reviews/{review_id}")
+def get_social_review(review_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    reviews = fetch_serialized_reviews(cursor, current_user["id"], "r.id = ?", (review_id,), 1)
+    conn.close()
+    if not reviews:
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+    return reviews[0]
+
+
 @app.post("/social/reviews")
 def create_review(review: ReviewCreate, current_user: dict = Depends(get_current_user)):
     review_title = review.title.strip()
@@ -5178,7 +5215,7 @@ def create_review_comment(
             title="Nouveau commentaire",
             body=f"@{current_user['username']} a commente ta critique",
             route="/social",
-            extra_data={"type": "comment", "reviewId": review_id},
+            extra_data={"type": "comment", "reviewId": review_id, "commentId": comment_id},
         )
 
     if parent_user_id is not None and parent_user_id not in (current_user["id"], review_owner_id):
@@ -5196,7 +5233,7 @@ def create_review_comment(
             title="Nouvelle reponse",
             body=f"@{current_user['username']} a repondu a ton commentaire",
             route="/social",
-            extra_data={"type": "reply", "reviewId": review_id},
+            extra_data={"type": "reply", "reviewId": review_id, "commentId": comment_id},
         )
 
     conn.commit()
@@ -5412,9 +5449,19 @@ def get_direct_conversation_messages(conversation_id: int, current_user: dict = 
             dm.movie_id,
             dm.movie_title,
             dm.movie_poster_url,
-            dm.movie_rating
+            dm.movie_rating,
+            reply_dm.id AS reply_message_id,
+            reply_dm.content AS reply_message_content,
+            reply_dm.sender_id AS reply_sender_id,
+            reply_sender.username AS reply_sender_username,
+            reply_dm.movie_id AS reply_movie_id,
+            reply_dm.movie_title AS reply_movie_title,
+            reply_dm.movie_poster_url AS reply_movie_poster_url,
+            reply_dm.movie_rating AS reply_movie_rating
         FROM direct_messages dm
         JOIN users sender ON sender.id = dm.sender_id
+        LEFT JOIN direct_messages reply_dm ON reply_dm.id = dm.reply_to_message_id
+        LEFT JOIN users reply_sender ON reply_sender.id = reply_dm.sender_id
         WHERE dm.conversation_id = ?
         ORDER BY dm.id ASC
         """,
@@ -5454,6 +5501,7 @@ async def create_direct_message(
     movie_title = (payload.movie_title or "").strip()
     movie_poster_url = (payload.movie_poster_url or "").strip()
     movie_rating = payload.movie_rating
+    reply_to_message_id = payload.reply_to_message_id
 
     if movie_id is not None and (not movie_title or not movie_poster_url):
         details = get_tmdb_details(movie_id)
@@ -5471,6 +5519,19 @@ async def create_direct_message(
     conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
     ensure_user_interaction_allowed(cursor, current_user["id"], int(conversation_row["participant_id"]))
 
+    if reply_to_message_id is not None:
+        cursor.execute(
+            """
+            SELECT id
+            FROM direct_messages
+            WHERE id = ? AND conversation_id = ?
+            """,
+            (reply_to_message_id, conversation_id),
+        )
+        if not cursor.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail="Réponse invalide")
+
     cursor.execute(
         """
         INSERT INTO direct_messages (
@@ -5480,9 +5541,10 @@ async def create_direct_message(
             movie_id,
             movie_title,
             movie_poster_url,
-            movie_rating
+            movie_rating,
+            reply_to_message_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             conversation_id,
@@ -5492,6 +5554,7 @@ async def create_direct_message(
             movie_title or None,
             movie_poster_url or None,
             movie_rating,
+            reply_to_message_id,
         ),
     )
     message_id = cursor.lastrowid
@@ -5519,9 +5582,19 @@ async def create_direct_message(
             dm.movie_id,
             dm.movie_title,
             dm.movie_poster_url,
-            dm.movie_rating
+            dm.movie_rating,
+            reply_dm.id AS reply_message_id,
+            reply_dm.content AS reply_message_content,
+            reply_dm.sender_id AS reply_sender_id,
+            reply_sender.username AS reply_sender_username,
+            reply_dm.movie_id AS reply_movie_id,
+            reply_dm.movie_title AS reply_movie_title,
+            reply_dm.movie_poster_url AS reply_movie_poster_url,
+            reply_dm.movie_rating AS reply_movie_rating
         FROM direct_messages dm
         JOIN users sender ON sender.id = dm.sender_id
+        LEFT JOIN direct_messages reply_dm ON reply_dm.id = dm.reply_to_message_id
+        LEFT JOIN users reply_sender ON reply_sender.id = reply_dm.sender_id
         WHERE dm.id = ?
         """,
         (message_id,),

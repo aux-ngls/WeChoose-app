@@ -34,6 +34,9 @@ export function navigateFromNotificationData(data: NotificationData) {
     return;
   }
 
+  const reviewId = readNumber(data.reviewId);
+  const commentId = readNumber(data.commentId);
+
   const route = readString(data.route);
   if (route?.startsWith('/messages')) {
     navigationRef.navigate('MainTabs', { screen: 'Messages' });
@@ -41,6 +44,13 @@ export function navigateFromNotificationData(data: NotificationData) {
   }
 
   if (route?.startsWith('/social')) {
+    if (reviewId) {
+      navigationRef.navigate('ReviewDetails', {
+        reviewId,
+        highlightCommentId: commentId,
+      });
+      return;
+    }
     navigationRef.navigate('Notifications');
   }
 }

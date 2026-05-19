@@ -28,6 +28,10 @@ export type RootStackParamList = {
   UserProfile: {
     username: string;
   };
+  ReviewDetails: {
+    reviewId: number;
+    highlightCommentId?: number;
+  };
   CreateReview: {
     reviewId?: number;
     movieId?: number;

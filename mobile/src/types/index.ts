@@ -99,6 +99,7 @@ export interface SocialNotification {
     title: string;
     poster_url: string | null;
   } | null;
+  comment_id: number | null;
   comment_preview: string;
 }
 
@@ -335,6 +336,20 @@ export interface DirectMessage {
     title: string;
     poster_url: string;
     rating: number;
+  } | null;
+  reply_to_message: {
+    id: number;
+    content: string;
+    sender: {
+      id: number;
+      username: string;
+    };
+    movie: {
+      id: number;
+      title: string;
+      poster_url: string;
+      rating: number;
+    } | null;
   } | null;
 }
 

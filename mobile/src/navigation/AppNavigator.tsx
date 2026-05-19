@@ -12,6 +12,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import PersonDetailsScreen from '../screens/PersonDetailsScreen';
 import PlaylistDetailsScreen from '../screens/PlaylistDetailsScreen';
+import ReviewDetailsScreen from '../screens/ReviewDetailsScreen';
 import ShareMovieScreen from '../screens/ShareMovieScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import TestAiDashboardScreen from '../screens/TestAiDashboardScreen';
@@ -102,6 +103,7 @@ export default function AppNavigator() {
             <Stack.Screen name="MovieDetails" component={MovieDetailsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="PersonDetails" component={PersonDetailsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} options={edgeSwipeScreenOptions} />
+            <Stack.Screen name="ReviewDetails" component={ReviewDetailsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="ShareMovie" component={ShareMovieScreen} options={sheetOptions} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} options={edgeSwipeScreenOptions} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={edgeSwipeScreenOptions} />

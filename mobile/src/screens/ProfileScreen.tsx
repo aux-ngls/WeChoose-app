@@ -110,7 +110,6 @@ export default function ProfileScreen() {
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [showAllPlaylists, setShowAllPlaylists] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
-  const [expandedProfileReviewId, setExpandedProfileReviewId] = useState<number | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const profileRef = useRef(profile);
@@ -953,10 +952,9 @@ export default function ProfileScreen() {
             {visibleReviews.length > 0 ? (
               <View style={styles.profileReviewsList}>
                 {visibleReviews.map((review) => (
-                  <Pressable
+                  <View
                     key={review.id}
                     style={[styles.profileReviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
-                    onPress={() => setExpandedProfileReviewId((current) => (current === review.id ? null : review.id))}
                   >
                     <Pressable
                       onPress={(event) => {
@@ -1003,14 +1001,18 @@ export default function ProfileScreen() {
                         </View>
                         <Text style={[styles.reviewDate, { color: theme.colors.textMuted }]}>{formatDate(review.created_at)}</Text>
                       </View>
-                      <Text
-                        style={[styles.reviewContent, { color: theme.colors.textSoft }]}
-                        numberOfLines={expandedProfileReviewId === review.id ? undefined : 3}
+                      <Pressable
+                        onPress={() => navigation.navigate('ReviewDetails', { reviewId: review.id })}
                       >
-                        {review.content}
-                      </Text>
+                        <Text
+                          style={[styles.reviewContent, { color: theme.colors.textSoft }]}
+                          numberOfLines={3}
+                        >
+                          {review.content}
+                        </Text>
+                      </Pressable>
                     </View>
-                  </Pressable>
+                  </View>
                 ))}
               </View>
             ) : (

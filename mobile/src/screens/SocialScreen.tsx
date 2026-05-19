@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -9,8 +9,6 @@ import InlineBanner from '../components/InlineBanner';
 import ScreenHeader from '../components/ScreenHeader';
 import {
   ApiError,
-  createReviewComment,
-  fetchReviewComments,
   fetchSocialFeed,
   reportReview,
   toggleReviewLike,
@@ -18,7 +16,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SocialComment, type SocialReview } from '../types';
+import { FALLBACK_POSTER, type SocialReview } from '../types';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { formatDate } from '../utils/format';
 import { SOCIAL_REFRESH_EVENT } from '../utils/events';
@@ -37,11 +35,6 @@ export default function SocialScreen() {
   const initialCache = socialCache?.username === session?.username ? socialCache : null;
   const [reviews, setReviews] = useState<SocialReview[]>(() => initialCache?.reviews ?? []);
   const [loading, setLoading] = useState(() => !initialCache);
-  const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
-  const [commentsByReview, setCommentsByReview] = useState<Record<number, SocialComment[]>>({});
-  const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({});
-  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
-  const [submittingCommentIds, setSubmittingCommentIds] = useState<number[]>([]);
   const [likingReviewIds, setLikingReviewIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -118,37 +111,6 @@ export default function SocialScreen() {
     return () => subscription.remove();
   }, [loadFeed]);
 
-  const toggleReview = useCallback(async (reviewId: number) => {
-    if (!session) {
-      return;
-    }
-
-    if (expandedReviewId === reviewId) {
-      setExpandedReviewId(null);
-      return;
-    }
-
-    setExpandedReviewId(reviewId);
-    if (commentsByReview[reviewId]) {
-      return;
-    }
-
-    setLoadingComments((current) => ({ ...current, [reviewId]: true }));
-    try {
-      const payload = await fetchReviewComments(session.token, reviewId);
-      setCommentsByReview((current) => ({ ...current, [reviewId]: payload }));
-      setError('');
-    } catch (commentsError) {
-      if (commentsError instanceof ApiError && commentsError.status === 401) {
-        await signOut();
-        return;
-      }
-      setError('Impossible de charger les commentaires.');
-    } finally {
-      setLoadingComments((current) => ({ ...current, [reviewId]: false }));
-    }
-  }, [commentsByReview, expandedReviewId, session, signOut]);
-
   const handleToggleLike = useCallback(async (reviewId: number) => {
     if (!session || likingReviewIds.includes(reviewId)) {
       return;
@@ -177,45 +139,6 @@ export default function SocialScreen() {
       setLikingReviewIds((current) => current.filter((id) => id !== reviewId));
     }
   }, [likingReviewIds, session, signOut, updateSocialCache]);
-
-  const handleSubmitComment = useCallback(async (reviewId: number) => {
-    if (!session || submittingCommentIds.includes(reviewId)) {
-      return;
-    }
-
-    const content = (commentDrafts[reviewId] ?? '').trim();
-    if (content.length < 2) {
-      return;
-    }
-
-    setSubmittingCommentIds((current) => [...current, reviewId]);
-    try {
-      const createdComment = await createReviewComment(session.token, reviewId, content);
-      setCommentsByReview((current) => ({
-        ...current,
-        [reviewId]: [...(current[reviewId] ?? []), createdComment],
-      }));
-      setCommentDrafts((current) => ({ ...current, [reviewId]: '' }));
-      setReviews((current) => {
-        const nextReviews = current.map((review) =>
-          review.id === reviewId
-            ? { ...review, comments_count: review.comments_count + 1 }
-            : review,
-        );
-        updateSocialCache({ reviews: nextReviews });
-        return nextReviews;
-      });
-      setError('');
-    } catch (commentError) {
-      if (commentError instanceof ApiError && commentError.status === 401) {
-        await signOut();
-        return;
-      }
-      setError("Impossible d'ajouter le commentaire.");
-    } finally {
-      setSubmittingCommentIds((current) => current.filter((id) => id !== reviewId));
-    }
-  }, [commentDrafts, session, signOut, submittingCommentIds, updateSocialCache]);
 
   const handleReportReview = useCallback(async (review: SocialReview, reason: ReportReason) => {
     if (!session || review.author.username === session.username) {
@@ -280,7 +203,7 @@ export default function SocialScreen() {
             <Pressable
               key={item.id}
               style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-              onPress={() => void toggleReview(item.id)}
+              onPress={() => navigation.navigate('ReviewDetails', { reviewId: item.id })}
             >
               <Pressable
                 onPress={(event) => {
@@ -336,51 +259,9 @@ export default function SocialScreen() {
                   </Pressable>
                   <Text style={[styles.inlineMeta, { color: theme.colors.textSoft }]}>{item.comments_count} commentaires</Text>
                 </View>
-                <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={expandedReviewId === item.id ? undefined : 4}>
+                <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={4}>
                   {item.content}
                 </Text>
-                {expandedReviewId === item.id ? (
-                  <View style={styles.expandedArea}>
-                    <View style={[styles.commentsBox, { borderTopColor: theme.rgba.border }]}>
-                      <Text style={[styles.commentsTitle, { color: theme.colors.text }]}>Commentaires</Text>
-                      {loadingComments[item.id] ? (
-                        <ActivityIndicator color={theme.colors.text} />
-                      ) : (commentsByReview[item.id] ?? []).length > 0 ? (
-                        (commentsByReview[item.id] ?? []).map((comment) => (
-                          <View key={comment.id} style={[styles.commentRow, { backgroundColor: theme.rgba.cardStrong }]}>
-                            <Pressable
-                              onPress={(event) => {
-                                event.stopPropagation();
-                                navigation.navigate('UserProfile', { username: comment.author.username });
-                              }}
-                            >
-                              <Text style={[styles.commentAuthor, { color: theme.colors.accent }]}>@{comment.author.username}</Text>
-                            </Pressable>
-                            <Text style={[styles.commentText, { color: theme.colors.textSoft }]}>{comment.content}</Text>
-                          </View>
-                        ))
-                      ) : (
-                        <Text style={[styles.noComments, { color: theme.colors.textMuted }]}>Aucun commentaire pour le moment.</Text>
-                      )}
-                      <View style={styles.commentComposer}>
-                        <TextInput
-                          value={commentDrafts[item.id] ?? ''}
-                          onChangeText={(value) => setCommentDrafts((current) => ({ ...current, [item.id]: value }))}
-                          placeholder="Ajouter un commentaire"
-                          placeholderTextColor={theme.colors.textMuted}
-                          style={[styles.commentInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card, color: theme.colors.text }]}
-                        />
-                        <Pressable
-                          style={[styles.commentSendButton, { backgroundColor: theme.colors.secondaryAccent }]}
-                          onPress={() => void handleSubmitComment(item.id)}
-                          disabled={submittingCommentIds.includes(item.id)}
-                        >
-                          <Ionicons name="send" size={15} color={theme.colors.secondaryAccentText} />
-                        </Pressable>
-                      </View>
-                    </View>
-                  </View>
-                ) : null}
               </View>
             </Pressable>
           ))}

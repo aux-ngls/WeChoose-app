@@ -83,7 +83,15 @@ export default function NotificationsScreen({
   }, [session, signOut, unreadCount]);
 
   const openNotification = useCallback((notification: SocialNotification) => {
-    navigation.navigate('UserProfile', { username: notification.actor.username });
+    if (notification.type === 'follow' || !notification.review) {
+      navigation.navigate('UserProfile', { username: notification.actor.username });
+      return;
+    }
+
+    navigation.navigate('ReviewDetails', {
+      reviewId: notification.review.id,
+      highlightCommentId: notification.comment_id ?? undefined,
+    });
   }, [navigation]);
 
   return (

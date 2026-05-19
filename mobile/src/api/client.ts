@@ -261,6 +261,10 @@ export async function createReview(
   );
 }
 
+export async function fetchReview(token: string, reviewId: number): Promise<SocialReview> {
+  return request<SocialReview>(`/social/reviews/${reviewId}`, undefined, token);
+}
+
 export async function updateReview(
   token: string,
   reviewId: number,
@@ -405,6 +409,7 @@ export async function sendMessage(
     movie_title?: string;
     movie_poster_url?: string;
     movie_rating?: number;
+    reply_to_message_id?: number | null;
   },
 ): Promise<DirectMessage> {
   return request<DirectMessage>(

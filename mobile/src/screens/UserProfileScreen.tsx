@@ -329,18 +329,21 @@ export default function UserProfileScreen() {
             {profile.reviews.length > 0 ? (
               <View style={styles.reviewsList}>
                 {profile.reviews.map((review) => (
-                  <Pressable
+                  <View
                     key={review.id}
                     style={[styles.reviewCard, { backgroundColor: theme.rgba.cardStrong }]}
-                    onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}
                   >
-                    <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
+                    <Pressable onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}>
+                      <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
+                    </Pressable>
                     <View style={styles.reviewBody}>
                       <Text style={[styles.reviewTitle, { color: theme.colors.text }]} numberOfLines={1}>{review.title}</Text>
                       <Text style={[styles.reviewMeta, { color: theme.colors.ratingText }]}>{review.rating.toFixed(1)} / 5 · {formatDate(review.created_at)}</Text>
-                      <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={3}>{review.content}</Text>
+                      <Pressable onPress={() => navigation.navigate('ReviewDetails', { reviewId: review.id })}>
+                        <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={3}>{review.content}</Text>
+                      </Pressable>
                     </View>
-                  </Pressable>
+                  </View>
                 ))}
               </View>
             ) : (

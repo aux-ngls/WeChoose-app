@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppScreen from '../components/AppScreen';
 import {
@@ -78,6 +79,9 @@ function findConfirmedServerMessageIndex(pendingMessage: LocalDirectMessage, ser
     if (!serverMessage.is_mine || serverMessage.content !== pendingMessage.content) {
       return false;
     }
+    if ((serverMessage.reply_to_message?.id ?? null) !== (pendingMessage.reply_to_message?.id ?? null)) {
+      return false;
+    }
     if (serverMessage.movie || pendingMessage.movie) {
       return serverMessage.movie?.id === pendingMessage.movie?.id;
     }
@@ -134,6 +138,7 @@ export default function ConversationScreen({
   const [safetyLoading, setSafetyLoading] = useState(false);
   const [error, setError] = useState('');
   const [keyboardLift, setKeyboardLift] = useState(0);
+  const [replyTarget, setReplyTarget] = useState<LocalDirectMessage | null>(null);
   const listRef = useRef<FlatList<ConversationItem>>(null);
   const shouldScrollToEndRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -335,6 +340,8 @@ export default function ConversationScreen({
       return;
     }
 
+    const replySnapshot = replyTarget;
+    const replyToMessageId = replySnapshot && replySnapshot.id > 0 ? replySnapshot.id : undefined;
     const optimisticId = optimisticMessageIdRef.current;
     optimisticMessageIdRef.current -= 1;
     const optimisticMessage: LocalDirectMessage = {
@@ -348,16 +355,26 @@ export default function ConversationScreen({
         username: session.username,
       },
       movie: null,
+      reply_to_message: replySnapshot ? {
+        id: replySnapshot.id,
+        content: replySnapshot.content,
+        sender: replySnapshot.sender,
+        movie: replySnapshot.movie,
+      } : null,
     };
 
     setDraft('');
+    setReplyTarget(null);
     setSendingMessageIds((current) => [...current, optimisticId]);
     shouldScrollToEndRef.current = true;
     isNearBottomRef.current = true;
     setMessages((current) => [...current, optimisticMessage]);
 
     try {
-      const createdMessage = await sendMessage(session.token, route.params.conversationId, { content });
+      const createdMessage = await sendMessage(session.token, route.params.conversationId, {
+        content,
+        reply_to_message_id: replyToMessageId,
+      });
       const confirmedMessage: LocalDirectMessage = {
         ...createdMessage,
         local_client_id: optimisticId,
@@ -373,6 +390,7 @@ export default function ConversationScreen({
         await signOut();
         return;
       }
+      setReplyTarget(replySnapshot);
       setDraft((current) => (current.trim().length > 0 ? current : content));
       setError("Impossible d'envoyer le message.");
     } finally {
@@ -447,43 +465,79 @@ export default function ConversationScreen({
 
             const message = item.message;
             const isSending = sendingMessageIds.includes(message.id);
+            let swipeableRef: Swipeable | null = null;
             return (
-              <View style={[styles.messageRow, message.is_mine ? styles.messageRowMine : styles.messageRowOther]}>
-                {message.movie ? (
-                  <Pressable
-                    style={[
-                      styles.sharedMovieCard,
-                      message.is_mine
-                        ? [styles.sharedMovieCardMine, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]
-                        : [styles.sharedMovieCardOther, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }],
-                    ]}
-                    onPress={() => navigation.navigate('MovieDetails', { movieId: message.movie!.id, title: message.movie!.title })}
-                  >
-                    <Image source={{ uri: message.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
-                    <View style={styles.sharedMovieBody}>
-                      <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partagé</Text>
-                      <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{message.movie.title}</Text>
-                      {message.movie.rating > 0 ? (
-                        <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{message.movie.rating.toFixed(1)} / 10</Text>
-                      ) : null}
-                    </View>
-                    <View style={styles.sharedMovieChevron}>
-                      <Ionicons name="chevron-forward" size={16} color={theme.colors.text} />
-                    </View>
-                  </Pressable>
-                ) : null}
-                {message.content ? (
-                  <View
-                    style={[
-                      styles.bubble,
-                      message.is_mine ? [styles.bubbleMine, { backgroundColor: theme.colors.accent }] : [styles.bubbleOther, { backgroundColor: theme.rgba.cardStrong }],
-                      isSending && styles.bubbleSending,
-                    ]}
-                  >
-                    <Text style={[styles.messageText, message.is_mine ? [styles.messageTextMine, { color: theme.colors.accentText }] : [styles.messageTextOther, { color: theme.colors.text }]]}>{message.content}</Text>
+              <Swipeable
+                ref={(value) => {
+                  swipeableRef = value;
+                }}
+                overshootLeft={false}
+                leftThreshold={44}
+                friction={2.4}
+                renderLeftActions={() => (
+                  <View style={[styles.replySwipeAction, { backgroundColor: theme.colors.secondaryAccent }]}>
+                    <Ionicons name="return-up-back-outline" size={18} color={theme.colors.secondaryAccentText} />
                   </View>
-                ) : null}
-              </View>
+                )}
+                onSwipeableOpen={() => {
+                  swipeableRef?.close();
+                  setReplyTarget(message);
+                }}
+              >
+                <View style={[styles.messageRow, message.is_mine ? styles.messageRowMine : styles.messageRowOther]}>
+                  {message.reply_to_message ? (
+                    <View
+                      style={[
+                        styles.replyBubble,
+                        message.is_mine
+                          ? [styles.replyBubbleMine, { backgroundColor: theme.colors.accentSoft }]
+                          : [styles.replyBubbleOther, { backgroundColor: theme.rgba.card }],
+                      ]}
+                    >
+                      <Text style={[styles.replyBubbleAuthor, { color: message.is_mine ? theme.colors.accent : theme.colors.secondaryAccent }]}>
+                        @{message.reply_to_message.sender.username}
+                      </Text>
+                      <Text style={[styles.replyBubblePreview, { color: theme.colors.textSoft }]} numberOfLines={2}>
+                        {message.reply_to_message.content || message.reply_to_message.movie?.title || 'Film partagé'}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {message.movie ? (
+                    <Pressable
+                      style={[
+                        styles.sharedMovieCard,
+                        message.is_mine
+                          ? [styles.sharedMovieCardMine, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]
+                          : [styles.sharedMovieCardOther, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }],
+                      ]}
+                      onPress={() => navigation.navigate('MovieDetails', { movieId: message.movie!.id, title: message.movie!.title })}
+                    >
+                      <Image source={{ uri: message.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
+                      <View style={styles.sharedMovieBody}>
+                        <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partagé</Text>
+                        <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{message.movie.title}</Text>
+                        {message.movie.rating > 0 ? (
+                          <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{message.movie.rating.toFixed(1)} / 10</Text>
+                        ) : null}
+                      </View>
+                      <View style={styles.sharedMovieChevron}>
+                        <Ionicons name="chevron-forward" size={16} color={theme.colors.text} />
+                      </View>
+                    </Pressable>
+                  ) : null}
+                  {message.content ? (
+                    <View
+                      style={[
+                        styles.bubble,
+                        message.is_mine ? [styles.bubbleMine, { backgroundColor: theme.colors.accent }] : [styles.bubbleOther, { backgroundColor: theme.rgba.cardStrong }],
+                        isSending && styles.bubbleSending,
+                      ]}
+                    >
+                      <Text style={[styles.messageText, message.is_mine ? [styles.messageTextMine, { color: theme.colors.accentText }] : [styles.messageTextOther, { color: theme.colors.text }]]}>{message.content}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Swipeable>
             );
           }}
           ListEmptyComponent={
@@ -495,11 +549,25 @@ export default function ConversationScreen({
           }
         />
 
+        {replyTarget ? (
+          <View style={[styles.replyComposerBanner, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong }]}>
+            <View style={styles.replyComposerBody}>
+              <Text style={[styles.replyComposerTitle, { color: theme.colors.secondaryAccent }]}>Réponse à @{replyTarget.sender.username}</Text>
+              <Text style={[styles.replyComposerPreview, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                {replyTarget.content || replyTarget.movie?.title || 'Film partagé'}
+              </Text>
+            </View>
+            <Pressable onPress={() => setReplyTarget(null)}>
+              <Ionicons name="close" size={18} color={theme.colors.textMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={[styles.composerRow, { marginBottom: composerBottomGap }]}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="Écrire un message"
+            placeholder={replyTarget ? `Répondre à @${replyTarget.sender.username}` : 'Écrire un message'}
             placeholderTextColor={theme.colors.textMuted}
             style={[styles.input, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
             multiline
@@ -576,6 +644,35 @@ const styles = StyleSheet.create({
   },
   messageRowOther: {
     alignSelf: 'flex-start',
+  },
+  replyBubble: {
+    maxWidth: 248,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 3,
+  },
+  replyBubbleMine: {
+    alignSelf: 'flex-end',
+  },
+  replyBubbleOther: {
+    alignSelf: 'flex-start',
+  },
+  replyBubbleAuthor: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  replyBubblePreview: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  replySwipeAction: {
+    width: 54,
+    marginRight: 10,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bubble: {
     borderRadius: 24,
@@ -668,6 +765,28 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingTop: 10,
     paddingBottom: Platform.OS === 'ios' ? 8 : 10,
+  },
+  replyComposerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  replyComposerBody: {
+    flex: 1,
+    gap: 2,
+  },
+  replyComposerTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  replyComposerPreview: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
   },
   input: {
     flex: 1,
