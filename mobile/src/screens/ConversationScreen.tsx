@@ -26,6 +26,7 @@ import {
   reportConversation,
   sendMessage,
 } from '../api/client';
+import { API_URL } from '../api/config';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
@@ -39,6 +40,18 @@ type ConversationItem =
 type LocalDirectMessage = DirectMessage & {
   local_client_id?: number;
 };
+
+interface ConversationCacheEntry {
+  participantId: number | null;
+  participantUsername: string;
+  messages: LocalDirectMessage[];
+}
+
+const conversationCache = new Map<string, ConversationCacheEntry>();
+
+function getConversationCacheKey(username: string | undefined, conversationId: number): string {
+  return `${username ?? 'anonymous'}:${conversationId}`;
+}
 
 function getLocalDayKey(value: string): string {
   const date = new Date(value);
@@ -123,6 +136,24 @@ function mergeServerMessages(currentMessages: LocalDirectMessage[], serverMessag
   return [...mergedServerMessages, ...stillPendingMessages];
 }
 
+function areMessageListsEquivalent(left: LocalDirectMessage[], right: LocalDirectMessage[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((message, index) => {
+    const nextMessage = right[index];
+    return (
+      message.id === nextMessage.id &&
+      message.local_client_id === nextMessage.local_client_id &&
+      message.content === nextMessage.content &&
+      message.created_at === nextMessage.created_at &&
+      message.reply_to_message?.id === nextMessage.reply_to_message?.id &&
+      message.movie?.id === nextMessage.movie?.id
+    );
+  });
+}
+
 export default function ConversationScreen({
   navigation,
   route,
@@ -130,11 +161,13 @@ export default function ConversationScreen({
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const [messages, setMessages] = useState<LocalDirectMessage[]>([]);
-  const [participantUsername, setParticipantUsername] = useState(route.params.participantUsername ?? 'Conversation');
-  const [participantId, setParticipantId] = useState<number | null>(route.params.participantId ?? null);
+  const cacheKey = getConversationCacheKey(session?.username, route.params.conversationId);
+  const initialCache = conversationCache.get(cacheKey);
+  const [messages, setMessages] = useState<LocalDirectMessage[]>(() => initialCache?.messages ?? []);
+  const [participantUsername, setParticipantUsername] = useState(initialCache?.participantUsername ?? route.params.participantUsername ?? 'Conversation');
+  const [participantId, setParticipantId] = useState<number | null>(initialCache?.participantId ?? route.params.participantId ?? null);
   const [draft, setDraft] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialCache);
   const [sendingMessageIds, setSendingMessageIds] = useState<number[]>([]);
   const [safetyLoading, setSafetyLoading] = useState(false);
   const [error, setError] = useState('');
@@ -147,6 +180,7 @@ export default function ConversationScreen({
   const hasInitialConversationLoadedRef = useRef(false);
   const messageCountRef = useRef(0);
   const optimisticMessageIdRef = useRef(-1);
+  const loadingConversationRef = useRef(false);
   const composerBottomGap = keyboardLift > 0 ? keyboardLift : Math.max(insets.bottom, 10);
 
   const scrollToLatestMessage = useCallback((animated = false) => {
@@ -156,10 +190,11 @@ export default function ConversationScreen({
   }, []);
 
   const loadConversation = useCallback(async () => {
-    if (!session) {
+    if (!session || loadingConversationRef.current) {
       return;
     }
 
+    loadingConversationRef.current = true;
     try {
       const payload = await fetchConversation(session.token, route.params.conversationId, { limit: 40 });
       const hasNewMessages = payload.messages.length > messageCountRef.current;
@@ -170,9 +205,19 @@ export default function ConversationScreen({
         shouldScrollToEndRef.current = true;
       }
       messageCountRef.current = payload.messages.length;
-      setMessages((current) => mergeServerMessages(current, payload.messages));
-      setParticipantUsername(payload.conversation.participant.username);
-      setParticipantId(payload.conversation.participant.id);
+      const nextParticipantUsername = payload.conversation.participant.username;
+      const nextParticipantId = payload.conversation.participant.id;
+      setMessages((current) => {
+        const mergedMessages = mergeServerMessages(current, payload.messages);
+        conversationCache.set(cacheKey, {
+          participantId: nextParticipantId,
+          participantUsername: nextParticipantUsername,
+          messages: mergedMessages,
+        });
+        return areMessageListsEquivalent(current, mergedMessages) ? current : mergedMessages;
+      });
+      setParticipantUsername((current) => (current === nextParticipantUsername ? current : nextParticipantUsername));
+      setParticipantId((current) => (current === nextParticipantId ? current : nextParticipantId));
       hasInitialConversationLoadedRef.current = true;
       setError('');
     } catch (fetchError) {
@@ -182,9 +227,10 @@ export default function ConversationScreen({
       }
       setError('Impossible de charger cette conversation.');
     } finally {
+      loadingConversationRef.current = false;
       setLoading(false);
     }
-  }, [route.params.conversationId, session, signOut]);
+  }, [cacheKey, route.params.conversationId, session, signOut]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -202,8 +248,36 @@ export default function ConversationScreen({
   }, [scrollToLatestMessage]);
 
   useEffect(() => {
-    hasInitialConversationLoadedRef.current = false;
-  }, [route.params.conversationId]);
+    const cachedConversation = conversationCache.get(cacheKey);
+    setMessages(cachedConversation?.messages ?? []);
+    setParticipantUsername(cachedConversation?.participantUsername ?? route.params.participantUsername ?? 'Conversation');
+    setParticipantId(cachedConversation?.participantId ?? route.params.participantId ?? null);
+    hasInitialConversationLoadedRef.current = Boolean(cachedConversation);
+    messageCountRef.current = cachedConversation?.messages.length ?? 0;
+    setLoading(!cachedConversation);
+  }, [cacheKey, route.params.conversationId, route.params.participantId, route.params.participantUsername]);
+
+  useEffect(() => {
+    if (!session) {
+      return undefined;
+    }
+
+    const websocketUrl = `${API_URL.replace(/^http/, 'ws')}/ws/realtime?token=${encodeURIComponent(session.token)}`;
+    const socket = new WebSocket(websocketUrl);
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(String(event.data)) as { type?: string; conversation_id?: number };
+        if (payload.type === 'messages.updated' && payload.conversation_id === route.params.conversationId) {
+          void loadConversation();
+        }
+      } catch {
+        // Realtime payloads are best-effort; the fallback polling still keeps the conversation fresh.
+      }
+    };
+
+    return () => socket.close();
+  }, [loadConversation, route.params.conversationId, session]);
 
   useFocusEffect(
     useCallback(() => {
@@ -217,7 +291,7 @@ export default function ConversationScreen({
       void loadConversation();
       const interval = setInterval(() => {
         void loadConversation();
-      }, 5000);
+      }, 15000);
       return () => clearInterval(interval);
     }, [loadConversation]),
   );
@@ -377,7 +451,15 @@ export default function ConversationScreen({
     setSendingMessageIds((current) => [...current, optimisticId]);
     shouldScrollToEndRef.current = true;
     isNearBottomRef.current = true;
-    setMessages((current) => [...current, optimisticMessage]);
+    setMessages((current) => {
+      const nextMessages = [...current, optimisticMessage];
+      conversationCache.set(cacheKey, {
+        participantId,
+        participantUsername,
+        messages: nextMessages,
+      });
+      return nextMessages;
+    });
 
     try {
       const createdMessage = await sendMessage(session.token, route.params.conversationId, {
@@ -388,13 +470,27 @@ export default function ConversationScreen({
         ...createdMessage,
         local_client_id: optimisticId,
       };
-      setMessages((current) =>
-        current.map((message) => (message.id === optimisticId ? confirmedMessage : message)),
-      );
+      setMessages((current) => {
+        const nextMessages = current.map((message) => (message.id === optimisticId ? confirmedMessage : message));
+        conversationCache.set(cacheKey, {
+          participantId,
+          participantUsername,
+          messages: nextMessages,
+        });
+        return nextMessages;
+      });
       shouldScrollToEndRef.current = true;
       setError('');
     } catch (sendError) {
-      setMessages((current) => current.filter((message) => message.id !== optimisticId));
+      setMessages((current) => {
+        const nextMessages = current.filter((message) => message.id !== optimisticId);
+        conversationCache.set(cacheKey, {
+          participantId,
+          participantUsername,
+          messages: nextMessages,
+        });
+        return nextMessages;
+      });
       if (sendError instanceof ApiError && sendError.status === 401) {
         await signOut();
         return;
@@ -442,6 +538,11 @@ export default function ConversationScreen({
           inverted
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
+          initialNumToRender={18}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={16}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
