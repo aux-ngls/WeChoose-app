@@ -12,6 +12,8 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
+import { LinearTransition } from 'react-native-reanimated';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
@@ -59,6 +61,12 @@ function formatPlaylistRating(rating: number, playlistId: number) {
   return `${rating.toFixed(1)} / ${scale}`;
 }
 
+type PlaylistMovieRenderArgs = {
+  item: SearchMovie;
+  drag?: () => void;
+  isActive?: boolean;
+};
+
 export default function PlaylistDetailsScreen({
   navigation,
   route,
@@ -73,6 +81,7 @@ export default function PlaylistDetailsScreen({
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'manual');
   const moviesRef = useRef(movies);
+  const isDraggingRef = useRef(false);
 
   useEffect(() => {
     moviesRef.current = movies;
@@ -171,43 +180,126 @@ export default function PlaylistDetailsScreen({
     }
   };
 
-  const handleMove = async (movieId: number, direction: -1 | 1) => {
-    if (!session || !canReorder) {
-      return;
-    }
-
-    const orderedMovies = [...movies].sort(compareManualOrder);
-    const currentIndex = orderedMovies.findIndex((movie) => movie.id === movieId);
-    const targetIndex = currentIndex + direction;
-    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedMovies.length) {
-      return;
-    }
-
-    const nextOrderedMovies = [...orderedMovies];
-    [nextOrderedMovies[currentIndex], nextOrderedMovies[targetIndex]] = [
-      nextOrderedMovies[targetIndex],
-      nextOrderedMovies[currentIndex],
-    ];
-    const indexedMovies = nextOrderedMovies.map((movie, index) => ({ ...movie, sort_index: index + 1 }));
-
-    setMovies((currentMovies) => {
-      const nextMovies = currentMovies.map((movie) => indexedMovies.find((indexedMovie) => indexedMovie.id === movie.id) ?? movie);
-      playlistMoviesCache.set(route.params.playlistId, nextMovies);
-      return nextMovies;
-    });
-
-    try {
-      await reorderPlaylistMovies(session.token, route.params.playlistId, indexedMovies.map((movie) => movie.id));
-      setError('');
-    } catch (actionError) {
-      void loadPlaylist();
-      if (actionError instanceof ApiError && actionError.status === 401) {
-        await signOut();
+  const handleDragEnd = useCallback(
+    async ({ data }: { data: SearchMovie[] }) => {
+      if (!session || !canReorder) {
+        isDraggingRef.current = false;
         return;
       }
-      setError('Impossible de réordonner cette playlist.');
-    }
-  };
+
+      const indexedMovies = data.map((movie, index) => ({ ...movie, sort_index: index + 1 }));
+      setMovies(indexedMovies);
+      playlistMoviesCache.set(route.params.playlistId, indexedMovies);
+
+      try {
+        await reorderPlaylistMovies(session.token, route.params.playlistId, indexedMovies.map((movie) => movie.id));
+        setError('');
+      } catch (actionError) {
+        void loadPlaylist();
+        if (actionError instanceof ApiError && actionError.status === 401) {
+          await signOut();
+          return;
+        }
+        setError('Impossible de réordonner cette playlist.');
+      } finally {
+        setTimeout(() => {
+          isDraggingRef.current = false;
+        }, 180);
+      }
+    },
+    [canReorder, loadPlaylist, route.params.playlistId, session, signOut],
+  );
+
+  const renderMovieCard = useCallback(
+    ({ item, drag, isActive = false }: PlaylistMovieRenderArgs) => {
+      const card = (
+        <Pressable
+          onPress={() => {
+            if (isDraggingRef.current || isActive) {
+              return;
+            }
+            navigation.navigate('MovieDetails', { movieId: item.id, title: item.title });
+          }}
+          onLongPress={drag && canReorder ? drag : undefined}
+          delayLongPress={drag && canReorder ? 180 : undefined}
+          style={[
+            styles.movieCard,
+            { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+            isActive && styles.movieCardActive,
+          ]}
+        >
+          <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+          {canReorder ? (
+            <View style={styles.dragBadge}>
+              <Ionicons name="reorder-three" size={14} color="#ffffff" />
+            </View>
+          ) : null}
+          {canRemove ? (
+            <Pressable
+              style={styles.removeBadge}
+              onPress={(event) => {
+                event.stopPropagation();
+                void handleRemove(item.id);
+              }}
+            >
+              <Ionicons name="close" size={12} color="#ffffff" />
+            </Pressable>
+          ) : null}
+          <View style={styles.overlay}>
+            <Text style={styles.movieTitle} numberOfLines={2}>{item.title}</Text>
+            <Text style={styles.movieMeta} numberOfLines={1}>
+              {sortMode === 'genre' ? item.primary_genre ?? 'Autres' : formatPlaylistRating(item.rating, route.params.playlistId)}
+            </Text>
+          </View>
+        </Pressable>
+      );
+
+      if (drag && canReorder) {
+        return (
+          <ScaleDecorator activeScale={1.03}>
+            {card}
+          </ScaleDecorator>
+        );
+      }
+
+      return card;
+    },
+    [canRemove, canReorder, handleRemove, navigation, route.params.playlistId, sortMode, theme.rgba.border, theme.rgba.card],
+  );
+
+  const headerComponent = (
+    <View style={styles.headerContent}>
+      <SearchField value={query} onChangeText={setQuery} placeholder="Filtrer les films" />
+      <View style={styles.filtersRow}>
+        {SORT_OPTIONS.map((option) => (
+          <Pressable
+            key={option.key}
+            onPress={() => setSortMode(option.key)}
+            style={[
+              styles.filterChip,
+              { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+              sortMode === option.key && { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.colors.accentSoft },
+            ]}
+          >
+            <Text style={[styles.filterChipLabel, { color: theme.colors.textSoft }, sortMode === option.key && { color: theme.colors.text }]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {canReorder ? (
+        <View style={[styles.reorderHint, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <Ionicons name="reorder-three" size={14} color={theme.colors.textMuted} />
+          <Text style={[styles.reorderHintText, { color: theme.colors.textMuted }]}>Maintiens un film pour le déplacer</Text>
+        </View>
+      ) : null}
+      {loading && movies.length === 0 ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator color={theme.colors.text} />
+        </View>
+      ) : null}
+    </View>
+  );
 
   return (
     <AppScreen scroll={false} contentStyle={{ flex: 1 }}>
@@ -224,107 +316,70 @@ export default function PlaylistDetailsScreen({
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
-      <FlatList
-        data={sortedMovies}
-        key={`playlist-${sortMode}`}
-        numColumns={3}
-        columnWrapperStyle={styles.columns}
-        keyExtractor={(item) => String(item.id)}
-        showsVerticalScrollIndicator={false}
-        keyboardDismissMode="on-drag"
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View style={styles.headerContent}>
-            <SearchField value={query} onChangeText={setQuery} placeholder="Filtrer les films" />
-            <View style={styles.filtersRow}>
-              {SORT_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.key}
-                  onPress={() => setSortMode(option.key)}
-                  style={[
-                    styles.filterChip,
-                    { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
-                    sortMode === option.key && { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.colors.accentSoft },
-                  ]}
-                >
-                  <Text style={[styles.filterChipLabel, { color: theme.colors.textSoft }, sortMode === option.key && { color: theme.colors.text }]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            {loading && movies.length === 0 ? (
-              <View style={styles.loadingState}>
-                <ActivityIndicator color={theme.colors.text} />
-              </View>
-            ) : null}
-          </View>
-        }
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void refreshPlaylist()}
-            tintColor={theme.colors.text}
-            colors={[theme.colors.secondaryAccent]}
-            progressViewOffset={16}
-          />
-        }
-        renderItem={({ item, index }) => (
-          <Pressable
-            style={[styles.movieCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-            onPress={() => navigation.navigate('MovieDetails', { movieId: item.id, title: item.title })}
-          >
-            <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
-            {canReorder ? (
-              <View style={styles.reorderControls}>
-                <Pressable
-                  disabled={index === 0}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    void handleMove(item.id, -1);
-                  }}
-                  style={[styles.reorderButton, index === 0 && styles.reorderButtonDisabled]}
-                >
-                  <Ionicons name="chevron-up" size={13} color="#ffffff" />
-                </Pressable>
-                <Pressable
-                  disabled={index === sortedMovies.length - 1}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    void handleMove(item.id, 1);
-                  }}
-                  style={[styles.reorderButton, index === sortedMovies.length - 1 && styles.reorderButtonDisabled]}
-                >
-                  <Ionicons name="chevron-down" size={13} color="#ffffff" />
-                </Pressable>
-              </View>
-            ) : null}
-            {canRemove ? (
-              <Pressable
-                style={styles.removeBadge}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  void handleRemove(item.id);
-                }}
-              >
-                <Ionicons name="close" size={12} color="#ffffff" />
-              </Pressable>
-            ) : null}
-            <View style={styles.overlay}>
-              <Text style={styles.movieTitle} numberOfLines={2}>{item.title}</Text>
-              <Text style={styles.movieMeta} numberOfLines={1}>
-                {sortMode === 'genre' ? item.primary_genre ?? 'Autres' : formatPlaylistRating(item.rating, route.params.playlistId)}
-              </Text>
-            </View>
-          </Pressable>
-        )}
-        ListEmptyComponent={
-          !loading ? (
-            <EmptyStateCard title="Aucun film" />
-          ) : null
-        }
-      />
+      {canReorder ? (
+        <DraggableFlatList
+          data={sortedMovies}
+          key={`playlist-${sortMode}-draggable`}
+          numColumns={3}
+          columnWrapperStyle={styles.columns}
+          keyExtractor={(item) => String(item.id)}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={headerComponent}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void refreshPlaylist()}
+              tintColor={theme.colors.text}
+              colors={[theme.colors.secondaryAccent]}
+              progressViewOffset={16}
+            />
+          }
+          renderItem={({ item, drag, isActive }) => renderMovieCard({ item, drag, isActive })}
+          onDragBegin={() => {
+            isDraggingRef.current = true;
+          }}
+          onDragEnd={handleDragEnd}
+          activationDistance={12}
+          animationConfig={{ damping: 18, stiffness: 180, mass: 0.85 }}
+          itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(180)}
+          ListEmptyComponent={
+            !loading ? (
+              <EmptyStateCard title="Aucun film" />
+            ) : null
+          }
+        />
+      ) : (
+        <FlatList
+          data={sortedMovies}
+          key={`playlist-${sortMode}-grid`}
+          numColumns={3}
+          columnWrapperStyle={styles.columns}
+          keyExtractor={(item) => String(item.id)}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={headerComponent}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void refreshPlaylist()}
+              tintColor={theme.colors.text}
+              colors={[theme.colors.secondaryAccent]}
+              progressViewOffset={16}
+            />
+          }
+          renderItem={({ item }) => renderMovieCard({ item })}
+          ListEmptyComponent={
+            !loading ? (
+              <EmptyStateCard title="Aucun film" />
+            ) : null
+          }
+        />
+      )}
     </AppScreen>
   );
 }
@@ -448,22 +503,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  reorderControls: {
+  dragBadge: {
     position: 'absolute',
     top: 8,
     left: 8,
     zIndex: 2,
-    gap: 5,
-  },
-  reorderButton: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.86)',
+    backgroundColor: 'rgba(15,23,42,0.78)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  reorderButtonDisabled: {
-    opacity: 0.28,
+  movieCardActive: {
+    borderColor: 'rgba(125,211,252,0.65)',
+    backgroundColor: 'rgba(14,165,233,0.10)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  moviePlaceholder: {
+    opacity: 0.18,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  reorderHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  reorderHintText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
