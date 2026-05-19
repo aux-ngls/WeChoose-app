@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-19
 Current branch: main
-Current stable commit: 767be34
+Current stable commit: 38edd97
 
 ## Maintenance Rule
 
@@ -40,6 +40,7 @@ The mobile app currently includes:
 - ratings with half-star precision;
 - ratings are meant to represent one personal movie rating across Tinder, movie details, and reviews;
 - playlists, custom playlist creation, adding movies to playlists, and removing movies;
+- playlist manual order now uses long-press drag with animated feedback instead of up/down arrows;
 - social feed with expandable reviews and comments;
 - social notifications are opened from the profile header bell into a dedicated notifications page; direct-message unread state remains separate in Messages.
 - private messages with movie sharing;
@@ -84,6 +85,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Mobile sessions should feel persistent; backend access tokens are long-lived for app usage rather than daily login.
 - First Tinder load should stay as hidden as possible: the app caches/preloads locally, and the backend now fetches recommendation poster URLs in parallel to reduce cold-start waiting.
 - Actor detail grids should stretch to the available width instead of leaving visible empty gutters on the "Films marquants" section.
+- Playlist manual ordering should feel tactile: long-press to drag, with visible movement and no arrow buttons.
 
 ## Known Sensitive Areas
 
