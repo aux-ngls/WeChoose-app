@@ -10,7 +10,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Current Stable State
 
-Commit: `1a54352`
+Commit: `767be34`
 
 Summary:
 - audited the main app/API user flows with temporary accounts;
