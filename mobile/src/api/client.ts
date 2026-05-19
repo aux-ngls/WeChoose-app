@@ -61,7 +61,7 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiError('Le serveur met trop de temps a repondre.', 408);
+      throw new ApiError('Le serveur met trop de temps à répondre.', 408);
     }
     throw error;
   } finally {

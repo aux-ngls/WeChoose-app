@@ -313,7 +313,7 @@ export default function MovieDetailsScreen({
 
   const openTrailer = () => {
     if (!trailerPlayerUrl) {
-      setError('Bande-annonce indisponible dans l application.');
+      setError("Bande-annonce indisponible dans l'application.");
       return;
     }
 
@@ -488,7 +488,7 @@ export default function MovieDetailsScreen({
             {providers.length > 0 ? (
               <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
                 <View style={styles.rowBetween}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Ou le regarder</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Où le regarder</Text>
                   {movie.watch_providers.link ? (
                     <Pressable onPress={() => void openProviderLink()}>
                       <Text style={[styles.inlineLink, { color: theme.colors.secondaryAccent }]}>Voir</Text>
@@ -602,7 +602,7 @@ export default function MovieDetailsScreen({
               </Pressable>
             </View>
 
-            {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement...</Text> : null}
+            {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement…</Text> : null}
             <View style={styles.playlistList}>
               {playlists.map((playlist) => (
                 <Pressable

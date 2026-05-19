@@ -241,7 +241,6 @@ export default function PlaylistsPage() {
     return <Folder className="text-white" />;
   };
 
-  const isWatchLaterSelected = selectedPlaylist?.id === WATCH_LATER_PLAYLIST_ID;
   const canRemoveMovies = Boolean(selectedPlaylist && !selectedPlaylist.readonly);
   const canReorderMovies = selectedPlaylist?.type === "custom" && sortMode === "manual";
 

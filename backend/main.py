@@ -1,6 +1,7 @@
 import ast
 import base64
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import importlib.util
 import json
 import os
@@ -1167,7 +1168,7 @@ async def upload_profile_avatar(
     content_type = (file.content_type or "").split(";")[0].lower()
     extension = AVATAR_CONTENT_TYPES.get(content_type)
     if not extension:
-        raise HTTPException(status_code=400, detail="Format image non supporte")
+        raise HTTPException(status_code=400, detail="Format image non supporté")
 
     content = await file.read(MAX_AVATAR_BYTES + 1)
     if not content:
@@ -1315,7 +1316,7 @@ def save_onboarding_preferences(
     )[:6]
 
     if not favorite_genres and not favorite_people and not favorite_movie_ids:
-        raise HTTPException(status_code=400, detail="Ajoute au moins quelques gouts pour lancer l'IA.")
+        raise HTTPException(status_code=400, detail="Ajoute au moins quelques goûts pour lancer l'IA.")
 
     people_seed_movie_ids: list[int] = []
     for person_name in favorite_people:
@@ -1432,6 +1433,31 @@ def fetch_poster_from_tmdb(movie_id):
         data = requests.get(url, timeout=1).json()
         return "https://image.tmdb.org/t/p/w500" + data.get('poster_path') if data.get('poster_path') else "https://via.placeholder.com/500"
     except: return "https://via.placeholder.com/500"
+
+
+def fetch_posters_from_tmdb(movie_ids: list[int]) -> dict[int, str]:
+    unique_movie_ids = [int(movie_id) for movie_id in dict.fromkeys(movie_ids)]
+    if not unique_movie_ids:
+        return {}
+    if len(unique_movie_ids) == 1:
+        movie_id = unique_movie_ids[0]
+        return {movie_id: fetch_poster_from_tmdb(movie_id)}
+
+    poster_urls: dict[int, str] = {}
+    max_workers = min(8, len(unique_movie_ids))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_by_movie_id = {
+            executor.submit(fetch_poster_from_tmdb, movie_id): movie_id
+            for movie_id in unique_movie_ids
+        }
+        for future in as_completed(future_by_movie_id):
+            movie_id = future_by_movie_id[future]
+            try:
+                poster_urls[movie_id] = future.result()
+            except Exception:
+                poster_urls[movie_id] = "https://via.placeholder.com/500"
+
+    return poster_urls
 
 @lru_cache(maxsize=512)
 def get_tmdb_watch_providers(movie_id: int) -> dict:
@@ -2213,16 +2239,16 @@ def build_notification_message(row: sqlite3.Row) -> str:
     notification_type = row["type"]
 
     if notification_type == "follow":
-        return f"@{actor_username} s'est abonne a toi"
+        return f"@{actor_username} s'est abonné à toi"
     if notification_type == "like":
-        return f"@{actor_username} a aime ta critique sur {review_title}"
+        return f"@{actor_username} a aimé ta critique sur {review_title}"
     if notification_type == "review":
-        return f"@{actor_username} a publie une critique sur {review_title}"
+        return f"@{actor_username} a publié une critique sur {review_title}"
     if notification_type == "comment":
-        return f"@{actor_username} a commente ta critique sur {review_title}"
+        return f"@{actor_username} a commenté ta critique sur {review_title}"
     if notification_type == "reply":
-        return f"@{actor_username} a repondu a ton commentaire sur {review_title}"
-    return f"Nouvelle activite de @{actor_username}"
+        return f"@{actor_username} a répondu à ton commentaire sur {review_title}"
+    return f"Nouvelle activité de @{actor_username}"
 
 
 def serialize_notification_row(row: sqlite3.Row) -> dict:
@@ -3925,6 +3951,7 @@ def compute_recommendation_feed(
         if movie_id not in blocked_ids
     ]
     seed_context_by_movie_id: dict[int, dict[str, object]] = {}
+    poster_urls_by_movie_id: dict[int, str] = {}
 
     def build_seed_cluster_ranked_ids(seed_ids: list[int], max_seed_count: int = 8) -> list[int]:
         if not is_test_ai_experiment or vectors is None or not seed_ids:
@@ -4026,7 +4053,7 @@ def compute_recommendation_feed(
         payload = {
             "id": movie_id,
             "title": str(row["title"]),
-            "poster_url": fetch_poster_from_tmdb(movie_id),
+            "poster_url": poster_urls_by_movie_id.get(movie_id) or fetch_poster_from_tmdb(movie_id),
             "rating": float(row["vote_average"]),
             "recommendation_reason": build_recommendation_reason(
                 movie_id=movie_id,
@@ -4090,6 +4117,7 @@ def compute_recommendation_feed(
             lambda movie_id: selected_ids.index(int(movie_id))
         )
         selected_rows = selected_rows.sort_values("selection_rank")
+        poster_urls_by_movie_id.update(fetch_posters_from_tmdb(selected_ids[:limit]))
         return [
             build_recommendation_payload(row, "explore")
             for _, row in selected_rows.iterrows()
@@ -4171,6 +4199,7 @@ def compute_recommendation_feed(
         lambda movie_id: selected_ids.index(int(movie_id))
     )
     selected_rows = selected_rows.sort_values("selection_rank")
+    poster_urls_by_movie_id.update(fetch_posters_from_tmdb(selected_ids[:limit]))
 
     return [
         build_recommendation_payload(row, "tinder" if is_tinder_mode else "spotlight")
@@ -4709,7 +4738,7 @@ def follow_user(target_user_id: int, current_user: dict = Depends(get_current_us
             cursor,
             [target_user_id],
             title="Nouveau follower",
-            body=f"@{current_user['username']} s'est abonne a toi",
+            body=f"@{current_user['username']} s'est abonné à toi",
             route="/social",
             extra_data={"type": "follow"},
         )
@@ -5031,7 +5060,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
             cursor,
             [follower_id],
             title="Nouvelle critique",
-            body=f"@{current_user['username']} a publie une critique sur {review_title}",
+            body=f"@{current_user['username']} a publié une critique sur {review_title}",
             route="/social",
             extra_data={"type": "review", "reviewId": review_id},
         )
@@ -5213,7 +5242,7 @@ def create_review_comment(
             cursor,
             [review_owner_id],
             title="Nouveau commentaire",
-            body=f"@{current_user['username']} a commente ta critique",
+            body=f"@{current_user['username']} a commenté ta critique",
             route="/social",
             extra_data={"type": "comment", "reviewId": review_id, "commentId": comment_id},
         )
@@ -5230,8 +5259,8 @@ def create_review_comment(
         send_native_push_notifications(
             cursor,
             [parent_user_id],
-            title="Nouvelle reponse",
-            body=f"@{current_user['username']} a repondu a ton commentaire",
+            title="Nouvelle réponse",
+            body=f"@{current_user['username']} a répondu à ton commentaire",
             route="/social",
             extra_data={"type": "reply", "reviewId": review_id, "commentId": comment_id},
         )
@@ -5299,8 +5328,8 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
         send_native_push_notifications(
             cursor,
             [review_owner_id],
-            title="Critique aimee",
-            body=f"@{current_user['username']} a aime ta critique sur {review_title}",
+            title="Critique aimée",
+            body=f"@{current_user['username']} a aimé ta critique sur {review_title}",
             route="/social",
             extra_data={"type": "like", "reviewId": review_id},
         )
@@ -5906,26 +5935,26 @@ def support_page():
       <div class="card">
         <div class="eyebrow">Qulte · Support</div>
         <h1>Besoin d'aide ?</h1>
-        <p>Cette page de support concerne l'application mobile Qulte, disponible sur iPhone. Si tu rencontres un bug, un probleme d'acces a ton compte, un souci lie aux messages, aux notifications ou a la gestion de ton profil, tu peux nous contacter directement.</p>
+        <p>Cette page de support concerne l'application mobile Qulte, disponible sur iPhone. Si tu rencontres un bug, un problème d'accès à ton compte, un souci lié aux messages, aux notifications ou à la gestion de ton profil, tu peux nous contacter directement.</p>
 
-        <h2>Contacter l'equipe</h2>
+        <h2>Contacter l'équipe</h2>
         <p>Email de support : <a href="mailto:qulte.developpeur@gmail.com">qulte.developpeur@gmail.com</a></p>
-        <p>Nous faisons le maximum pour repondre dans les meilleurs delais, en particulier pour les demandes liees a la securite du compte, aux contenus signales ou a la suppression de donnees.</p>
+        <p>Nous faisons le maximum pour répondre dans les meilleurs délais, en particulier pour les demandes liées à la sécurité du compte, aux contenus signalés ou à la suppression de données.</p>
 
         <h2>Dans ton message, indique si possible</h2>
         <ul>
-          <li>le modele de ton iPhone et la version iOS ;</li>
+          <li>le modèle de ton iPhone et la version iOS ;</li>
           <li>le nom de ton compte Qulte ;</li>
-          <li>une description claire du probleme ;</li>
-          <li>les etapes pour reproduire le bug ;</li>
-          <li>une capture d'ecran si cela peut aider.</li>
+          <li>une description claire du problème ;</li>
+          <li>les étapes pour reproduire le bug ;</li>
+          <li>une capture d'écran si cela peut aider.</li>
         </ul>
 
-        <h2>Compte, donnees et moderation</h2>
-        <p>Depuis l'application, tu peux gerer ton compte, modifier ton profil et demander la suppression de ton compte. Si un contenu te semble inapproprie ou si tu rencontres un probleme avec un autre utilisateur, utilise les outils de signalement ou ecris-nous directement.</p>
+        <h2>Compte, données et modération</h2>
+        <p>Depuis l'application, tu peux gérer ton compte, modifier ton profil et demander la suppression de ton compte. Si un contenu te semble inapproprié ou si tu rencontres un problème avec un autre utilisateur, utilise les outils de signalement ou écris-nous directement.</p>
 
         <h2>Service</h2>
-        <p>Qulte evolue regulierement. Certaines fonctionnalites peuvent etre temporairement indisponibles pendant une maintenance, une mise a jour ou une intervention technique. Lorsqu'un incident important est identifie, nous faisons le necessaire pour retablir le service aussi vite que possible.</p>
+        <p>Qulte évolue régulièrement. Certaines fonctionnalités peuvent être temporairement indisponibles pendant une maintenance, une mise à jour ou une intervention technique. Lorsqu'un incident important est identifié, nous faisons le nécessaire pour rétablir le service aussi vite que possible.</p>
       </div>
     </main>
   </body>
@@ -5939,7 +5968,7 @@ def privacy_page():
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Qulte - Politique de confidentialite</title>
+    <title>Qulte - Politique de confidentialité</title>
     <style>
       :root {
         color-scheme: dark;
@@ -5995,32 +6024,32 @@ def privacy_page():
   <body>
     <main>
       <div class="card">
-        <div class="eyebrow">Qulte · Confidentialite</div>
-        <h1>Politique de confidentialite</h1>
-        <p>Qulte est une application mobile consacree a la recommandation de films, a la creation de playlists, aux critiques et aux interactions sociales entre utilisateurs. Cette politique explique de maniere generale quelles donnees peuvent etre traitees dans le cadre du service et dans quel but.</p>
+        <div class="eyebrow">Qulte · Confidentialité</div>
+        <h1>Politique de confidentialité</h1>
+        <p>Qulte est une application mobile consacrée à la recommandation de films, à la création de playlists, aux critiques et aux interactions sociales entre utilisateurs. Cette politique explique de manière générale quelles données peuvent être traitées dans le cadre du service et dans quel but.</p>
 
-        <h2>Donnees pouvant etre traitees</h2>
+        <h2>Données pouvant être traitées</h2>
         <ul>
-          <li>donnees de compte, comme ton nom d'utilisateur et tes informations d'authentification ;</li>
-          <li>contenus que tu publies dans l'application, comme tes critiques, commentaires, messages et elements de profil ;</li>
-          <li>interactions fonctionnelles, comme tes notes, playlists, films mis de cote, suivis, likes et notifications ;</li>
-          <li>donnees techniques minimales necessaires au bon fonctionnement et a la securite du service.</li>
+          <li>données de compte, comme ton nom d'utilisateur et tes informations d'authentification ;</li>
+          <li>contenus que tu publies dans l'application, comme tes critiques, commentaires, messages et éléments de profil ;</li>
+          <li>interactions fonctionnelles, comme tes notes, playlists, films mis de côté, suivis, likes et notifications ;</li>
+          <li>données techniques minimales nécessaires au bon fonctionnement et à la sécurité du service.</li>
         </ul>
 
-        <h2>Finalites</h2>
-        <p>Ces donnees sont utilisees pour fournir les fonctionnalites essentielles de Qulte, personnaliser l'experience de recommandation, permettre les echanges entre utilisateurs, prevenir les abus, assurer la securite du service et ameliorer la stabilite de l'application.</p>
+        <h2>Finalités</h2>
+        <p>Ces données sont utilisées pour fournir les fonctionnalités essentielles de Qulte, personnaliser l'expérience de recommandation, permettre les échanges entre utilisateurs, prévenir les abus, assurer la sécurité du service et améliorer la stabilité de l'application.</p>
 
         <h2>Partage et sous-traitance</h2>
-        <p>Qulte peut s'appuyer sur des services techniques tiers indispensables au fonctionnement du produit, notamment pour l'hebergement, la diffusion de notifications, ou l'acces a des donnees cinema. Les donnees ne sont pas vendues en tant que telles a des tiers a des fins publicitaires externes.</p>
+        <p>Qulte peut s'appuyer sur des services techniques tiers indispensables au fonctionnement du produit, notamment pour l'hébergement, la diffusion de notifications ou l'accès à des données cinéma. Les données ne sont pas vendues en tant que telles à des tiers à des fins publicitaires externes.</p>
 
         <h2>Suppression et droits</h2>
-        <p>Depuis l'application, tu peux demander la suppression de ton compte. Si tu souhaites exercer un droit d'acces, de rectification ou de suppression concernant tes donnees, tu peux egalement nous contacter a l'adresse suivante : <a href="mailto:qulte.developpeur@gmail.com">qulte.developpeur@gmail.com</a>.</p>
+        <p>Depuis l'application, tu peux demander la suppression de ton compte. Si tu souhaites exercer un droit d'accès, de rectification ou de suppression concernant tes données, tu peux également nous contacter à l'adresse suivante : <a href="mailto:qulte.developpeur@gmail.com">qulte.developpeur@gmail.com</a>.</p>
 
-        <h2>Securite</h2>
-        <p>Des mesures raisonnables sont mises en oeuvre pour proteger les comptes, les donnees et l'integrite du service. Aucune solution technique n'offrant une securite absolue, nous encourageons aussi les utilisateurs a choisir un mot de passe robuste et a nous signaler rapidement tout comportement suspect.</p>
+        <h2>Sécurité</h2>
+        <p>Des mesures raisonnables sont mises en œuvre pour protéger les comptes, les données et l'intégrité du service. Aucune solution technique n'offrant une sécurité absolue, nous encourageons aussi les utilisateurs à choisir un mot de passe robuste et à nous signaler rapidement tout comportement suspect.</p>
 
-        <h2>Mises a jour</h2>
-        <p>Cette politique peut evoluer pour refleter les changements du service, de l'infrastructure ou des obligations applicables. La version publiee sur cette page fait foi pour les informations generales communiquees aux utilisateurs et a Apple dans le cadre de la distribution de l'application.</p>
+        <h2>Mises à jour</h2>
+        <p>Cette politique peut évoluer pour refléter les changements du service, de l'infrastructure ou des obligations applicables. La version publiée sur cette page fait foi pour les informations générales communiquées aux utilisateurs et à Apple dans le cadre de la distribution de l'application.</p>
       </div>
     </main>
   </body>

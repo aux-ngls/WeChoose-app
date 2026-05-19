@@ -205,7 +205,7 @@ export default function PlaylistDetailsScreen({
         await signOut();
         return;
       }
-      setError('Impossible de reordonner cette playlist.');
+      setError('Impossible de réordonner cette playlist.');
     }
   };
 
