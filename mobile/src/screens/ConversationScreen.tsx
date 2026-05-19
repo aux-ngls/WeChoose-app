@@ -183,6 +183,9 @@ export default function ConversationScreen({
   const optimisticMessageIdRef = useRef(-1);
   const loadingConversationRef = useRef(false);
   const composerBottomGap = keyboardLift > 0 ? keyboardLift : Math.max(insets.bottom, 10);
+  const replyBannerOpacity = useRef(new Animated.Value(0)).current;
+  const replyBannerTranslateY = useRef(new Animated.Value(10)).current;
+  const activeReplyTarget = swipePreviewTarget ?? replyTarget;
 
   const scrollToLatestMessage = useCallback((animated = false) => {
     requestAnimationFrame(() => {
@@ -247,6 +250,29 @@ export default function ConversationScreen({
       hideSubscription.remove();
     };
   }, [scrollToLatestMessage]);
+
+  useEffect(() => {
+    if (!activeReplyTarget) {
+      return;
+    }
+
+    replyBannerOpacity.stopAnimation();
+    replyBannerTranslateY.stopAnimation();
+    replyBannerOpacity.setValue(0);
+    replyBannerTranslateY.setValue(10);
+    Animated.parallel([
+      Animated.timing(replyBannerOpacity, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(replyBannerTranslateY, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [activeReplyTarget?.id, replyBannerOpacity, replyBannerTranslateY]);
 
   useEffect(() => {
     const cachedConversation = conversationCache.get(cacheKey);
@@ -697,12 +723,21 @@ export default function ConversationScreen({
           }
         />
 
-        {swipePreviewTarget || replyTarget ? (
+        {activeReplyTarget ? (
+          <Animated.View
+            style={[
+              styles.replyComposerBannerWrap,
+              {
+                opacity: replyBannerOpacity,
+                transform: [{ translateY: replyBannerTranslateY }],
+              },
+            ]}
+          >
           <View style={[styles.replyComposerBanner, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong }]}>
             <View style={styles.replyComposerBody}>
-              <Text style={[styles.replyComposerTitle, { color: theme.colors.secondaryAccent }]}>Réponse à @{(swipePreviewTarget ?? replyTarget)!.sender.username}</Text>
+              <Text style={[styles.replyComposerTitle, { color: theme.colors.secondaryAccent }]}>Réponse à @{activeReplyTarget.sender.username}</Text>
               <Text style={[styles.replyComposerPreview, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                {(swipePreviewTarget ?? replyTarget)!.content || (swipePreviewTarget ?? replyTarget)!.movie?.title || 'Film partagé'}
+                {activeReplyTarget.content || activeReplyTarget.movie?.title || 'Film partagé'}
               </Text>
             </View>
             <Pressable onPress={() => {
@@ -712,6 +747,7 @@ export default function ConversationScreen({
               <Ionicons name="close" size={18} color={theme.colors.textMuted} />
             </Pressable>
           </View>
+          </Animated.View>
         ) : null}
 
         <View style={[styles.composerRow, { marginBottom: composerBottomGap }]}>
@@ -915,6 +951,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingTop: 10,
     paddingBottom: Platform.OS === 'ios' ? 8 : 10,
+  },
+  replyComposerBannerWrap: {
+    overflow: 'hidden',
   },
   replyComposerBanner: {
     flexDirection: 'row',
