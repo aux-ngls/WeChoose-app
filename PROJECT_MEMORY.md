@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-19
 Current branch: main
-Current stable commit: 4c9ea6a
+Current stable commit: 1a54352
 
 ## Maintenance Rule
 
@@ -83,6 +83,7 @@ The web site remains active and should not be removed while the mobile app is be
 - User-facing French copy in the mobile app should be fully accented, clean, and natural rather than ASCII-only.
 - Mobile sessions should feel persistent; backend access tokens are long-lived for app usage rather than daily login.
 - First Tinder load should stay as hidden as possible: the app caches/preloads locally, and the backend now fetches recommendation poster URLs in parallel to reduce cold-start waiting.
+- Actor detail grids should stretch to the available width instead of leaving visible empty gutters on the "Films marquants" section.
 
 ## Known Sensitive Areas
 

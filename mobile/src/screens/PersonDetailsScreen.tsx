@@ -261,9 +261,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    justifyContent: 'space-between',
   },
   movieCell: {
-    width: '31.4%',
+    flexGrow: 1,
+    flexBasis: '31%',
+    minWidth: 0,
     gap: 6,
   },
   movieCredit: {

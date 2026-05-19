@@ -10,7 +10,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Current Stable State
 
-Commit: `4c9ea6a`
+Commit: `1a54352`
 
 Summary:
 - audited the main app/API user flows with temporary accounts;
@@ -18,6 +18,7 @@ Summary:
 - optimized recommendation feed poster loading by fetching TMDB posters concurrently;
 - removed one web lint warning from the playlist page;
 - validated with mobile typecheck, backend compile, frontend lint/build, support/privacy/trailer endpoint smoke checks, and a full API smoke scenario.
+- adjusted the mobile actor detail "Films marquants" grid so the cards fill the line more naturally instead of leaving spare horizontal space.
 
 ## Latest Workspace Changes
 
@@ -67,6 +68,7 @@ These changes should be recorded as part of the next stable checkpoint:
 ## Important Recent Commits
 
 - `4c9ea6a` - Audit core app flows and polish copy
+- `1a54352` - Record app audit checkpoint
 - `be9c7a9` - Remove bottom safe area strip globally
 - `38a1d07` - Fix movie details bottom safe area
 - `d32feb0` - Remove artificial bottom seam
