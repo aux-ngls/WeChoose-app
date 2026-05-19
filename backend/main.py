@@ -5433,39 +5433,50 @@ def start_direct_conversation(target_user_id: int, current_user: dict = Depends(
 
 
 @app.get("/messages/conversations/{conversation_id}")
-def get_direct_conversation_messages(conversation_id: int, current_user: dict = Depends(get_current_user)):
+def get_direct_conversation_messages(
+    conversation_id: int,
+    limit: int = 40,
+    current_user: dict = Depends(get_current_user),
+):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
     conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
+    safe_limit = max(1, min(limit, 100))
 
     cursor.execute(
         """
-        SELECT
-            dm.id,
-            dm.content,
-            dm.created_at,
-            dm.sender_id,
-            sender.username AS sender_username,
-            dm.movie_id,
-            dm.movie_title,
-            dm.movie_poster_url,
-            dm.movie_rating,
-            reply_dm.id AS reply_message_id,
-            reply_dm.content AS reply_message_content,
-            reply_dm.sender_id AS reply_sender_id,
-            reply_sender.username AS reply_sender_username,
-            reply_dm.movie_id AS reply_movie_id,
-            reply_dm.movie_title AS reply_movie_title,
-            reply_dm.movie_poster_url AS reply_movie_poster_url,
-            reply_dm.movie_rating AS reply_movie_rating
-        FROM direct_messages dm
-        JOIN users sender ON sender.id = dm.sender_id
-        LEFT JOIN direct_messages reply_dm ON reply_dm.id = dm.reply_to_message_id
-        LEFT JOIN users reply_sender ON reply_sender.id = reply_dm.sender_id
-        WHERE dm.conversation_id = ?
-        ORDER BY dm.id ASC
+        SELECT *
+        FROM (
+            SELECT
+                dm.id,
+                dm.content,
+                dm.created_at,
+                dm.sender_id,
+                sender.username AS sender_username,
+                dm.movie_id,
+                dm.movie_title,
+                dm.movie_poster_url,
+                dm.movie_rating,
+                dm.reply_to_message_id,
+                reply_dm.id AS reply_message_id,
+                reply_dm.content AS reply_message_content,
+                reply_dm.sender_id AS reply_sender_id,
+                reply_sender.username AS reply_sender_username,
+                reply_dm.movie_id AS reply_movie_id,
+                reply_dm.movie_title AS reply_movie_title,
+                reply_dm.movie_poster_url AS reply_movie_poster_url,
+                reply_dm.movie_rating AS reply_movie_rating
+            FROM direct_messages dm
+            JOIN users sender ON sender.id = dm.sender_id
+            LEFT JOIN direct_messages reply_dm ON reply_dm.id = dm.reply_to_message_id
+            LEFT JOIN users reply_sender ON reply_sender.id = reply_dm.sender_id
+            WHERE dm.conversation_id = ?
+            ORDER BY dm.id DESC
+            LIMIT ?
+        ) ordered_messages
+        ORDER BY id ASC
         """,
-        (conversation_id,),
+        (conversation_id, safe_limit),
     )
     messages = [
         serialize_direct_message_row(row, current_user["id"])

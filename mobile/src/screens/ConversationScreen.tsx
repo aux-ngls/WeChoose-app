@@ -143,6 +143,7 @@ export default function ConversationScreen({
   const shouldScrollToEndRef = useRef(true);
   const isNearBottomRef = useRef(true);
   const hasLoadedConversationRef = useRef(false);
+  const hasInitialConversationLoadedRef = useRef(false);
   const messageCountRef = useRef(0);
   const optimisticMessageIdRef = useRef(-1);
   const composerBottomGap = keyboardLift > 0 ? keyboardLift : Math.max(insets.bottom, 10);
@@ -159,7 +160,7 @@ export default function ConversationScreen({
     }
 
     try {
-      const payload = await fetchConversation(session.token, route.params.conversationId);
+      const payload = await fetchConversation(session.token, route.params.conversationId, { limit: 40 });
       const hasNewMessages = payload.messages.length > messageCountRef.current;
       if (!hasLoadedConversationRef.current) {
         shouldScrollToEndRef.current = true;
@@ -171,6 +172,7 @@ export default function ConversationScreen({
       setMessages((current) => mergeServerMessages(current, payload.messages));
       setParticipantUsername(payload.conversation.participant.username);
       setParticipantId(payload.conversation.participant.id);
+      hasInitialConversationLoadedRef.current = true;
       setError('');
     } catch (fetchError) {
       if (fetchError instanceof ApiError && fetchError.status === 401) {
@@ -198,9 +200,15 @@ export default function ConversationScreen({
     };
   }, [scrollToLatestMessage]);
 
+  useEffect(() => {
+    hasInitialConversationLoadedRef.current = false;
+  }, [route.params.conversationId]);
+
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      if (!hasInitialConversationLoadedRef.current) {
+        setLoading(true);
+      }
       hasLoadedConversationRef.current = false;
       shouldScrollToEndRef.current = true;
       isNearBottomRef.current = true;

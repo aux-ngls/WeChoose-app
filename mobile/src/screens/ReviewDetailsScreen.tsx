@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
@@ -35,6 +35,25 @@ export default function ReviewDetailsScreen({
   const [draft, setDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<SocialComment | null>(null);
   const [error, setError] = useState('');
+  const threadedComments = useMemo(() => {
+    const repliesByParent = new Map<number, SocialComment[]>();
+    const rootComments: SocialComment[] = [];
+
+    comments.forEach((comment) => {
+      if (comment.parent_id) {
+        const replies = repliesByParent.get(comment.parent_id) ?? [];
+        replies.push(comment);
+        repliesByParent.set(comment.parent_id, replies);
+        return;
+      }
+      rootComments.push(comment);
+    });
+
+    return rootComments.map((comment) => ({
+      comment,
+      replies: repliesByParent.get(comment.id) ?? [],
+    }));
+  }, [comments]);
 
   const loadReviewThread = useCallback(async () => {
     if (!session) {
@@ -184,35 +203,66 @@ export default function ReviewDetailsScreen({
               <Text style={[styles.commentsMeta, { color: theme.colors.textMuted }]}>{review.comments_count}</Text>
             </View>
 
-            {comments.length > 0 ? (
+            {threadedComments.length > 0 ? (
               <View style={styles.commentsList}>
-                {comments.map((comment) => {
+                {threadedComments.map(({ comment, replies }) => {
                   const isHighlighted = route.params.highlightCommentId === comment.id;
                   return (
-                    <View
-                      key={comment.id}
-                      style={[
-                        styles.commentRow,
-                        {
-                          backgroundColor: isHighlighted ? theme.colors.accentSoft : theme.rgba.cardStrong,
-                          borderColor: isHighlighted ? theme.colors.accent : 'transparent',
-                        },
-                        comment.parent_id ? styles.replyCommentRow : null,
-                      ]}
-                    >
-                      <View style={styles.commentTopRow}>
-                        <Pressable onPress={() => navigation.navigate('UserProfile', { username: comment.author.username })}>
-                          <Text style={[styles.commentAuthor, { color: theme.colors.accent }]}>@{comment.author.username}</Text>
-                        </Pressable>
-                        <Pressable onPress={() => setReplyTarget(comment)} style={styles.commentReplyButton}>
-                          <Ionicons name="return-up-back-outline" size={14} color={theme.colors.textMuted} />
-                          <Text style={[styles.commentReplyLabel, { color: theme.colors.textMuted }]}>Répondre</Text>
-                        </Pressable>
+                    <View key={comment.id} style={styles.commentThread}>
+                      <View
+                        style={[
+                          styles.commentRow,
+                          {
+                            backgroundColor: isHighlighted ? theme.colors.accentSoft : theme.rgba.cardStrong,
+                            borderColor: isHighlighted ? theme.colors.accent : 'transparent',
+                          },
+                        ]}
+                      >
+                        <View style={styles.commentTopRow}>
+                          <Pressable onPress={() => navigation.navigate('UserProfile', { username: comment.author.username })}>
+                            <Text style={[styles.commentAuthor, { color: theme.colors.accent }]}>@{comment.author.username}</Text>
+                          </Pressable>
+                          <Pressable onPress={() => setReplyTarget(comment)} style={styles.commentReplyButton}>
+                            <Ionicons name="return-up-back-outline" size={14} color={theme.colors.textMuted} />
+                            <Text style={[styles.commentReplyLabel, { color: theme.colors.textMuted }]}>Répondre</Text>
+                          </Pressable>
+                        </View>
+                        <Text style={[styles.commentText, { color: theme.colors.textSoft }]}>{comment.content}</Text>
                       </View>
-                      {comment.reply_to_username ? (
-                        <Text style={[styles.replyTargetLabel, { color: theme.colors.secondaryAccent }]}>à @{comment.reply_to_username}</Text>
+
+                      {replies.length > 0 ? (
+                        <View style={styles.replyList}>
+                          {replies.map((reply) => {
+                            const isReplyHighlighted = route.params.highlightCommentId === reply.id;
+                            return (
+                              <View
+                                key={reply.id}
+                                style={[
+                                  styles.replyRow,
+                                  {
+                                    backgroundColor: isReplyHighlighted ? theme.colors.accentSoft : theme.rgba.card,
+                                    borderColor: isReplyHighlighted ? theme.colors.accent : theme.rgba.border,
+                                  },
+                                ]}
+                              >
+                                <View style={styles.commentTopRow}>
+                                  <Pressable onPress={() => navigation.navigate('UserProfile', { username: reply.author.username })}>
+                                    <Text style={[styles.commentAuthor, { color: theme.colors.secondaryAccent }]}>@{reply.author.username}</Text>
+                                  </Pressable>
+                                  <Pressable onPress={() => setReplyTarget(reply)} style={styles.commentReplyButton}>
+                                    <Ionicons name="return-up-back-outline" size={14} color={theme.colors.textMuted} />
+                                    <Text style={[styles.commentReplyLabel, { color: theme.colors.textMuted }]}>Répondre</Text>
+                                  </Pressable>
+                                </View>
+                                {reply.reply_to_username ? (
+                                  <Text style={[styles.replyTargetLabel, { color: theme.colors.secondaryAccent }]}>à @{reply.reply_to_username}</Text>
+                                ) : null}
+                                <Text style={[styles.commentText, { color: theme.colors.textSoft }]}>{reply.content}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
                       ) : null}
-                      <Text style={[styles.commentText, { color: theme.colors.textSoft }]}>{comment.content}</Text>
                     </View>
                   );
                 })}
@@ -371,14 +421,24 @@ const styles = StyleSheet.create({
   commentsList: {
     gap: 10,
   },
+  commentThread: {
+    gap: 10,
+  },
   commentRow: {
     gap: 5,
     borderRadius: 18,
     borderWidth: 1,
     padding: 12,
   },
-  replyCommentRow: {
-    marginLeft: 18,
+  replyList: {
+    gap: 8,
+    paddingLeft: 18,
+  },
+  replyRow: {
+    gap: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 11,
   },
   commentTopRow: {
     flexDirection: 'row',

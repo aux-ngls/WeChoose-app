@@ -396,8 +396,17 @@ export async function fetchConversations(token: string): Promise<DirectConversat
   return request<DirectConversationSummary[]>('/messages/conversations', undefined, token);
 }
 
-export async function fetchConversation(token: string, conversationId: number): Promise<DirectConversationDetails> {
-  return request<DirectConversationDetails>(`/messages/conversations/${conversationId}`, undefined, token);
+export async function fetchConversation(
+  token: string,
+  conversationId: number,
+  options?: { limit?: number },
+): Promise<DirectConversationDetails> {
+  const params = new URLSearchParams();
+  if (options?.limit) {
+    params.set('limit', String(options.limit));
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return request<DirectConversationDetails>(`/messages/conversations/${conversationId}${suffix}`, undefined, token);
 }
 
 export async function sendMessage(
