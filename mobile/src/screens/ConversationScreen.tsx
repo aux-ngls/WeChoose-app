@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   Alert,
   FlatList,
   Image,
@@ -587,36 +586,6 @@ export default function ConversationScreen({
                 overshootLeft={false}
                 leftThreshold={28}
                 friction={1.45}
-                renderLeftActions={(progress, dragX) => {
-                  const translateX = dragX.interpolate({
-                    inputRange: [0, 88],
-                    outputRange: [-18, 0],
-                    extrapolate: 'clamp',
-                  });
-                  const opacity = progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.2, 1],
-                    extrapolate: 'clamp',
-                  });
-
-                  return (
-                    <Animated.View
-                      style={[
-                        styles.replySwipeAction,
-                        {
-                          opacity,
-                          transform: [{ translateX }],
-                          backgroundColor: theme.colors.secondaryAccent,
-                        },
-                      ]}
-                    >
-                      <View style={styles.replySwipeIconWrap}>
-                        <Ionicons name="return-up-back-outline" size={18} color={theme.colors.secondaryAccentText} />
-                      </View>
-                      <Text style={[styles.replySwipeLabel, { color: theme.colors.secondaryAccentText }]}>Répondre</Text>
-                    </Animated.View>
-                  );
-                }}
                 onSwipeableOpenStartDrag={() => {
                   setSwipePreviewTarget(message);
                 }}
@@ -821,30 +790,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600',
-  },
-  replySwipeAction: {
-    minWidth: 88,
-    marginRight: 10,
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    justifyContent: 'center',
-  },
-  replySwipeIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  replySwipeLabel: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.2,
   },
   bubble: {
     borderRadius: 24,
