@@ -173,6 +173,7 @@ export default function ConversationScreen({
   const [error, setError] = useState('');
   const [keyboardLift, setKeyboardLift] = useState(0);
   const [replyTarget, setReplyTarget] = useState<LocalDirectMessage | null>(null);
+  const [swipePreviewTarget, setSwipePreviewTarget] = useState<LocalDirectMessage | null>(null);
   const listRef = useRef<FlatList<ConversationItem>>(null);
   const shouldScrollToEndRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -448,6 +449,7 @@ export default function ConversationScreen({
 
     setDraft('');
     setReplyTarget(null);
+    setSwipePreviewTarget(null);
     setSendingMessageIds((current) => [...current, optimisticId]);
     shouldScrollToEndRef.current = true;
     isNearBottomRef.current = true;
@@ -496,6 +498,7 @@ export default function ConversationScreen({
         return;
       }
       setReplyTarget(replySnapshot);
+      setSwipePreviewTarget(replySnapshot);
       setDraft((current) => (current.trim().length > 0 ? current : content));
       setError("Impossible d'envoyer le message.");
     } finally {
@@ -614,11 +617,23 @@ export default function ConversationScreen({
                     </Animated.View>
                   );
                 }}
+                onSwipeableOpenStartDrag={() => {
+                  setSwipePreviewTarget(message);
+                }}
                 onSwipeableWillOpen={() => {
                   setReplyTarget(message);
+                  setSwipePreviewTarget(message);
                 }}
                 onSwipeableOpen={() => {
                   swipeableRef?.close();
+                }}
+                onSwipeableClose={() => {
+                  setSwipePreviewTarget((current) => {
+                    if (current?.id !== message.id) {
+                      return current;
+                    }
+                    return replyTarget?.id === message.id ? current : null;
+                  });
                 }}
               >
                 <View style={[styles.messageRow, message.is_mine ? styles.messageRowMine : styles.messageRowOther]}>
@@ -686,15 +701,18 @@ export default function ConversationScreen({
           }
         />
 
-        {replyTarget ? (
+        {swipePreviewTarget || replyTarget ? (
           <View style={[styles.replyComposerBanner, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong }]}>
             <View style={styles.replyComposerBody}>
-              <Text style={[styles.replyComposerTitle, { color: theme.colors.secondaryAccent }]}>Réponse à @{replyTarget.sender.username}</Text>
+              <Text style={[styles.replyComposerTitle, { color: theme.colors.secondaryAccent }]}>Réponse à @{(swipePreviewTarget ?? replyTarget)!.sender.username}</Text>
               <Text style={[styles.replyComposerPreview, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                {replyTarget.content || replyTarget.movie?.title || 'Film partagé'}
+                {(swipePreviewTarget ?? replyTarget)!.content || (swipePreviewTarget ?? replyTarget)!.movie?.title || 'Film partagé'}
               </Text>
             </View>
-            <Pressable onPress={() => setReplyTarget(null)}>
+            <Pressable onPress={() => {
+              setReplyTarget(null);
+              setSwipePreviewTarget(null);
+            }}>
               <Ionicons name="close" size={18} color={theme.colors.textMuted} />
             </Pressable>
           </View>
