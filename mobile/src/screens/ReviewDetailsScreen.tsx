@@ -342,19 +342,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reviewCard: {
-    flexDirection: 'column',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 14,
     borderRadius: 24,
     borderWidth: 1,
     padding: 14,
   },
   poster: {
-    width: '100%',
-    aspectRatio: 2 / 3,
+    width: 92,
+    height: 132,
     borderRadius: 18,
   },
   reviewBody: {
     flex: 1,
+    minWidth: 0,
     gap: 10,
   },
   reviewHeader: {
@@ -395,6 +397,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   reviewContent: {
+    width: '100%',
     fontSize: 14,
     lineHeight: 21,
     fontWeight: '600',

@@ -91,7 +91,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Actor detail grids should stretch to the available width instead of leaving visible empty gutters on the "Films marquants" section.
 - Playlist manual ordering should feel tactile without adding Expo Go-fragile native dependencies: long-press to select, tap the target position, animated layout movement, no arrow buttons.
 - On iPad, the mobile UI should remain centered and constrained instead of stretching key phone-first flows across the full tablet width; Tinder is the most sensitive screen.
-- Review detail pages should let the review text breathe across the full available width instead of squeezing it beside the poster.
+- Review detail pages should keep their original horizontal poster + text layout, while letting the review text use the full available width of the text column.
 
 ## Known Sensitive Areas
 
