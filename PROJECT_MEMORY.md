@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-19
 Current branch: main
-Current stable commit: 38edd97
+Current stable commit: b5ac778
 
 ## Maintenance Rule
 
@@ -46,10 +46,12 @@ The mobile app currently includes:
 - private messages with movie sharing;
 - user profile navigation from social areas;
 - app settings, including theme mode, notification controls, tutorial replay, and recommendation cache tools;
+- push notifications are now requested from Settings instead of automatically at login, to keep the post-login flow stable on iPad;
 - in-app account deletion from Settings;
 - basic social safety tools: block user, report profile, report review, report conversation, and light text filtering for UGC;
 - public support and privacy pages on the web side for App Store / TestFlight references;
 - iPhone-only release path for the mobile app (`supportsTablet: false`);
+- the mobile iOS config also requires full screen on iPad to avoid compatibility-mode issues during review;
 - App Store Connect copy and privacy guidance are maintained in `APP_STORE_CONNECT.md`;
 - push notification groundwork;
 - TestFlight / EAS build flow.
