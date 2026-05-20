@@ -85,6 +85,7 @@ GLOBAL_RECOMMENDATION_AI_ENABLED = True
 TEST_AI_DASHBOARD_USERNAME = "test"
 PASS_REACTION_TYPES = {"pass"}
 PASS_RECONSIDER_COOLDOWN_DAYS = 14
+TINDER_IMPRESSION_RECONSIDER_COOLDOWN_DAYS = 5
 MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.tar.gz"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
@@ -4060,28 +4061,35 @@ def compute_recommendation_feed(
 
     cursor.execute(
         """
-        SELECT movie_id, reaction_type, responded_at
+        SELECT movie_id, reaction_type, responded_at, shown_at
         FROM recommendation_impressions
         WHERE user_id = ?
-          AND responded_at IS NOT NULL
-        ORDER BY responded_at DESC
+          AND mode = 'tinder'
+        ORDER BY COALESCE(responded_at, shown_at) DESC
         LIMIT 500
         """,
         (current_user_id,),
     )
-    latest_reaction_by_movie: dict[int, tuple[str, str]] = {}
+    latest_reaction_by_movie: dict[int, tuple[str, str, str]] = {}
     for row in cursor.fetchall():
         movie_id = int(row[0])
         if movie_id in latest_reaction_by_movie:
             continue
-        latest_reaction_by_movie[movie_id] = (str(row[1] or ""), str(row[2] or ""))
+        latest_reaction_by_movie[movie_id] = (
+            str(row[1] or ""),
+            str(row[2] or ""),
+            str(row[3] or ""),
+        )
     passed_ids = {
         movie_id
-        for movie_id, (reaction_type, _) in latest_reaction_by_movie.items()
+        for movie_id, (reaction_type, _, _) in latest_reaction_by_movie.items()
         if reaction_type in PASS_REACTION_TYPES
     }
     pass_cooldown_cutoff = datetime.datetime.utcnow() - datetime.timedelta(
         days=PASS_RECONSIDER_COOLDOWN_DAYS
+    )
+    tinder_impression_cooldown_cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+        days=TINDER_IMPRESSION_RECONSIDER_COOLDOWN_DAYS
     )
 
     def parse_reaction_datetime(raw_value: str):
@@ -4099,12 +4107,16 @@ def compute_recommendation_feed(
         return parsed_value
 
     recent_passed_ids = set()
-    for movie_id, (reaction_type, responded_at) in latest_reaction_by_movie.items():
+    recent_shown_ids = set()
+    for movie_id, (reaction_type, responded_at, shown_at) in latest_reaction_by_movie.items():
         if reaction_type not in PASS_REACTION_TYPES:
-            continue
-        responded_at_datetime = parse_reaction_datetime(responded_at)
-        if responded_at_datetime is None or responded_at_datetime >= pass_cooldown_cutoff:
-            recent_passed_ids.add(movie_id)
+            shown_at_datetime = parse_reaction_datetime(shown_at)
+            if shown_at_datetime is not None and shown_at_datetime >= tinder_impression_cooldown_cutoff:
+                recent_shown_ids.add(movie_id)
+        else:
+            responded_at_datetime = parse_reaction_datetime(responded_at)
+            if responded_at_datetime is None or responded_at_datetime >= pass_cooldown_cutoff:
+                recent_passed_ids.add(movie_id)
 
     cursor.execute(
         "SELECT movie_id FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 999999), added_at DESC LIMIT 12",
@@ -4127,7 +4139,7 @@ def compute_recommendation_feed(
     collaborative_scores = build_collaborative_candidate_scores(
         cursor,
         current_user_id,
-        rated_ids | watch_later_ids | recent_passed_ids,
+        rated_ids | watch_later_ids | recent_passed_ids | recent_shown_ids,
     ) if not is_tinder_mode else {}
     conn.close()
 
@@ -4136,6 +4148,8 @@ def compute_recommendation_feed(
     onboarding_movie_id_set = {int(movie_id) for movie_id in onboarding_movie_ids}
     request_exclude_ids = parse_exclude_ids(exclude_ids)
     seen_ids = rated_ids | watch_later_ids | recent_passed_ids | onboarding_movie_id_set
+    if is_tinder_mode:
+        seen_ids = seen_ids | recent_shown_ids
     blocked_ids = seen_ids | request_exclude_ids
     interaction_count = len(seen_ids)
     real_interaction_count = len(rated_ids | watch_later_ids | passed_ids)

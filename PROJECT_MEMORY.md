@@ -86,6 +86,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Profile should feel like a real social profile, not a stats dashboard.
 - App-level controls should live in Settings rather than taking space in the profile identity area.
 - Tinder should feel instant, with movies preloaded and no visible waiting.
+- Tinder should avoid resurfacing recently shown cards too quickly: recently passed films still use a longer cooldown, and even recently shown Tinder cards now get a short cooldown before being eligible again.
 - Conversations should feel like a normal messaging app: fluid send, latest messages visible, clean day separators.
 - User-facing French copy in the mobile app should be fully accented, clean, and natural rather than ASCII-only.
 - Mobile sessions should feel persistent; backend access tokens are long-lived for app usage rather than daily login.

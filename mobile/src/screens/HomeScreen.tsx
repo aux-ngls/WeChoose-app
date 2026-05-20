@@ -259,6 +259,7 @@ export default function HomeScreen() {
     moviesRef.current = cachedMovies;
     prefetchMoviePosters(cachedMovies);
     setMovies(cachedMovies);
+    setError('');
     setLoading(false);
     return true;
   }, [filterExcludedMovies, session]);
@@ -267,6 +268,8 @@ export default function HomeScreen() {
     if (!session || isFetchingRef.current) {
       return;
     }
+
+    const hasVisibleStack = moviesRef.current.length > 0 && !options?.reset;
 
     if (moviesRef.current.length === 0 && !options?.reset) {
       setLoading(true);
@@ -298,7 +301,9 @@ export default function HomeScreen() {
         await signOut();
         return;
       }
-      setError('Impossible de charger les recommandations.');
+      if (!hasVisibleStack) {
+        setError('Impossible de charger les recommandations.');
+      }
     } finally {
       isFetchingRef.current = false;
       setLoading(false);
