@@ -1,8 +1,8 @@
 # Qulte - Project Memory
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 Current branch: main
-Current stable commit: 22d64d3
+Current stable commit: 7cb4313
 
 ## Maintenance Rule
 
@@ -30,6 +30,7 @@ The mobile app currently includes:
 - authentication and first-run onboarding with a dedicated concept screen explaining Qulte before the favorite-film selection;
 - a compact onboarding favorite-film selection screen focused on search, progress, and validation, without duplicated explanatory blocks;
 - movie Tinder / swipe recommendations;
+- Tinder is explicitly responsive on iPad: the recommendation card keeps a compact phone-like width, stays centered, and keeps the rating controls aligned with the card.
 - pull-to-refresh on dynamic mobile screens such as search, social, messages, playlists, and profiles;
 - profile page with profile picture, description, favorite identity content, playlists, and user reviews;
 - movie detail sheet used consistently when opening a movie;
@@ -40,7 +41,7 @@ The mobile app currently includes:
 - ratings with half-star precision;
 - ratings are meant to represent one personal movie rating across Tinder, movie details, and reviews;
 - playlists, custom playlist creation, adding movies to playlists, and removing movies;
-- playlist manual order now uses a long-press selection flow with animated layout changes instead of up/down arrows; it avoids Reanimated/NativeWorklets so Expo Go stays stable.
+- playlist manual order now uses a long-press selection flow with animated layout changes instead of up/down arrows; it avoids Reanimated/NativeWorklets so Expo Go stays stable, without a persistent instructional hint taking space.
 - social feed with expandable reviews and comments;
 - social notifications are opened from the profile header bell into a dedicated notifications page; direct-message unread state remains separate in Messages.
 - private messages with movie sharing;
@@ -88,6 +89,7 @@ The web site remains active and should not be removed while the mobile app is be
 - First Tinder load should stay as hidden as possible: the app caches/preloads locally, and the backend now fetches recommendation poster URLs in parallel to reduce cold-start waiting.
 - Actor detail grids should stretch to the available width instead of leaving visible empty gutters on the "Films marquants" section.
 - Playlist manual ordering should feel tactile without adding Expo Go-fragile native dependencies: long-press to select, tap the target position, animated layout movement, no arrow buttons.
+- On iPad, the mobile UI should remain centered and constrained instead of stretching key phone-first flows across the full tablet width; Tinder is the most sensitive screen.
 
 ## Known Sensitive Areas
 
