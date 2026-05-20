@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -26,6 +26,7 @@ export default function ReviewDetailsScreen({
 }: NativeStackScreenProps<RootStackParamList, 'ReviewDetails'>) {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
   const [review, setReview] = useState<SocialReview | null>(null);
   const [comments, setComments] = useState<SocialComment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,7 +149,12 @@ export default function ReviewDetailsScreen({
   }, [draft, replyTarget, review, sendingComment, session, signOut]);
 
   return (
-    <AppScreen keyboardAware refreshing={refreshing} onRefresh={() => void refreshThread()}>
+    <AppScreen
+      keyboardAware
+      refreshing={refreshing}
+      onRefresh={() => void refreshThread()}
+      contentStyle={[styles.screenContent, width >= 700 && styles.screenContentTablet]}
+    >
       <View style={styles.headerRow}>
         <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
@@ -308,6 +314,13 @@ export default function ReviewDetailsScreen({
 }
 
 const styles = StyleSheet.create({
+  screenContent: {
+    gap: 18,
+  },
+  screenContentTablet: {
+    maxWidth: 760,
+    paddingHorizontal: 28,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
