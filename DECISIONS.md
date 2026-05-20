@@ -133,5 +133,5 @@ Reason:
 
 Current implementation status:
 - PostgreSQL reference schema and SQLite-to-PostgreSQL migration tooling now exist in the repository;
-- the live API runtime is still SQLite for now;
+- the API runtime can now boot in PostgreSQL mode through `DATABASE_URL` / `POSTGRES_URL`;
 - the runtime switch itself should happen only after a dedicated smoke-test phase against the migrated PostgreSQL database.

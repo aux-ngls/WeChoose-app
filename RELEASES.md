@@ -82,6 +82,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - hardened the backend foundation for higher traffic: safer SQLite settings, missing indexes on hot tables, async push dispatch off the request path, write-route throttling, `/healthz` and `/metrics`, Redis-ready realtime fanout, and env-based secrets/API key loading.
 - kept the database engine swap as a separate controlled step instead of forcing an immediate SQLite-to-Postgres cutover inside the same stabilization patch.
 - added the PostgreSQL migration kit: reference schema, SQLite-to-PostgreSQL migration script, and migration runbook.
+- added a PostgreSQL-compatible runtime path in the backend so the API can boot from `DATABASE_URL` / `POSTGRES_URL` once a migrated database is ready for smoke tests.
 
 ## Important Recent Commits
 

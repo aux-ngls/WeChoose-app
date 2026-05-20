@@ -58,7 +58,7 @@ The mobile app currently includes:
 - push notification groundwork;
 - TestFlight / EAS build flow.
 - backend hardening is now part of the current API work: safer SQLite runtime settings, explicit indexes on hot social/messaging tables, async push delivery, route-level rate limiting, `/healthz` and `/metrics`, Redis-ready realtime fanout, and env-driven secrets/API keys.
-- PostgreSQL migration assets now exist in `backend/postgres_schema.sql`, `backend/migrate_sqlite_to_postgres.py`, and `backend/POSTGRES_MIGRATION.md`; the runtime cutover is still pending.
+- PostgreSQL migration assets now exist in `backend/postgres_schema.sql`, `backend/migrate_sqlite_to_postgres.py`, and `backend/POSTGRES_MIGRATION.md`; the API can now boot in PostgreSQL mode via `DATABASE_URL` / `POSTGRES_URL`, but the production cutover still needs a validated migrated database.
 - latest audit checkpoint validated the main mobile/API flows with temporary users, cleaned remaining visible French copy issues, and optimized first Tinder poster loading by parallelizing TMDB poster fetches.
 
 The web site remains active and should not be removed while the mobile app is being improved.
@@ -105,7 +105,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Keyboard handling in messages and review creation.
 - Account deletion, block/report flows, and support/privacy URLs for App Review.
 - Backend scalability hardening: SQLite is safer now but still the active engine; full Postgres migration remains a dedicated follow-up, and Redis-backed realtime only activates when `REDIS_URL` is configured.
-- PostgreSQL cutover sensitivity: the data migration path exists now, but the API runtime still contains many SQLite-shaped queries, so the final engine switch must be validated on a migrated database before production rollout.
+- PostgreSQL cutover sensitivity: the runtime now includes a PostgreSQL compatibility path, but the final production switch must still be validated on a migrated database before rollout.
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
 - Rating deletion rule: a movie rating cannot be removed if it is linked to an existing review; the user must edit or delete the review first so reviews never become note-less.
@@ -165,12 +165,7 @@ TMDB_API_KEY=...
 FCM_SERVER_KEY=...
 REDIS_URL=redis://...
 SQLITE_PATH=/home/wechoose/backend/wechoose.db
-```
-
-PostgreSQL migration env var:
-
-```bash
-POSTGRES_URL=postgresql://USER:PASSWORD@HOST:5432/qulte
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/qulte
 ```
 
 ## How To Resume Work

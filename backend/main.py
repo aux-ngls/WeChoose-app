@@ -45,6 +45,11 @@ try:
 except Exception:
     redis_async = None
 
+try:
+    import psycopg
+except Exception:
+    psycopg = None
+
 # --- CONFIGURATION SÉCURITÉ ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger("qulte-api")
@@ -52,6 +57,8 @@ logger = logging.getLogger("qulte-api")
 DEFAULT_SECRET_KEY = "votre_super_cle_secrete_a_changer_en_prod"
 DEFAULT_TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
 DATABASE_PATH = os.getenv("SQLITE_PATH", "wechoose.db").strip() or "wechoose.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip() or os.getenv("POSTGRES_URL", "").strip()
+DATABASE_BACKEND = "postgres" if DATABASE_URL else "sqlite"
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
 SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY).strip() or DEFAULT_SECRET_KEY
 ALGORITHM = "HS256"
@@ -82,6 +89,7 @@ MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
 AVATAR_PUBLIC_PREFIX = "/uploads/avatars"
+POSTGRES_SCHEMA_PATH = os.path.join(BASE_DIR, "postgres_schema.sql")
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 AVATAR_CONTENT_TYPES = {
     "image/jpeg": ".jpg",
@@ -105,6 +113,9 @@ if SECRET_KEY == DEFAULT_SECRET_KEY:
 
 if TMDB_API_KEY == DEFAULT_TMDB_API_KEY:
     logger.warning("TMDB_API_KEY utilise encore la valeur par defaut du projet.")
+
+if DATABASE_BACKEND == "postgres" and psycopg is None:
+    raise RuntimeError("DATABASE_URL/POSTGRES_URL defini mais psycopg n'est pas installe.")
 
 REQUEST_COUNT = Counter(
     "qulte_http_requests_total",
@@ -132,6 +143,125 @@ STRICT_RATE_LIMITS = {
 rate_limit_events: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 rate_limit_lock = Lock()
 notification_executor = ThreadPoolExecutor(max_workers=int(os.getenv("NOTIFICATION_WORKERS", "4") or "4"))
+DBIntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError) if psycopg is not None else (sqlite3.IntegrityError,)
+
+
+class HybridRow:
+    def __init__(self, columns: list[str], values):
+        self._columns = list(columns)
+        self._values = tuple(values)
+        self._mapping = dict(zip(columns, values))
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return self._mapping[key]
+
+    def get(self, key, default=None):
+        return self._mapping.get(key, default)
+
+    def keys(self):
+        return self._mapping.keys()
+
+    def values(self):
+        return self._mapping.values()
+
+    def items(self):
+        return self._mapping.items()
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+
+def translate_sql_for_postgres(query: str) -> str:
+    translated = query
+    translated = re.sub(
+        r"INSERT\s+OR\s+IGNORE\s+INTO\s+([a-zA-Z_][\w]*)",
+        r"INSERT INTO \1",
+        translated,
+        flags=re.IGNORECASE,
+    )
+    if "INSERT OR IGNORE" in query.upper():
+        translated = f"{translated.rstrip().rstrip(';')} ON CONFLICT DO NOTHING"
+
+    translated = re.sub(
+        r"INSERT\s+OR\s+REPLACE\s+INTO\s+user_ratings\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)",
+        (
+            r"INSERT INTO user_ratings (\1) VALUES (\2) "
+            r"ON CONFLICT (user_id, movie_id) DO UPDATE SET "
+            r"rating = EXCLUDED.rating, "
+            r"title = EXCLUDED.title, "
+            r"poster_url = EXCLUDED.poster_url, "
+            r"added_at = CURRENT_TIMESTAMP"
+        ),
+        translated,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    translated = translated.replace("rowid DESC", "movie_id DESC")
+    translated = translated.replace("?", "%s")
+    return translated
+
+
+class PostgresCompatCursor:
+    def __init__(self, cursor, *, row_factory_enabled: bool):
+        self._cursor = cursor
+        self._row_factory_enabled = row_factory_enabled
+        self.lastrowid = None
+
+    def execute(self, query, params=None):
+        translated_query = translate_sql_for_postgres(query)
+        if params is None:
+            self._cursor.execute(translated_query)
+        else:
+            self._cursor.execute(translated_query, params)
+        return self
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None or not self._row_factory_enabled:
+            return row
+        columns = [column.name for column in self._cursor.description]
+        return HybridRow(columns, row)
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if not self._row_factory_enabled:
+            return rows
+        columns = [column.name for column in self._cursor.description]
+        return [HybridRow(columns, row) for row in rows]
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class PostgresCompatConnection:
+    def __init__(self, conn, *, row_factory: bool):
+        self._conn = conn
+        self._row_factory = row_factory
+
+    def cursor(self):
+        return PostgresCompatCursor(self._conn.cursor(), row_factory_enabled=self._row_factory)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def execute(self, query, params=None):
+        cursor = self.cursor()
+        cursor.execute(query, params)
+        return cursor
 
 
 class RealtimeConnectionManager:
@@ -351,7 +481,7 @@ def healthcheck():
         "status": overall_status,
         "database": db_status,
         "redis": redis_status,
-        "database_mode": "sqlite",
+        "database_mode": DATABASE_BACKEND,
     }
 
 
@@ -360,7 +490,23 @@ def metrics():
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # --- 1. INITIALISATION BDD ---
+def execute_insert_and_get_id(cursor, query: str, params=()) -> int:
+    if DATABASE_BACKEND == "postgres":
+        cursor.execute(f"{query.strip().rstrip(';')} RETURNING id", params)
+        row = cursor.fetchone()
+        if not row:
+            raise RuntimeError("Insertion PostgreSQL sans identifiant retourné.")
+        return int(row[0])
+
+    cursor.execute(query, params)
+    return int(cursor.lastrowid)
+
+
 def get_db_connection(*, row_factory: bool = False):
+    if DATABASE_BACKEND == "postgres":
+        conn = psycopg.connect(DATABASE_URL)
+        return PostgresCompatConnection(conn, row_factory=row_factory)
+
     conn = sqlite3.connect(
         DATABASE_PATH,
         timeout=30,
@@ -469,6 +615,16 @@ def get_display_movie_title(movie_id: int) -> str:
 
 def init_db():
     os.makedirs(AVATAR_UPLOAD_DIR, exist_ok=True)
+
+    if DATABASE_BACKEND == "postgres":
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        with open(POSTGRES_SCHEMA_PATH, "r", encoding="utf-8") as schema_file:
+            cursor.execute(schema_file.read())
+        conn.commit()
+        conn.close()
+        return
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -1386,11 +1542,15 @@ def signup(user: UserCreate):
     cursor = conn.cursor()
     try:
         hashed_pw = get_password_hash(password)
-        cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, hashed_pw))
-        user_id = cursor.lastrowid
+        user_id = execute_insert_and_get_id(
+            cursor,
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            (username, hashed_pw),
+        )
         get_or_create_watch_later_id(cursor, user_id)
         conn.commit()
-    except sqlite3.IntegrityError:
+    except DBIntegrityError:
+        conn.rollback()
         conn.close()
         raise HTTPException(status_code=400, detail="Ce nom d'utilisateur existe déjà")
     
@@ -1903,8 +2063,11 @@ def get_or_create_watch_later_id(cursor, user_id):
     if row:
         return row[0]
 
-    cursor.execute("INSERT INTO playlists (name, user_id) VALUES (?, ?)", (WATCH_LATER_NAME, user_id))
-    return cursor.lastrowid
+    return execute_insert_and_get_id(
+        cursor,
+        "INSERT INTO playlists (name, user_id) VALUES (?, ?)",
+        (WATCH_LATER_NAME, user_id),
+    )
 
 
 def get_custom_playlist_id(cursor, playlist_id: int, user_id: int) -> int:
@@ -3635,9 +3798,12 @@ def create_playlist(p: PlaylistCreate, current_user: dict = Depends(get_current_
         conn.close()
         raise HTTPException(status_code=400, detail="Cette playlist existe déjà")
 
-    cursor.execute("INSERT INTO playlists (name, user_id) VALUES (?, ?)", (playlist_name, current_user["id"]))
+    new_id = execute_insert_and_get_id(
+        cursor,
+        "INSERT INTO playlists (name, user_id) VALUES (?, ?)",
+        (playlist_name, current_user["id"]),
+    )
     conn.commit()
-    new_id = cursor.lastrowid
     conn.close()
     return {"id": new_id, "name": playlist_name, "type": "custom", "system_key": None, "readonly": False}
 
@@ -3712,7 +3878,7 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
                 reaction_type,
             )
             conn.commit()
-        except sqlite3.IntegrityError:
+        except DBIntegrityError:
             pass
         
     conn.close()
@@ -5371,7 +5537,8 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute(
+    review_id = execute_insert_and_get_id(
+        cursor,
         """
         INSERT INTO reviews (user_id, movie_id, title, poster_url, rating, content)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -5385,7 +5552,6 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
             review_content,
         ),
     )
-    review_id = cursor.lastrowid
     cursor.execute(
         """
         INSERT OR REPLACE INTO user_ratings (user_id, movie_id, rating, title, poster_url)
@@ -5575,14 +5741,14 @@ def create_review_comment(
             raise HTTPException(status_code=400, detail="Réponse invalide")
         parent_user_id = int(parent_row["user_id"])
 
-    cursor.execute(
+    comment_id = execute_insert_and_get_id(
+        cursor,
         """
         INSERT INTO comments (review_id, user_id, parent_id, content)
         VALUES (?, ?, ?, ?)
         """,
         (review_id, current_user["id"], payload.parent_id, content),
     )
-    comment_id = cursor.lastrowid
 
     review_owner_id = int(review_row["user_id"])
     ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
@@ -5947,7 +6113,8 @@ async def create_direct_message(
             conn.close()
             raise HTTPException(status_code=400, detail="Réponse invalide")
 
-    cursor.execute(
+    message_id = execute_insert_and_get_id(
+        cursor,
         """
         INSERT INTO direct_messages (
             conversation_id,
@@ -5972,7 +6139,6 @@ async def create_direct_message(
             reply_to_message_id,
         ),
     )
-    message_id = cursor.lastrowid
 
     if conversation_row["user_one_id"] == current_user["id"]:
         cursor.execute(
