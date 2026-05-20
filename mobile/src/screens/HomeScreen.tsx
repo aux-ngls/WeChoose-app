@@ -11,6 +11,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -102,6 +103,7 @@ function prefetchMoviePosters(movies: SearchMovie[]) {
 export default function HomeScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const { width, height } = useWindowDimensions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const initialCache =
     tinderMovieCache && tinderMovieCache.username === session?.username && tinderMovieCache.version === CACHE_VERSION
@@ -125,6 +127,13 @@ export default function HomeScreen() {
 
   const currentMovie = useMemo(() => movies[0] ?? null, [movies]);
   const secondMovie = useMemo(() => movies[1] ?? null, [movies]);
+  const isWideLayout = width >= 700;
+  const tinderCardWidth = useMemo(() => {
+    const contentWidth = Math.min(width, isWideLayout ? 620 : width);
+    const availableWidth = contentWidth - (isWideLayout ? 96 : 28);
+    const availableHeight = height - (isWideLayout ? 260 : 220);
+    return Math.max(250, Math.min(isWideLayout ? 360 : 390, availableWidth, availableHeight * (2 / 3)));
+  }, [height, isWideLayout, width]);
 
   useEffect(() => {
     locallyExcludedMovieIdsRef.current.clear();
@@ -648,17 +657,17 @@ export default function HomeScreen() {
   );
 
   return (
-    <AppScreen scroll={false} contentStyle={styles.screen}>
+    <AppScreen scroll={false} contentStyle={[styles.screen, isWideLayout && styles.tabletScreen]}>
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
       <View style={styles.stackArea}>
         {loading && movies.length === 0 ? (
-          <View style={[styles.loadingCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <View style={[styles.loadingCard, { width: tinderCardWidth, borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <ActivityIndicator color={theme.colors.text} />
             <Text style={[styles.loadingText, { color: theme.colors.textSoft }]}>Chargement de tes recos...</Text>
           </View>
         ) : currentMovie ? (
-          <View style={styles.cardFrame}>
+          <View style={[styles.cardFrame, { width: tinderCardWidth }]}>
             {secondMovie ? (
               <View style={styles.backCard}>
                 <Image source={{ uri: secondMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
@@ -696,7 +705,7 @@ export default function HomeScreen() {
         )}
       </View>
 
-      <View style={styles.bottomArea}>
+      <View style={[styles.bottomArea, { width: tinderCardWidth }]}>
         {lastUndoableAction ? (
           <Pressable
             style={[styles.undoButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
@@ -712,7 +721,7 @@ export default function HomeScreen() {
           <StarRatingInput
             value={selectedRating}
             onChange={(rating) => currentMovie && void handleRate(rating, currentMovie)}
-            size={34}
+            size={isWideLayout ? 32 : 34}
             disabled={submitting || !currentMovie}
           />
         </View>
@@ -727,6 +736,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 14,
   },
+  tabletScreen: {
+    maxWidth: 460,
+    paddingTop: 18,
+    paddingBottom: 18,
+  },
   stackArea: {
     flex: 1,
     minHeight: 0,
@@ -734,8 +748,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardFrame: {
-    width: '100%',
-    maxWidth: 390,
     aspectRatio: 2 / 3,
     justifyContent: 'center',
   },
@@ -748,7 +760,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(255,255,255,0.04)',
     paddingVertical: 34,
-    width: '100%',
   },
   loadingText: {
     color: '#cbd5e1',
@@ -838,6 +849,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
   },
   bottomArea: {
+    alignSelf: 'center',
     gap: 10,
   },
   undoButton: {

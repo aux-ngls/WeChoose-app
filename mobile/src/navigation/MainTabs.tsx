@@ -1,7 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { DeviceEventEmitter, StyleSheet, View } from 'react-native';
+import { DeviceEventEmitter, StyleSheet, useWindowDimensions, View } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -26,6 +26,8 @@ const icons: Record<keyof MainTabParamList, string> = {
 export default function MainTabs() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isWideLayout = width >= 700;
   const [unreadCount, setUnreadCount] = useState(0);
   const [socialUnreadCount, setSocialUnreadCount] = useState(0);
 
@@ -96,6 +98,14 @@ export default function MainTabs() {
           shadowOpacity: 0,
           shadowRadius: 0,
           elevation: 0,
+          ...(isWideLayout
+            ? {
+                width: 620,
+                alignSelf: 'center',
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+              }
+            : null),
         },
         tabBarIcon: ({ focused }) => {
           const iconName = (focused ? icons[route.name].replace('-outline', '') : icons[route.name]) as keyof typeof Ionicons.glyphMap;

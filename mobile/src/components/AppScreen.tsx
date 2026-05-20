@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
@@ -37,10 +38,12 @@ export default function AppScreen({
   onRefresh,
 }: AppScreenProps) {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const responsiveContentStyle = width >= 700 ? styles.tabletContent : null;
   const content = scroll ? (
     <ScrollView
       automaticallyAdjustKeyboardInsets={keyboardAware}
-      contentContainerStyle={[styles.content, keyboardAware && styles.keyboardContent, contentStyle]}
+      contentContainerStyle={[styles.content, responsiveContentStyle, keyboardAware && styles.keyboardContent, contentStyle]}
       contentInsetAdjustmentBehavior="automatic"
       keyboardDismissMode={keyboardAware ? 'interactive' : 'on-drag'}
       keyboardShouldPersistTaps="handled"
@@ -60,7 +63,7 @@ export default function AppScreen({
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.content, styles.fill, contentStyle]}>{children}</View>
+    <View style={[styles.content, styles.fill, responsiveContentStyle, contentStyle]}>{children}</View>
   );
 
   return (
@@ -123,10 +126,16 @@ const styles = StyleSheet.create({
   },
   safeArea: { flex: 1 },
   content: {
+    width: '100%',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 26,
     gap: 18,
+  },
+  tabletContent: {
+    maxWidth: 620,
+    alignSelf: 'center',
+    paddingHorizontal: 24,
   },
   keyboardContent: {
     paddingBottom: 150,

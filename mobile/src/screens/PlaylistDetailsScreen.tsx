@@ -262,14 +262,6 @@ export default function PlaylistDetailsScreen({
           </Pressable>
         ))}
       </View>
-      {canReorder ? (
-        <View style={[styles.reorderHint, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-          <Ionicons name="reorder-three" size={14} color={theme.colors.textMuted} />
-          <Text style={[styles.reorderHintText, { color: theme.colors.textMuted }]}>
-            {reorderingMovieId ? 'Touche la nouvelle place du film' : 'Maintiens un film pour le déplacer'}
-          </Text>
-        </View>
-      ) : null}
       {loading && movies.length === 0 ? (
         <View style={styles.loadingState}>
           <ActivityIndicator color={theme.colors.text} />
@@ -508,19 +500,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 14,
     elevation: 6,
-  },
-  reorderHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  reorderHintText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
 });
