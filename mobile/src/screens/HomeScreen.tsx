@@ -129,10 +129,10 @@ export default function HomeScreen() {
   const secondMovie = useMemo(() => movies[1] ?? null, [movies]);
   const isWideLayout = width >= 700;
   const tinderCardWidth = useMemo(() => {
-    const contentWidth = Math.min(width, isWideLayout ? 620 : width);
-    const availableWidth = contentWidth - (isWideLayout ? 96 : 28);
-    const availableHeight = height - (isWideLayout ? 260 : 220);
-    return Math.max(250, Math.min(isWideLayout ? 360 : 390, availableWidth, availableHeight * (2 / 3)));
+    const contentWidth = Math.min(width, isWideLayout ? 760 : width);
+    const availableWidth = contentWidth - (isWideLayout ? 80 : 28);
+    const availableHeight = height - (isWideLayout ? 230 : 220);
+    return Math.max(250, Math.min(isWideLayout ? 440 : 390, availableWidth, availableHeight * (2 / 3)));
   }, [height, isWideLayout, width]);
 
   useEffect(() => {
@@ -721,7 +721,7 @@ export default function HomeScreen() {
           <StarRatingInput
             value={selectedRating}
             onChange={(rating) => currentMovie && void handleRate(rating, currentMovie)}
-            size={isWideLayout ? 32 : 34}
+            size={isWideLayout ? 36 : 34}
             disabled={submitting || !currentMovie}
           />
         </View>
@@ -737,9 +737,9 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   tabletScreen: {
-    maxWidth: 460,
-    paddingTop: 18,
-    paddingBottom: 18,
+    maxWidth: 540,
+    paddingTop: 12,
+    paddingBottom: 14,
   },
   stackArea: {
     flex: 1,
