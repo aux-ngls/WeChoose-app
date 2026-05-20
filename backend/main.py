@@ -5368,6 +5368,20 @@ def social_notifications_read_all(current_user: dict = Depends(get_current_user)
     return {"status": "ok", "updated": updated_count}
 
 
+@app.post("/social/notifications/{notification_id}/read")
+def social_notification_read(notification_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ? AND is_read = 0",
+        (notification_id, current_user["id"]),
+    )
+    updated_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "updated": updated_count}
+
+
 @app.post("/social/reports/user/{target_user_id}")
 def report_social_user(
     target_user_id: int,

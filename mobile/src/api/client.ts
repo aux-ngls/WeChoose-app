@@ -328,6 +328,13 @@ export async function markSocialNotificationsRead(token: string): Promise<{ upda
   return request<{ updated: number }>('/social/notifications/read-all', { method: 'POST' }, token);
 }
 
+export async function markSocialNotificationRead(
+  token: string,
+  notificationId: number,
+): Promise<{ updated: number }> {
+  return request<{ updated: number }>(`/social/notifications/${notificationId}/read`, { method: 'POST' }, token);
+}
+
 export async function searchSocialUsers(token: string, query: string): Promise<SocialUser[]> {
   return request<SocialUser[]>(`/social/users?query=${encodeURIComponent(query)}&limit=10`, undefined, token);
 }

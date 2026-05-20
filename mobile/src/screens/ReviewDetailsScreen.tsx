@@ -342,15 +342,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reviewCard: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 14,
     borderRadius: 24,
     borderWidth: 1,
     padding: 14,
   },
   poster: {
-    width: 92,
-    height: 132,
+    width: '100%',
+    aspectRatio: 2 / 3,
     borderRadius: 18,
   },
   reviewBody: {

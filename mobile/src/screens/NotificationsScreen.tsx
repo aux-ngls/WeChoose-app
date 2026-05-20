@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ApiError, fetchSocialNotifications, markSocialNotificationsRead } from '../api/client';
+import { ApiError, fetchSocialNotifications, markSocialNotificationRead, markSocialNotificationsRead } from '../api/client';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
@@ -94,6 +94,27 @@ export default function NotificationsScreen({
     });
   }, [navigation]);
 
+  const handleOpenNotification = useCallback(async (notification: SocialNotification) => {
+    setNotifications((current) =>
+      current.map((item) => (item.id === notification.id ? { ...item, is_read: true } : item)),
+    );
+    setUnreadCount((current) => Math.max(0, current - (notification.is_read ? 0 : 1)));
+    DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
+
+    if (session && !notification.is_read) {
+      void markSocialNotificationRead(session.token, notification.id).catch(async (notificationError) => {
+        if (notificationError instanceof ApiError && notificationError.status === 401) {
+          await signOut();
+          return;
+        }
+        setError("Impossible de marquer cette notification comme lue.");
+        void loadNotifications();
+      });
+    }
+
+    openNotification(notification);
+  }, [loadNotifications, openNotification, session, signOut]);
+
   return (
     <AppScreen refreshing={refreshing} onRefresh={() => void refreshNotifications()}>
       <View style={styles.headerRow}>
@@ -130,7 +151,7 @@ export default function NotificationsScreen({
             <Pressable
               key={notification.id}
               style={[styles.notificationCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-              onPress={() => openNotification(notification)}
+              onPress={() => void handleOpenNotification(notification)}
             >
               <View style={[styles.iconBadge, { backgroundColor: notification.is_read ? theme.rgba.cardStrong : theme.colors.accentSoft }]}>
                 <Ionicons
