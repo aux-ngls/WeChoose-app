@@ -10,7 +10,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Current Stable State
 
-Commit: `b5ac778`
+Commit: `22d64d3`
 
 Summary:
 - audited the main app/API user flows with temporary accounts;
@@ -19,13 +19,14 @@ Summary:
 - removed one web lint warning from the playlist page;
 - validated with mobile typecheck, backend compile, frontend lint/build, support/privacy/trailer endpoint smoke checks, and a full API smoke scenario.
 - adjusted the mobile actor detail "Films marquants" grid so the cards fill the line more naturally instead of leaving spare horizontal space.
-- replaced playlist reorder arrows with long-press drag and smoother animated feedback in mobile playlists.
+- replaced playlist reorder arrows with a long-press selection flow and animated layout changes in mobile playlists.
 - stabilized the post-login iPad flow by requiring full screen on iPad and moving push notification registration out of automatic login-time initialization.
+- removed the Reanimated/NativeWorklets playlist reorder dependency after Expo Go runtime crashes on iOS simulators.
 
 ## Latest Workspace Changes
 
 These changes should be recorded as part of the next stable checkpoint:
-- replaced the playlist reordering arrows with a long-press drag interaction and animated feedback;
+- replaced the playlist reordering arrows with a long-press selection interaction and animated feedback, without Reanimated/NativeWorklets;
 - stabilized the post-login iPad flow by requiring full screen on iPad and moving push notification registration out of automatic login-time initialization;
 - added pull-to-refresh support across the main dynamic mobile screens;
 - improved drag behavior so list screens dismiss the keyboard more naturally;
