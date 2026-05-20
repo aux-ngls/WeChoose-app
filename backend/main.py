@@ -6213,6 +6213,7 @@ async def create_direct_message(
             "type": "messages.updated",
             "conversation_id": conversation_id,
             "message_id": message_id,
+            "message": serialized_message,
             "sender_id": current_user["id"],
             "sender_username": current_user["username"],
             "preview": build_message_preview(content, movie_title),

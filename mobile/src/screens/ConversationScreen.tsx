@@ -136,6 +136,39 @@ function mergeServerMessages(currentMessages: LocalDirectMessage[], serverMessag
   return [...mergedServerMessages, ...stillPendingMessages];
 }
 
+function normalizeRealtimeMessage(message: DirectMessage, currentUsername: string): DirectMessage {
+  return {
+    ...message,
+    is_mine: message.sender.username === currentUsername,
+  };
+}
+
+function mergeRealtimeMessage(currentMessages: LocalDirectMessage[], incomingMessage: DirectMessage) {
+  const normalizedMessage = incomingMessage;
+  const existingServerIndex = currentMessages.findIndex((message) => message.id === normalizedMessage.id);
+  if (existingServerIndex >= 0) {
+    const nextMessages = [...currentMessages];
+    nextMessages[existingServerIndex] = {
+      ...nextMessages[existingServerIndex],
+      ...normalizedMessage,
+      local_client_id: nextMessages[existingServerIndex].local_client_id,
+    };
+    return nextMessages;
+  }
+
+  const pendingMatchIndex = currentMessages.findIndex((message) => message.id < 0 && findConfirmedServerMessageIndex(message, [normalizedMessage]) >= 0);
+  if (pendingMatchIndex >= 0) {
+    const nextMessages = [...currentMessages];
+    nextMessages[pendingMatchIndex] = {
+      ...normalizedMessage,
+      local_client_id: nextMessages[pendingMatchIndex].local_client_id,
+    };
+    return nextMessages;
+  }
+
+  return [...currentMessages, normalizedMessage];
+}
+
 function areMessageListsEquivalent(left: LocalDirectMessage[], right: LocalDirectMessage[]) {
   if (left.length !== right.length) {
     return false;
@@ -294,8 +327,23 @@ export default function ConversationScreen({
 
     socket.onmessage = (event) => {
       try {
-        const payload = JSON.parse(String(event.data)) as { type?: string; conversation_id?: number };
+        const payload = JSON.parse(String(event.data)) as { type?: string; conversation_id?: number; message?: DirectMessage };
         if (payload.type === 'messages.updated' && payload.conversation_id === route.params.conversationId) {
+          if (payload.message) {
+            const realtimeMessage = normalizeRealtimeMessage(payload.message, session.username);
+            shouldScrollToEndRef.current = true;
+            isNearBottomRef.current = true;
+            setMessages((current) => {
+              const nextMessages = mergeRealtimeMessage(current, realtimeMessage);
+              conversationCache.set(cacheKey, {
+                participantId,
+                participantUsername,
+                messages: nextMessages,
+              });
+              return areMessageListsEquivalent(current, nextMessages) ? current : nextMessages;
+            });
+            return;
+          }
           void loadConversation();
         }
       } catch {
@@ -304,7 +352,7 @@ export default function ConversationScreen({
     };
 
     return () => socket.close();
-  }, [loadConversation, route.params.conversationId, session]);
+  }, [cacheKey, loadConversation, participantId, participantUsername, route.params.conversationId, session]);
 
   useFocusEffect(
     useCallback(() => {
