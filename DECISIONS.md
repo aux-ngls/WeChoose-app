@@ -121,3 +121,12 @@ Reason:
 - Qulte contains user-generated content: reviews, comments, profiles, and private messages;
 - Apple review expects account deletion and basic moderation/reporting capabilities;
 - the current baseline is: in-app account deletion, block user, report profile, report review, report conversation, and light objectionable-text filtering on UGC creation.
+
+## Backend Hardening Sequence
+
+Decision: harden the current backend first, then do the SQLite-to-Postgres migration as a dedicated second step.
+
+Reason:
+- the backend still concentrates a large amount of SQLite-specific SQL in one file;
+- immediate stability wins were available without product risk: WAL mode, busy timeout, missing indexes, async push delivery, route throttling, health/metrics endpoints, Redis-ready realtime fanout, and env-based secrets;
+- a real Postgres cutover deserves its own migration, validation, and rollback plan rather than being mixed into a live stability patch.

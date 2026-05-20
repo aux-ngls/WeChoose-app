@@ -57,6 +57,7 @@ The mobile app currently includes:
 - App Store Connect copy and privacy guidance are maintained in `APP_STORE_CONNECT.md`;
 - push notification groundwork;
 - TestFlight / EAS build flow.
+- backend hardening is now part of the current API work: safer SQLite runtime settings, explicit indexes on hot social/messaging tables, async push delivery, route-level rate limiting, `/healthz` and `/metrics`, Redis-ready realtime fanout, and env-driven secrets/API keys.
 - latest audit checkpoint validated the main mobile/API flows with temporary users, cleaned remaining visible French copy issues, and optimized first Tinder poster loading by parallelizing TMDB poster fetches.
 
 The web site remains active and should not be removed while the mobile app is being improved.
@@ -102,6 +103,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Message list scroll behavior.
 - Keyboard handling in messages and review creation.
 - Account deletion, block/report flows, and support/privacy URLs for App Review.
+- Backend scalability hardening: SQLite is safer now but still the active engine; full Postgres migration remains a dedicated follow-up, and Redis-backed realtime only activates when `REDIS_URL` is configured.
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
 - Rating deletion rule: a movie rating cannot be removed if it is linked to an existing review; the user must edit or delete the review first so reviews never become note-less.
@@ -151,6 +153,16 @@ Production web/backend redeploy commands used before:
 ```bash
 systemctl restart wec_back.service
 bash /home/wec-front.sh prod
+```
+
+Current backend runtime env vars:
+
+```bash
+SECRET_KEY=...
+TMDB_API_KEY=...
+FCM_SERVER_KEY=...
+REDIS_URL=redis://...
+SQLITE_PATH=/home/wechoose/backend/wechoose.db
 ```
 
 ## How To Resume Work

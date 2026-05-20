@@ -1,9 +1,11 @@
 import ast
+import asyncio
 import base64
-from collections import defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import importlib.util
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -11,13 +13,15 @@ import datetime
 import time
 import uuid
 from functools import lru_cache
+from threading import Lock
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pandas as pd
 import pickle
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 import requests
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer
@@ -36,15 +40,27 @@ except Exception:
     WebPushException = Exception
     webpush = None
 
+try:
+    from redis import asyncio as redis_async
+except Exception:
+    redis_async = None
+
 # --- CONFIGURATION SÉCURITÉ ---
-SECRET_KEY = "votre_super_cle_secrete_a_changer_en_prod"
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+logger = logging.getLogger("qulte-api")
+
+DEFAULT_SECRET_KEY = "votre_super_cle_secrete_a_changer_en_prod"
+DEFAULT_TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
+DATABASE_PATH = os.getenv("SQLITE_PATH", "wechoose.db").strip() or "wechoose.db"
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY).strip() or DEFAULT_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 180 # 180 jours, adapté à une app mobile
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", DEFAULT_TMDB_API_KEY).strip() or DEFAULT_TMDB_API_KEY
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "").strip()
 WEB_PUSH_SUBJECT = os.getenv("WEB_PUSH_SUBJECT", "").strip() or "mailto:qulte.developpeur@gmail.com"
 app = FastAPI(title="Qulte API")
@@ -84,6 +100,39 @@ OBJECTIONABLE_TERMS = {
     "suicide",
 }
 
+if SECRET_KEY == DEFAULT_SECRET_KEY:
+    logger.warning("SECRET_KEY utilise encore la valeur par defaut. A remplacer en production.")
+
+if TMDB_API_KEY == DEFAULT_TMDB_API_KEY:
+    logger.warning("TMDB_API_KEY utilise encore la valeur par defaut du projet.")
+
+REQUEST_COUNT = Counter(
+    "qulte_http_requests_total",
+    "Nombre total de requetes HTTP",
+    ["method", "path", "status"],
+)
+REQUEST_LATENCY = Histogram(
+    "qulte_http_request_duration_seconds",
+    "Temps de reponse HTTP",
+    ["method", "path"],
+)
+RATE_LIMIT_HITS = Counter(
+    "qulte_rate_limit_hits_total",
+    "Nombre de reponses 429",
+    ["scope"],
+)
+
+DEFAULT_RATE_LIMIT = (120, 60.0)
+STRICT_RATE_LIMITS = {
+    "auth.login": (10, 60.0),
+    "messages.create": (45, 60.0),
+    "reviews.create": (20, 60.0),
+    "comments.create": (30, 60.0),
+}
+rate_limit_events: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+rate_limit_lock = Lock()
+notification_executor = ThreadPoolExecutor(max_workers=int(os.getenv("NOTIFICATION_WORKERS", "4") or "4"))
+
 
 class RealtimeConnectionManager:
     def __init__(self):
@@ -115,6 +164,52 @@ class RealtimeConnectionManager:
 
 
 realtime_manager = RealtimeConnectionManager()
+redis_client = None
+redis_listener_task: Optional[asyncio.Task] = None
+REDIS_REALTIME_CHANNEL = "qulte:realtime"
+
+
+async def publish_realtime_event(user_ids: list[int], payload: dict):
+    unique_user_ids = list(dict.fromkeys(user_ids))
+    if redis_client is not None:
+        try:
+            await redis_client.publish(
+                REDIS_REALTIME_CHANNEL,
+                json.dumps({"user_ids": unique_user_ids, "payload": payload}),
+            )
+            return
+        except Exception:
+            logger.exception("Echec publication realtime Redis, fallback local.")
+
+    await realtime_manager.broadcast_to_users(unique_user_ids, payload)
+
+
+async def redis_realtime_listener():
+    if redis_client is None:
+        return
+
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe(REDIS_REALTIME_CHANNEL)
+    logger.info("Redis pub/sub temps reel actif sur %s", REDIS_REALTIME_CHANNEL)
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            try:
+                event = json.loads(message.get("data") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+
+            user_ids = [int(user_id) for user_id in event.get("user_ids") or []]
+            payload = event.get("payload") or {}
+            await realtime_manager.broadcast_to_users(user_ids, payload)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Listener Redis realtime arrete sur erreur.")
+    finally:
+        await pubsub.unsubscribe(REDIS_REALTIME_CHANNEL)
+        await pubsub.close()
 
 app.add_middleware(
     CORSMiddleware,
@@ -135,9 +230,146 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+def get_observed_path(request: Request) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    if isinstance(route_path, str) and route_path:
+        return route_path
+    return request.url.path
+
+
+def get_rate_limit_scope(request: Request) -> Optional[str]:
+    path = request.url.path
+    method = request.method.upper()
+    if path == "/auth/login" and method == "POST":
+        return "auth.login"
+    if path.startswith("/messages/conversations/") and path.endswith("/messages") and method == "POST":
+        return "messages.create"
+    if path == "/social/reviews" and method == "POST":
+        return "reviews.create"
+    if "/comments" in path and method == "POST":
+        return "comments.create"
+    return None
+
+
+def check_rate_limit(scope: str, request: Request) -> bool:
+    max_requests, period_seconds = STRICT_RATE_LIMITS.get(scope, DEFAULT_RATE_LIMIT)
+    client_host = request.client.host if request.client else "unknown"
+    key = (scope, client_host)
+    now = time.time()
+
+    with rate_limit_lock:
+        bucket = rate_limit_events[key]
+        while bucket and bucket[0] <= now - period_seconds:
+            bucket.popleft()
+
+        if len(bucket) >= max_requests:
+            return False
+
+        bucket.append(now)
+        return True
+
+
+@app.middleware("http")
+async def observability_and_rate_limit_middleware(request: Request, call_next):
+    observed_path = get_observed_path(request)
+    rate_limit_scope = get_rate_limit_scope(request)
+    started_at = time.perf_counter()
+
+    if rate_limit_scope and not check_rate_limit(rate_limit_scope, request):
+        RATE_LIMIT_HITS.labels(scope=rate_limit_scope).inc()
+        latency = time.perf_counter() - started_at
+        REQUEST_COUNT.labels(method=request.method, path=observed_path, status="429").inc()
+        REQUEST_LATENCY.labels(method=request.method, path=observed_path).observe(latency)
+        return PlainTextResponse("Trop de requetes, reessaie dans un instant.", status_code=429)
+
+    response = await call_next(request)
+    latency = time.perf_counter() - started_at
+    REQUEST_COUNT.labels(
+        method=request.method,
+        path=observed_path,
+        status=str(response.status_code),
+    ).inc()
+    REQUEST_LATENCY.labels(method=request.method, path=observed_path).observe(latency)
+    response.headers["X-Response-Time"] = f"{latency:.4f}s"
+    return response
+
+
+@app.on_event("startup")
+async def startup_runtime_services():
+    global redis_client, redis_listener_task
+    if REDIS_URL and redis_async is not None:
+        try:
+            redis_client = redis_async.from_url(REDIS_URL, decode_responses=True)
+            await redis_client.ping()
+            redis_listener_task = asyncio.create_task(redis_realtime_listener())
+            logger.info("Redis active pour le temps reel.")
+        except Exception:
+            redis_client = None
+            redis_listener_task = None
+            logger.exception("Impossible de demarrer Redis realtime, fallback local.")
+    elif REDIS_URL and redis_async is None:
+        logger.warning("REDIS_URL defini mais package redis indisponible. Fallback local.")
+
+
+@app.on_event("shutdown")
+async def shutdown_runtime_services():
+    global redis_client, redis_listener_task
+    notification_executor.shutdown(wait=False, cancel_futures=False)
+    if redis_listener_task is not None:
+        redis_listener_task.cancel()
+        try:
+            await redis_listener_task
+        except asyncio.CancelledError:
+            pass
+        redis_listener_task = None
+    if redis_client is not None:
+        await redis_client.close()
+        redis_client = None
+
+
+@app.get("/healthz")
+def healthcheck():
+    db_status = "ok"
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        conn.close()
+    except Exception:
+        db_status = "error"
+        logger.exception("Healthcheck base de donnees en erreur.")
+
+    redis_status = "disabled"
+    if REDIS_URL:
+        redis_status = "connected" if redis_client is not None else "error"
+
+    overall_status = "ok" if db_status == "ok" and redis_status != "error" else "degraded"
+    return {
+        "status": overall_status,
+        "database": db_status,
+        "redis": redis_status,
+        "database_mode": "sqlite",
+    }
+
+
+@app.get("/metrics")
+def metrics():
+    return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 # --- 1. INITIALISATION BDD ---
 def get_db_connection(*, row_factory: bool = False):
-    conn = sqlite3.connect("wechoose.db")
+    conn = sqlite3.connect(
+        DATABASE_PATH,
+        timeout=30,
+        check_same_thread=False,
+    )
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     if row_factory:
         conn.row_factory = sqlite3.Row
     return conn
@@ -287,6 +519,9 @@ def init_db():
                         id INTEGER PRIMARY KEY AUTOINCREMENT, 
                         user_id INTEGER,
                         name TEXT)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlists_user_id ON playlists(user_id)"
+    )
 
     # Table PLAYLIST_ITEMS
     cursor.execute('''CREATE TABLE IF NOT EXISTS playlist_items (
@@ -304,6 +539,15 @@ def init_db():
         cursor.execute("ALTER TABLE playlist_items ADD COLUMN added_at TIMESTAMP")
     if "sort_index" not in playlist_item_columns:
         cursor.execute("ALTER TABLE playlist_items ADD COLUMN sort_index INTEGER")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_sort ON playlist_items(playlist_id, sort_index)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_added_at ON playlist_items(playlist_id, added_at)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_movie_id ON playlist_items(movie_id)"
+    )
 
     # Table FOLLOWS
     cursor.execute('''CREATE TABLE IF NOT EXISTS follows (
@@ -311,6 +555,9 @@ def init_db():
                         followed_id INTEGER,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         PRIMARY KEY (follower_id, followed_id))''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_follows_followed_id ON follows(followed_id)"
+    )
 
     # Table BLOCKED_USERS
     cursor.execute('''CREATE TABLE IF NOT EXISTS blocked_users (
@@ -332,6 +579,12 @@ def init_db():
                         rating INTEGER,
                         content TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reviews_user_created_at ON reviews(user_id, created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reviews_movie_id ON reviews(movie_id)"
+    )
 
     # Table REVIEW_LIKES
     cursor.execute('''CREATE TABLE IF NOT EXISTS review_likes (
@@ -339,6 +592,9 @@ def init_db():
                         user_id INTEGER,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         PRIMARY KEY (review_id, user_id))''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_review_likes_user_id ON review_likes(user_id)"
+    )
 
     # Table COMMENTS
     cursor.execute('''CREATE TABLE IF NOT EXISTS comments (
@@ -348,6 +604,12 @@ def init_db():
                         parent_id INTEGER,
                         content TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_comments_review_parent_created ON comments(review_id, parent_id, created_at)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments(user_id)"
+    )
 
     # Table NOTIFICATIONS
     cursor.execute('''CREATE TABLE IF NOT EXISTS notifications (
@@ -359,6 +621,15 @@ def init_db():
                         comment_id INTEGER,
                         is_read INTEGER DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, is_read, created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_review_id ON notifications(review_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_comment_id ON notifications(comment_id)"
+    )
 
     # Table DIRECT_CONVERSATIONS
     cursor.execute('''CREATE TABLE IF NOT EXISTS direct_conversations (
@@ -369,6 +640,12 @@ def init_db():
                         user_two_last_read_message_id INTEGER DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         UNIQUE(user_one_id, user_two_id))''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_direct_conversations_user_one ON direct_conversations(user_one_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_direct_conversations_user_two ON direct_conversations(user_two_id)"
+    )
 
     # Table DIRECT_MESSAGES
     cursor.execute('''CREATE TABLE IF NOT EXISTS direct_messages (
@@ -382,6 +659,15 @@ def init_db():
                         movie_rating REAL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     ensure_column("direct_messages", "reply_to_message_id", "INTEGER")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_direct_messages_conversation_id_id ON direct_messages(conversation_id, id DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_direct_messages_sender_id ON direct_messages(sender_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_direct_messages_reply_to ON direct_messages(reply_to_message_id)"
+    )
 
     # Table MOBILE_DEVICES
     cursor.execute('''CREATE TABLE IF NOT EXISTS mobile_devices (
@@ -2658,6 +2944,72 @@ def send_web_push_notifications(
             continue
 
 
+def deliver_push_notifications(
+    user_ids: list[int],
+    *,
+    title: str,
+    body: str,
+    route: str,
+    extra_data: Optional[dict] = None,
+    include_native: bool = True,
+    include_web: bool = False,
+):
+    if not user_ids:
+        return
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    try:
+        if include_native:
+            send_native_push_notifications(
+                cursor,
+                user_ids,
+                title=title,
+                body=body,
+                route=route,
+                extra_data=extra_data,
+            )
+        if include_web:
+            send_web_push_notifications(
+                cursor,
+                user_ids,
+                title=title,
+                body=body,
+                route=route,
+                extra_data=extra_data,
+            )
+        conn.commit()
+    except Exception:
+        logger.exception("Echec envoi des notifications push.")
+    finally:
+        conn.close()
+
+
+def enqueue_push_notifications(
+    user_ids: list[int],
+    *,
+    title: str,
+    body: str,
+    route: str,
+    extra_data: Optional[dict] = None,
+    include_native: bool = True,
+    include_web: bool = False,
+):
+    if not user_ids:
+        return
+
+    notification_executor.submit(
+        deliver_push_notifications,
+        list(dict.fromkeys(user_ids)),
+        title=title,
+        body=body,
+        route=route,
+        extra_data=dict(extra_data or {}),
+        include_native=include_native,
+        include_web=include_web,
+    )
+
+
 def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, params=(), limit: Optional[int] = None) -> list[dict]:
     hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
     query = f"""
@@ -4732,18 +5084,22 @@ def follow_user(target_user_id: int, current_user: dict = Depends(get_current_us
         "INSERT OR IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)",
         (current_user["id"], target_user_id),
     )
-    if cursor.rowcount > 0:
+    should_notify = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    if should_notify:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         create_notification(cursor, target_user_id, current_user["id"], "follow")
-        send_native_push_notifications(
-            cursor,
+        conn.commit()
+        conn.close()
+        enqueue_push_notifications(
             [target_user_id],
             title="Nouveau follower",
             body=f"@{current_user['username']} s'est abonné à toi",
             route="/social",
             extra_data={"type": "follow"},
         )
-    conn.commit()
-    conn.close()
     return {"status": "followed"}
 
 
@@ -5047,8 +5403,10 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         "SELECT follower_id FROM follows WHERE followed_id = ?",
         (current_user["id"],),
     )
+    follower_ids: list[int] = []
     for follower_row in cursor.fetchall():
         follower_id = int(follower_row["follower_id"])
+        follower_ids.append(follower_id)
         create_notification(
             cursor,
             follower_id,
@@ -5056,15 +5414,14 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
             "review",
             review_id=review_id,
         )
-        send_native_push_notifications(
-            cursor,
-            [follower_id],
-            title="Nouvelle critique",
-            body=f"@{current_user['username']} a publié une critique sur {review_title}",
-            route="/social",
-            extra_data={"type": "review", "reviewId": review_id},
-        )
     conn.commit()
+    enqueue_push_notifications(
+        follower_ids,
+        title="Nouvelle critique",
+        body=f"@{current_user['username']} a publié une critique sur {review_title}",
+        route="/social",
+        extra_data={"type": "review", "reviewId": review_id},
+    )
 
     created_reviews = fetch_serialized_reviews(
         cursor,
@@ -5229,6 +5586,8 @@ def create_review_comment(
 
     review_owner_id = int(review_row["user_id"])
     ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
+    review_notification_targets: list[int] = []
+    reply_notification_targets: list[int] = []
     if review_owner_id != current_user["id"]:
         create_notification(
             cursor,
@@ -5238,14 +5597,7 @@ def create_review_comment(
             review_id=review_id,
             comment_id=comment_id,
         )
-        send_native_push_notifications(
-            cursor,
-            [review_owner_id],
-            title="Nouveau commentaire",
-            body=f"@{current_user['username']} a commenté ta critique",
-            route="/social",
-            extra_data={"type": "comment", "reviewId": review_id, "commentId": comment_id},
-        )
+        review_notification_targets.append(review_owner_id)
 
     if parent_user_id is not None and parent_user_id not in (current_user["id"], review_owner_id):
         create_notification(
@@ -5256,16 +5608,25 @@ def create_review_comment(
             review_id=review_id,
             comment_id=comment_id,
         )
-        send_native_push_notifications(
-            cursor,
-            [parent_user_id],
+        reply_notification_targets.append(parent_user_id)
+
+    conn.commit()
+    if review_notification_targets:
+        enqueue_push_notifications(
+            review_notification_targets,
+            title="Nouveau commentaire",
+            body=f"@{current_user['username']} a commenté ta critique",
+            route="/social",
+            extra_data={"type": "comment", "reviewId": review_id, "commentId": comment_id},
+        )
+    if reply_notification_targets:
+        enqueue_push_notifications(
+            reply_notification_targets,
             title="Nouvelle réponse",
             body=f"@{current_user['username']} a répondu à ton commentaire",
             route="/social",
             extra_data={"type": "reply", "reviewId": review_id, "commentId": comment_id},
         )
-
-    conn.commit()
     cursor.execute(
         """
         SELECT
@@ -5325,16 +5686,16 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
             (review_id, current_user["id"]),
         )
         create_notification(cursor, review_owner_id, current_user["id"], "like", review_id=review_id)
-        send_native_push_notifications(
-            cursor,
+
+    conn.commit()
+    if not already_liked:
+        enqueue_push_notifications(
             [review_owner_id],
             title="Critique aimée",
             body=f"@{current_user['username']} a aimé ta critique sur {review_title}",
             route="/social",
             extra_data={"type": "like", "reviewId": review_id},
         )
-
-    conn.commit()
     cursor.execute(
         "SELECT COUNT(*) FROM review_likes WHERE review_id = ?",
         (review_id,),
@@ -5661,19 +6022,7 @@ async def create_direct_message(
 
     serialized_message = serialize_direct_message_row(message_row, current_user["id"])
     recipient_user_id = int(conversation_row["participant_id"])
-    send_native_push_notifications(
-        cursor,
-        [recipient_user_id],
-        title=f"Message de @{current_user['username']}",
-        body=build_direct_message_push_body(current_user["username"], content, movie_title),
-        route=f"/messages?conversationId={conversation_id}",
-        extra_data={
-            "type": "dm",
-            "conversationId": conversation_id,
-        },
-    )
-    send_web_push_notifications(
-        cursor,
+    enqueue_push_notifications(
         [recipient_user_id],
         title=f"Message de @{current_user['username']}",
         body=build_direct_message_push_body(current_user["username"], content, movie_title),
@@ -5684,10 +6033,10 @@ async def create_direct_message(
             "senderUsername": current_user["username"],
             "tag": f"conversation-{conversation_id}",
         },
+        include_web=True,
     )
-    conn.commit()
     conn.close()
-    await realtime_manager.broadcast_to_users(
+    await publish_realtime_event(
         [current_user["id"], recipient_user_id],
         {
             "type": "messages.updated",
