@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiError, completeTutorial as apiCompleteTutorial, getMe, login as apiLogin, signup as apiSignup } from '../api/client';
 import { clearSession, loadSession, saveSession } from './storage';
-import { registerForPushNotifications, unregisterCurrentPushToken } from '../notifications/push';
+import { unregisterCurrentPushToken } from '../notifications/push';
 import type { SessionState } from '../types';
 
 interface AuthContextValue {
@@ -37,14 +37,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (!session?.token) {
-      return;
-    }
-
-    void registerForPushNotifications(session.token).catch(() => undefined);
-  }, [session?.token]);
 
   const persistSession = async (nextSession: SessionState | null) => {
     setSession(nextSession);
