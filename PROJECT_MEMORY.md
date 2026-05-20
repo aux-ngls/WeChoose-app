@@ -92,6 +92,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Playlist manual ordering should feel tactile without adding Expo Go-fragile native dependencies: long-press to select, tap the target position, animated layout movement, no arrow buttons.
 - On iPad, the mobile UI should remain centered and constrained instead of stretching key phone-first flows across the full tablet width; Tinder is the most sensitive screen.
 - Review detail pages should let the header block stay compact while the review text itself flows below it across the full card width.
+- Review detail pages should align the rating badge and like control on the same visual row for a cleaner meta block.
 
 ## Known Sensitive Areas
 

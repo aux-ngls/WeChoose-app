@@ -26,6 +26,7 @@ Summary:
 - removed the persistent playlist reorder hint text so playlists waste less vertical space.
 - made social notifications mark themselves as read when tapped, before navigating to the underlying profile or review.
 - reworked the review detail card so the poster and meta stay in the top row while the review text now spans the full width below.
+- aligned the rating badge and like pill on the same row in review details.
 
 ## Latest Workspace Changes
 
@@ -34,6 +35,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - removed the playlist reorder helper text.
 - social notifications now mark as read on tap;
 - review detail pages now show the critique text on the full card width below the top media/meta row.
+- review detail pages now align the note and j'aime controls on one row.
 - replaced the playlist reordering arrows with a long-press selection interaction and animated feedback, without Reanimated/NativeWorklets;
 - stabilized the post-login iPad flow by requiring full screen on iPad and moving push notification registration out of automatic login-time initialization;
 - added pull-to-refresh support across the main dynamic mobile screens;

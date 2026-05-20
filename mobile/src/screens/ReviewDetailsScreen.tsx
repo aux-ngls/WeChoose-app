@@ -182,17 +182,19 @@ export default function ReviewDetailsScreen({
                       <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{review.author.username} · {formatDate(review.created_at)}</Text>
                     </Pressable>
                   </View>
+                </View>
+                <View style={styles.reviewActionsRow}>
                   <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                     <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{review.rating.toFixed(1)} / 5</Text>
                   </View>
-                </View>
 
-                <Pressable onPress={handleToggleLike} disabled={liking} style={[styles.likeButton, review.liked_by_me && { backgroundColor: theme.colors.accentSoft }]}>
-                  <Ionicons name={review.liked_by_me ? 'heart' : 'heart-outline'} size={15} color={review.liked_by_me ? theme.colors.accent : theme.colors.textSoft} />
-                  <Text style={[styles.likeLabel, { color: review.liked_by_me ? theme.colors.accent : theme.colors.textSoft }]}>
-                    {review.likes_count} j'aime
-                  </Text>
-                </Pressable>
+                  <Pressable onPress={handleToggleLike} disabled={liking} style={[styles.likeButton, review.liked_by_me && { backgroundColor: theme.colors.accentSoft }]}>
+                    <Ionicons name={review.liked_by_me ? 'heart' : 'heart-outline'} size={15} color={review.liked_by_me ? theme.colors.accent : theme.colors.textSoft} />
+                    <Text style={[styles.likeLabel, { color: review.liked_by_me ? theme.colors.accent : theme.colors.textSoft }]}>
+                      {review.likes_count} j'aime
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
 
@@ -373,6 +375,12 @@ const styles = StyleSheet.create({
   reviewHeaderText: {
     gap: 4,
   },
+  reviewActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
   reviewTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -392,7 +400,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   likeButton: {
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
