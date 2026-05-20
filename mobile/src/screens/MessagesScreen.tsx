@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -14,16 +14,101 @@ import {
   searchSocialUsers,
   startConversation,
 } from '../api/client';
+import { API_URL } from '../api/config';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import type { DirectConversationSummary, SocialUser } from '../types';
 import { formatDate } from '../utils/format';
+import { NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
 
 let conversationsCache: {
   username: string;
   conversations: DirectConversationSummary[];
 } | null = null;
+
+interface RealtimeConversationPayload {
+  type?: string;
+  conversation_id?: number;
+  message_id?: number;
+  sender_id?: number;
+  sender_username?: string;
+  preview?: string;
+  message?: {
+    id: number;
+    content: string;
+    created_at: string;
+    sender: {
+      id: number;
+      username: string;
+    };
+    movie: {
+      id: number;
+      title: string;
+      poster_url: string;
+      rating: number;
+    } | null;
+  };
+}
+
+function buildConversationPreview(payload: RealtimeConversationPayload) {
+  const trimmedPreview = payload.preview?.trim();
+  if (trimmedPreview) {
+    return trimmedPreview;
+  }
+
+  const messageMovieTitle = payload.message?.movie?.title?.trim();
+  if (messageMovieTitle) {
+    return `Film partage : ${messageMovieTitle}`;
+  }
+
+  const messageContent = payload.message?.content?.trim();
+  if (messageContent) {
+    return messageContent;
+  }
+
+  return 'Nouveau message';
+}
+
+function mergeRealtimeConversationSummary(
+  currentConversations: DirectConversationSummary[],
+  payload: RealtimeConversationPayload,
+  currentUsername: string,
+) {
+  const conversationIndex = currentConversations.findIndex((conversation) => conversation.id === payload.conversation_id);
+  if (conversationIndex < 0 || !payload.conversation_id || !payload.message_id) {
+    return null;
+  }
+
+  const baseConversation = currentConversations[conversationIndex];
+  const senderUsername = payload.message?.sender.username ?? payload.sender_username ?? '';
+  const isOwnMessage = senderUsername === currentUsername;
+  const updatedAt = payload.message?.created_at ?? new Date().toISOString();
+  const preview = buildConversationPreview(payload);
+  const updatedConversation: DirectConversationSummary = {
+    ...baseConversation,
+    updated_at: updatedAt,
+    last_message: {
+      id: payload.message_id,
+      content: payload.message?.content ?? '',
+      created_at: updatedAt,
+      sender_id: payload.message?.sender.id ?? payload.sender_id ?? baseConversation.last_message?.sender_id ?? 0,
+      preview,
+      movie: payload.message?.movie
+        ? {
+            id: payload.message.movie.id,
+            title: payload.message.movie.title,
+            poster_url: payload.message.movie.poster_url,
+          }
+        : null,
+    },
+    unread_count: isOwnMessage ? baseConversation.unread_count : baseConversation.unread_count + 1,
+  };
+
+  const nextConversations = [...currentConversations];
+  nextConversations.splice(conversationIndex, 1);
+  return [updatedConversation, ...nextConversations];
+}
 
 export default function MessagesScreen() {
   const { session, signOut } = useAuth();
@@ -45,6 +130,22 @@ export default function MessagesScreen() {
     conversationsRef.current = conversations;
   }, [conversations]);
 
+  const updateConversations = useCallback(
+    (
+      updater: DirectConversationSummary[] | ((current: DirectConversationSummary[]) => DirectConversationSummary[]),
+    ) => {
+      setConversations((current) => {
+        const nextConversations = typeof updater === 'function' ? updater(current) : updater;
+        conversationsCache = {
+          username: session?.username ?? conversationsCache?.username ?? 'anonymous',
+          conversations: nextConversations,
+        };
+        return nextConversations;
+      });
+    },
+    [session?.username],
+  );
+
   const loadConversations = useCallback(async () => {
     if (!session) {
       return;
@@ -56,11 +157,7 @@ export default function MessagesScreen() {
 
     try {
       const payload = await fetchConversations(session.token);
-      conversationsCache = {
-        username: session.username,
-        conversations: payload,
-      };
-      setConversations(payload);
+      updateConversations(payload);
       setError('');
     } catch (fetchError) {
       if (fetchError instanceof ApiError && fetchError.status === 401) {
@@ -71,7 +168,7 @@ export default function MessagesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [session, signOut]);
+  }, [session, signOut, updateConversations]);
 
   const refreshConversations = useCallback(async () => {
     setRefreshing(true);
@@ -87,6 +184,42 @@ export default function MessagesScreen() {
       void loadConversations();
     }, [loadConversations]),
   );
+
+  useEffect(() => {
+    if (!session) {
+      return undefined;
+    }
+
+    const websocketUrl = `${API_URL.replace(/^http/, 'ws')}/ws/realtime?token=${encodeURIComponent(session.token)}`;
+    const socket = new WebSocket(websocketUrl);
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(String(event.data)) as RealtimeConversationPayload;
+        if (payload.type !== 'messages.updated') {
+          return;
+        }
+
+        const mergedConversations = mergeRealtimeConversationSummary(
+          conversationsRef.current,
+          payload,
+          session.username,
+        );
+
+        if (mergedConversations) {
+          updateConversations(mergedConversations);
+          DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
+          return;
+        }
+
+        void loadConversations();
+      } catch {
+        // Best-effort realtime update; focus refresh still reconciles the inbox.
+      }
+    };
+
+    return () => socket.close();
+  }, [loadConversations, session, updateConversations]);
 
   useEffect(() => {
     if (!session) {
@@ -132,6 +265,10 @@ export default function MessagesScreen() {
   );
 
   const openConversation = (conversation: DirectConversationSummary) => {
+    updateConversations((current) =>
+      current.map((item) => (item.id === conversation.id ? { ...item, unread_count: 0 } : item)),
+    );
+    DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
     navigation.navigate('Conversation', {
       conversationId: conversation.id,
       participantUsername: conversation.participant.username,

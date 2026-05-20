@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Alert,
+  DeviceEventEmitter,
   FlatList,
   Image,
   Keyboard,
@@ -31,6 +32,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type DirectMessage } from '../types';
+import { NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 
 type ConversationItem =
@@ -257,6 +259,7 @@ export default function ConversationScreen({
       setParticipantId((current) => (current === nextParticipantId ? current : nextParticipantId));
       hasInitialConversationLoadedRef.current = true;
       setError('');
+      DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
     } catch (fetchError) {
       if (fetchError instanceof ApiError && fetchError.status === 401) {
         await signOut();
@@ -342,6 +345,9 @@ export default function ConversationScreen({
               });
               return areMessageListsEquivalent(current, nextMessages) ? current : nextMessages;
             });
+            if (!realtimeMessage.is_mine) {
+              void loadConversation();
+            }
             return;
           }
           void loadConversation();
@@ -557,6 +563,7 @@ export default function ConversationScreen({
       });
       shouldScrollToEndRef.current = true;
       setError('');
+      DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
     } catch (sendError) {
       setMessages((current) => {
         const nextMessages = current.filter((message) => message.id !== optimisticId);
