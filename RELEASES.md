@@ -10,7 +10,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Current Stable State
 
-Commit: `7cb4313`
+Commit: `6dcc7ed`
 
 Summary:
 - audited the main app/API user flows with temporary accounts;
@@ -24,12 +24,16 @@ Summary:
 - removed the Reanimated/NativeWorklets playlist reorder dependency after Expo Go runtime crashes on iOS simulators.
 - improved iPad responsiveness for the mobile shell and especially the Tinder screen by constraining content width, centering the tab bar, and keeping the Tinder card plus rating controls in a compact phone-like layout.
 - removed the persistent playlist reorder hint text so playlists waste less vertical space.
+- made social notifications mark themselves as read when tapped, before navigating to the underlying profile or review.
+- widened the review details layout so the review text and discussion get the full available width instead of being squeezed beside the poster.
 
 ## Latest Workspace Changes
 
 These changes should be recorded as part of the next stable checkpoint:
 - improved iPad responsiveness for the mobile shell and Tinder recommendation screen;
 - removed the playlist reorder helper text.
+- social notifications now mark as read on tap;
+- review detail pages now give the critique text more width.
 - replaced the playlist reordering arrows with a long-press selection interaction and animated feedback, without Reanimated/NativeWorklets;
 - stabilized the post-login iPad flow by requiring full screen on iPad and moving push notification registration out of automatic login-time initialization;
 - added pull-to-refresh support across the main dynamic mobile screens;
@@ -76,6 +80,7 @@ These changes should be recorded as part of the next stable checkpoint:
 
 ## Important Recent Commits
 
+- `6dcc7ed` - Mark notifications read on tap
 - `7cb4313` - Improve iPad Tinder responsiveness
 - `4c9ea6a` - Audit core app flows and polish copy
 - `1a54352` - Record app audit checkpoint

@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-20
 Current branch: main
-Current stable commit: 7cb4313
+Current stable commit: 6dcc7ed
 
 ## Maintenance Rule
 
@@ -44,6 +44,7 @@ The mobile app currently includes:
 - playlist manual order now uses a long-press selection flow with animated layout changes instead of up/down arrows; it avoids Reanimated/NativeWorklets so Expo Go stays stable, without a persistent instructional hint taking space.
 - social feed with expandable reviews and comments;
 - social notifications are opened from the profile header bell into a dedicated notifications page; direct-message unread state remains separate in Messages.
+- tapping a social notification now marks it as read at click time before opening the destination screen.
 - private messages with movie sharing;
 - user profile navigation from social areas;
 - app settings, including theme mode, notification controls, tutorial replay, and recommendation cache tools;
@@ -90,6 +91,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Actor detail grids should stretch to the available width instead of leaving visible empty gutters on the "Films marquants" section.
 - Playlist manual ordering should feel tactile without adding Expo Go-fragile native dependencies: long-press to select, tap the target position, animated layout movement, no arrow buttons.
 - On iPad, the mobile UI should remain centered and constrained instead of stretching key phone-first flows across the full tablet width; Tinder is the most sensitive screen.
+- Review detail pages should let the review text breathe across the full available width instead of squeezing it beside the poster.
 
 ## Known Sensitive Areas
 
