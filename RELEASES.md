@@ -81,6 +81,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - polished remaining French copy in mobile/backend visible surfaces, including social notifications, support/privacy pages, and movie detail labels.
 - hardened the backend foundation for higher traffic: safer SQLite settings, missing indexes on hot tables, async push dispatch off the request path, write-route throttling, `/healthz` and `/metrics`, Redis-ready realtime fanout, and env-based secrets/API key loading.
 - kept the database engine swap as a separate controlled step instead of forcing an immediate SQLite-to-Postgres cutover inside the same stabilization patch.
+- added the PostgreSQL migration kit: reference schema, SQLite-to-PostgreSQL migration script, and migration runbook.
 
 ## Important Recent Commits
 

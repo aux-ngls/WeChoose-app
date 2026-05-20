@@ -130,3 +130,8 @@ Reason:
 - the backend still concentrates a large amount of SQLite-specific SQL in one file;
 - immediate stability wins were available without product risk: WAL mode, busy timeout, missing indexes, async push delivery, route throttling, health/metrics endpoints, Redis-ready realtime fanout, and env-based secrets;
 - a real Postgres cutover deserves its own migration, validation, and rollback plan rather than being mixed into a live stability patch.
+
+Current implementation status:
+- PostgreSQL reference schema and SQLite-to-PostgreSQL migration tooling now exist in the repository;
+- the live API runtime is still SQLite for now;
+- the runtime switch itself should happen only after a dedicated smoke-test phase against the migrated PostgreSQL database.
