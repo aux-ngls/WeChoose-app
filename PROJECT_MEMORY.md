@@ -57,8 +57,8 @@ The mobile app currently includes:
 - App Store Connect copy and privacy guidance are maintained in `APP_STORE_CONNECT.md`;
 - push notification groundwork;
 - TestFlight / EAS build flow.
-- backend hardening is now part of the current API work: safer SQLite runtime settings, explicit indexes on hot social/messaging tables, async push delivery, route-level rate limiting, `/healthz` and `/metrics`, Redis-ready realtime fanout, and env-driven secrets/API keys.
-- PostgreSQL migration assets now exist in `backend/postgres_schema.sql`, `backend/migrate_sqlite_to_postgres.py`, and `backend/POSTGRES_MIGRATION.md`; the API can now boot in PostgreSQL mode via `DATABASE_URL` / `POSTGRES_URL`, but the production cutover still needs a validated migrated database.
+- backend hardening is now part of the current API work: safer SQLite runtime settings, explicit indexes on hot social/messaging tables, async push delivery, route-level rate limiting, `/healthz` and `/metrics`, Redis-ready realtime fanout, env-driven secrets/API keys, and the live backend now runs on PostgreSQL.
+- PostgreSQL migration assets exist in `backend/postgres_schema.sql`, `backend/migrate_sqlite_to_postgres.py`, and `backend/POSTGRES_MIGRATION.md`; the API boots via `DATABASE_URL` / `POSTGRES_URL`, and the first real server cutover has been executed successfully.
 - latest audit checkpoint validated the main mobile/API flows with temporary users, cleaned remaining visible French copy issues, and optimized first Tinder poster loading by parallelizing TMDB poster fetches.
 
 The web site remains active and should not be removed while the mobile app is being improved.
@@ -104,8 +104,8 @@ The web site remains active and should not be removed while the mobile app is be
 - Message list scroll behavior.
 - Keyboard handling in messages and review creation.
 - Account deletion, block/report flows, and support/privacy URLs for App Review.
-- Backend scalability hardening: SQLite is safer now but still the active engine; full Postgres migration remains a dedicated follow-up, and Redis-backed realtime only activates when `REDIS_URL` is configured.
-- PostgreSQL cutover sensitivity: the runtime now includes a PostgreSQL compatibility path, but the final production switch must still be validated on a migrated database before rollout.
+- Backend scalability hardening: PostgreSQL is now the active database engine for the backend, and Redis-backed realtime still activates only when `REDIS_URL` is configured.
+- PostgreSQL cutover sensitivity: keep the SQLite backup available while the new runtime settles, and treat future schema changes with proper migration discipline.
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
 - Rating deletion rule: a movie rating cannot be removed if it is linked to an existing review; the user must edit or delete the review first so reviews never become note-less.

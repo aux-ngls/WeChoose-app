@@ -10,8 +10,8 @@ Prepare a controlled move from the current SQLite production database to Postgre
 
 - reference schema: `backend/postgres_schema.sql`
 - migration script: `backend/migrate_sqlite_to_postgres.py`
-- API runtime can now start in PostgreSQL mode when `DATABASE_URL` or `POSTGRES_URL` is set
-- current production backend is still expected to remain on SQLite until PostgreSQL smoke tests are completed
+- API runtime can start in PostgreSQL mode when `DATABASE_URL` or `POSTGRES_URL` is set
+- the production backend has now been migrated and switched to PostgreSQL on the server
 
 ## Required environment
 
@@ -51,4 +51,4 @@ python3 migrate_sqlite_to_postgres.py --reset
 
 ## Important note
 
-The backend now contains a PostgreSQL compatibility runtime path, but the production cutover should still happen only after validating a migrated database with end-to-end smoke tests.
+The backend now contains a PostgreSQL compatibility runtime path, and the first real server cutover has been completed after migration and smoke tests. Keep the SQLite backup available until the PostgreSQL runtime has proven stable over time.

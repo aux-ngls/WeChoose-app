@@ -122,6 +122,112 @@ RESET_SEQUENCE_TABLES = [
 ]
 
 
+def is_valid_fk(value, allowed_ids: set[int], *, allow_none: bool = False) -> bool:
+    if value is None:
+        return allow_none
+    return int(value) in allowed_ids
+
+
+def build_reference_sets(sqlite_conn: sqlite3.Connection) -> dict[str, set[int]]:
+    cursor = sqlite_conn.cursor()
+    references: dict[str, set[int]] = {}
+    for table_name in [
+        "users",
+        "playlists",
+        "reviews",
+        "comments",
+        "direct_conversations",
+        "direct_messages",
+    ]:
+        cursor.execute(f"SELECT id FROM {table_name}")
+        references[table_name] = {int(row[0]) for row in cursor.fetchall() if row[0] is not None}
+    return references
+
+
+def sanitize_row(table: str, row: tuple, columns: list[str], refs: dict[str, set[int]]) -> tuple | None:
+    record = dict(zip(columns, row))
+
+    if table == "user_preferences":
+        return row if is_valid_fk(record["user_id"], refs["users"]) else None
+    if table == "user_ratings":
+        return row if is_valid_fk(record["user_id"], refs["users"]) else None
+    if table == "playlists":
+        return row if is_valid_fk(record["user_id"], refs["users"]) else None
+    if table == "playlist_items":
+        return row if is_valid_fk(record["playlist_id"], refs["playlists"]) else None
+    if table in {"follows", "blocked_users"}:
+        if not is_valid_fk(record["follower_id"] if table == "follows" else record["blocker_id"], refs["users"]):
+            return None
+        if not is_valid_fk(record["followed_id"] if table == "follows" else record["blocked_id"], refs["users"]):
+            return None
+        return row
+    if table == "reviews":
+        return row if is_valid_fk(record["user_id"], refs["users"]) else None
+    if table == "review_likes":
+        if not is_valid_fk(record["review_id"], refs["reviews"]):
+            return None
+        if not is_valid_fk(record["user_id"], refs["users"]):
+            return None
+        return row
+    if table == "comments":
+        if not is_valid_fk(record["review_id"], refs["reviews"]):
+            return None
+        if not is_valid_fk(record["user_id"], refs["users"]):
+            return None
+        if not is_valid_fk(record["parent_id"], refs["comments"], allow_none=True):
+            record["parent_id"] = None
+        return tuple(record[column] for column in columns)
+    if table == "notifications":
+        if not is_valid_fk(record["user_id"], refs["users"]):
+            return None
+        if not is_valid_fk(record["actor_user_id"], refs["users"], allow_none=True):
+            record["actor_user_id"] = None
+        if not is_valid_fk(record["review_id"], refs["reviews"], allow_none=True):
+            record["review_id"] = None
+        if not is_valid_fk(record["comment_id"], refs["comments"], allow_none=True):
+            record["comment_id"] = None
+        return tuple(record[column] for column in columns)
+    if table == "direct_conversations":
+        if not is_valid_fk(record["user_one_id"], refs["users"]):
+            return None
+        if not is_valid_fk(record["user_two_id"], refs["users"]):
+            return None
+        return row
+    if table == "direct_messages":
+        if not is_valid_fk(record["conversation_id"], refs["direct_conversations"]):
+            return None
+        if not is_valid_fk(record["sender_id"], refs["users"]):
+            return None
+        if not is_valid_fk(record["reply_to_message_id"], refs["direct_messages"], allow_none=True):
+            record["reply_to_message_id"] = None
+        return tuple(record[column] for column in columns)
+    if table == "mobile_devices":
+        return row if is_valid_fk(record["user_id"], refs["users"]) else None
+    if table == "web_push_subscriptions":
+        return row if is_valid_fk(record["user_id"], refs["users"]) else None
+    if table == "recommendation_impressions":
+        if not is_valid_fk(record["user_id"], refs["users"], allow_none=True):
+            record["user_id"] = None
+        return tuple(record[column] for column in columns)
+    if table == "moderation_reports":
+        for key, ref_name in [
+            ("reporter_user_id", "users"),
+            ("target_user_id", "users"),
+            ("target_review_id", "reviews"),
+            ("target_comment_id", "comments"),
+            ("target_conversation_id", "direct_conversations"),
+        ]:
+            allow_none = key != "reporter_user_id"
+            if not is_valid_fk(record[key], refs[ref_name], allow_none=allow_none):
+                if allow_none:
+                    record[key] = None
+                else:
+                    return None
+        return tuple(record[column] for column in columns)
+
+    return row
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Migrate Qulte SQLite data to PostgreSQL.")
     parser.add_argument("--sqlite-path", default=DEFAULT_SQLITE_PATH, help="Path to the SQLite database file.")
@@ -163,23 +269,39 @@ def reset_postgres_data(pg_conn) -> None:
 def fetch_all_rows(sqlite_conn: sqlite3.Connection, table: str, columns: list[str]) -> list[tuple]:
     quoted_columns = ", ".join(columns)
     cursor = sqlite_conn.cursor()
-    cursor.execute(f"SELECT {quoted_columns} FROM {table}")
+    order_clause = " ORDER BY id" if "id" in columns else ""
+    cursor.execute(f"SELECT {quoted_columns} FROM {table}{order_clause}")
     return [tuple(row[column] for column in columns) for row in cursor.fetchall()]
 
 
-def import_table(sqlite_conn: sqlite3.Connection, pg_conn, table: str, columns: list[str]) -> int:
+def import_table(sqlite_conn: sqlite3.Connection, pg_conn, table: str, columns: list[str], refs: dict[str, set[int]]) -> tuple[int, int]:
     rows = fetch_all_rows(sqlite_conn, table, columns)
     if not rows:
-        return 0
+        return 0, 0
+
+    sanitized_rows: list[tuple] = []
+    skipped_count = 0
+    for row in rows:
+        sanitized = sanitize_row(table, row, columns, refs)
+        if sanitized is None:
+            skipped_count += 1
+            continue
+        sanitized_rows.append(sanitized)
+
+    if not sanitized_rows:
+        return 0, skipped_count
 
     column_list = ", ".join(columns)
     placeholders = ", ".join(["%s"] * len(columns))
     sql = f"INSERT INTO {table} ({column_list}) VALUES ({placeholders})"
 
     with pg_conn.cursor() as cur:
-        cur.executemany(sql, rows)
+        cur.executemany(sql, sanitized_rows)
     pg_conn.commit()
-    return len(rows)
+    if "id" in columns:
+        id_index = columns.index("id")
+        refs[table] = {int(row[id_index]) for row in sanitized_rows if row[id_index] is not None}
+    return len(sanitized_rows), skipped_count
 
 
 def reset_sequences(pg_conn) -> None:
@@ -222,6 +344,7 @@ def main() -> int:
 
     sqlite_conn = open_sqlite(str(sqlite_path))
     pg_conn = open_postgres(args.postgres_url)
+    refs = build_reference_sets(sqlite_conn)
 
     try:
         print("1/4 - Application du schema PostgreSQL...")
@@ -239,8 +362,9 @@ def main() -> int:
 
         print("3/4 - Copie des donnees...")
         for table_name, columns, _ in TABLES_IN_ORDER:
-            count = import_table(sqlite_conn, pg_conn, table_name, columns)
-            print(f"  - {table_name}: {count} ligne(s)")
+            imported_count, skipped_count = import_table(sqlite_conn, pg_conn, table_name, columns, refs)
+            suffix = f" ({skipped_count} ignoree(s))" if skipped_count else ""
+            print(f"  - {table_name}: {imported_count} ligne(s){suffix}")
 
         print("4/4 - Recalage des sequences...")
         reset_sequences(pg_conn)

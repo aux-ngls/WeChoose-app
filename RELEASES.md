@@ -83,6 +83,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - kept the database engine swap as a separate controlled step instead of forcing an immediate SQLite-to-Postgres cutover inside the same stabilization patch.
 - added the PostgreSQL migration kit: reference schema, SQLite-to-PostgreSQL migration script, and migration runbook.
 - added a PostgreSQL-compatible runtime path in the backend so the API can boot from `DATABASE_URL` / `POSTGRES_URL` once a migrated database is ready for smoke tests.
+- completed the first real backend migration from SQLite to PostgreSQL on the server, updated the service environment, and validated the cutover with health and user-flow smoke tests.
 
 ## Important Recent Commits
 
