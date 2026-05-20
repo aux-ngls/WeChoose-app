@@ -25,7 +25,7 @@ Summary:
 - improved iPad responsiveness for the mobile shell and especially the Tinder screen by constraining content width, centering the tab bar, and keeping the Tinder card plus rating controls in a compact phone-like layout.
 - removed the persistent playlist reorder hint text so playlists waste less vertical space.
 - made social notifications mark themselves as read when tapped, before navigating to the underlying profile or review.
-- kept the review details layout horizontal while widening the whole screen a bit on tablet so the review text column gets more room beside the poster.
+- reworked the review detail card so the poster and meta stay in the top row while the review text now spans the full width below.
 
 ## Latest Workspace Changes
 
@@ -33,7 +33,7 @@ These changes should be recorded as part of the next stable checkpoint:
 - improved iPad responsiveness for the mobile shell and Tinder recommendation screen;
 - removed the playlist reorder helper text.
 - social notifications now mark as read on tap;
-- review detail pages now keep the original horizontal layout while giving the screen a wider tablet footprint.
+- review detail pages now show the critique text on the full card width below the top media/meta row.
 - replaced the playlist reordering arrows with a long-press selection interaction and animated feedback, without Reanimated/NativeWorklets;
 - stabilized the post-login iPad flow by requiring full screen on iPad and moving push notification registration out of automatic login-time initialization;
 - added pull-to-refresh support across the main dynamic mobile screens;

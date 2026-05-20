@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -26,7 +26,6 @@ export default function ReviewDetailsScreen({
 }: NativeStackScreenProps<RootStackParamList, 'ReviewDetails'>) {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
-  const { width } = useWindowDimensions();
   const [review, setReview] = useState<SocialReview | null>(null);
   const [comments, setComments] = useState<SocialComment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,12 +148,7 @@ export default function ReviewDetailsScreen({
   }, [draft, replyTarget, review, sendingComment, session, signOut]);
 
   return (
-    <AppScreen
-      keyboardAware
-      refreshing={refreshing}
-      onRefresh={() => void refreshThread()}
-      contentStyle={[styles.screenContent, width >= 700 && styles.screenContentTablet]}
-    >
+    <AppScreen keyboardAware refreshing={refreshing} onRefresh={() => void refreshThread()} contentStyle={styles.screenContent}>
       <View style={styles.headerRow}>
         <Pressable style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
@@ -176,31 +170,33 @@ export default function ReviewDetailsScreen({
       ) : (
         <>
           <View style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-            <Pressable onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}>
-              <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.poster} />
-            </Pressable>
-            <View style={styles.reviewBody}>
-              <View style={styles.reviewHeader}>
-                <View style={styles.reviewHeaderText}>
-                  <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{review.title}</Text>
-                  <Pressable onPress={() => navigation.navigate('UserProfile', { username: review.author.username })}>
-                    <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{review.author.username} · {formatDate(review.created_at)}</Text>
-                  </Pressable>
-                </View>
-                <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
-                  <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{review.rating.toFixed(1)} / 5</Text>
-                </View>
-              </View>
-
-              <Pressable onPress={handleToggleLike} disabled={liking} style={[styles.likeButton, review.liked_by_me && { backgroundColor: theme.colors.accentSoft }]}>
-                <Ionicons name={review.liked_by_me ? 'heart' : 'heart-outline'} size={15} color={review.liked_by_me ? theme.colors.accent : theme.colors.textSoft} />
-                <Text style={[styles.likeLabel, { color: review.liked_by_me ? theme.colors.accent : theme.colors.textSoft }]}>
-                  {review.likes_count} j'aime
-                </Text>
+            <View style={styles.reviewTopRow}>
+              <Pressable onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}>
+                <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               </Pressable>
+              <View style={styles.reviewBody}>
+                <View style={styles.reviewHeader}>
+                  <View style={styles.reviewHeaderText}>
+                    <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{review.title}</Text>
+                    <Pressable onPress={() => navigation.navigate('UserProfile', { username: review.author.username })}>
+                      <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{review.author.username} · {formatDate(review.created_at)}</Text>
+                    </Pressable>
+                  </View>
+                  <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                    <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{review.rating.toFixed(1)} / 5</Text>
+                  </View>
+                </View>
 
-              <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]}>{review.content}</Text>
+                <Pressable onPress={handleToggleLike} disabled={liking} style={[styles.likeButton, review.liked_by_me && { backgroundColor: theme.colors.accentSoft }]}>
+                  <Ionicons name={review.liked_by_me ? 'heart' : 'heart-outline'} size={15} color={review.liked_by_me ? theme.colors.accent : theme.colors.textSoft} />
+                  <Text style={[styles.likeLabel, { color: review.liked_by_me ? theme.colors.accent : theme.colors.textSoft }]}>
+                    {review.likes_count} j'aime
+                  </Text>
+                </Pressable>
+              </View>
             </View>
+
+            <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]}>{review.content}</Text>
           </View>
 
           <View style={[styles.commentsCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -317,10 +313,6 @@ const styles = StyleSheet.create({
   screenContent: {
     gap: 18,
   },
-  screenContentTablet: {
-    maxWidth: 760,
-    paddingHorizontal: 28,
-  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -355,12 +347,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reviewCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     gap: 14,
     borderRadius: 24,
     borderWidth: 1,
     padding: 14,
+  },
+  reviewTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
   },
   poster: {
     width: 92,
