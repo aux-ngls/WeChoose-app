@@ -179,6 +179,8 @@ PostgreSQL cleanup status:
 - the only remaining `?` characters in the file are non-SQL ones: URLs, HTML text, route strings, and the `SQL_PARAM` definition;
 - the PostgreSQL cursor wrapper now executes native SQL directly without any translation layer;
 - the remaining database compatibility surface is only the explicit SQLite legacy path plus backend-aware helpers like `SQL_PARAM`.
+- some PostgreSQL `TEXT` values in the current runtime can surface as `bytes`; JSON/text preference loaders now decode DB text defensively before parsing or normalizing.
+- a full backend smoke test after the migration passed end-to-end with temporary users: auth, onboarding, profile prefs, Tinder feed, movie details, playlists, ratings, social profile/feed/reviews/comments/likes/notifications, and private messages.
 
 ## How To Resume Work
 

@@ -147,3 +147,5 @@ npx eas submit --platform ios
 - The compatibility translator has been further reduced: no remaining `INSERT OR IGNORE`, `INSERT OR REPLACE`, or `rowid DESC` remain in `backend/main.py`.
 - Backend SQL placeholders are now fully migrated at the application-query level: no remaining raw SQL `?` placeholders are used in `backend/main.py`.
 - Backend PostgreSQL runtime now executes native SQL directly: the temporary SQL translation layer has been removed from the Postgres cursor path.
+- Preference/profile reads now defensively decode PostgreSQL text values before JSON parsing/normalization, fixing profile description and soundtrack round-trips.
+- A full production smoke test passed after the PostgreSQL migration across auth, recommendations, playlists, ratings, social flows, notifications, and direct messages.

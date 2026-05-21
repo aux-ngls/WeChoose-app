@@ -1009,10 +1009,17 @@ def normalize_username(username: str) -> str:
     return username.strip()
 
 
+def decode_db_text(value: Optional[str]) -> str:
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value.decode("utf-8", errors="ignore")
+    return value if isinstance(value, str) else ""
+
+
 def normalize_profile_description(value: Optional[str]) -> str:
-    if not isinstance(value, str):
-        return ""
-    return " ".join(value.split())[:180]
+    return " ".join(decode_db_text(value).split())[:180]
 
 
 def avatar_media_type(filename: str) -> str:
@@ -1097,11 +1104,12 @@ def dump_json_dict(value: dict) -> str:
 
 
 def load_json_list(raw_value: Optional[str]) -> list:
-    if not raw_value:
+    raw_text = decode_db_text(raw_value)
+    if not raw_text:
         return []
 
     try:
-        parsed_value = json.loads(raw_value)
+        parsed_value = json.loads(raw_text)
     except (TypeError, json.JSONDecodeError):
         return []
 
@@ -1109,11 +1117,12 @@ def load_json_list(raw_value: Optional[str]) -> list:
 
 
 def load_json_dict(raw_value: Optional[str]) -> dict:
-    if not raw_value:
+    raw_text = decode_db_text(raw_value)
+    if not raw_text:
         return {}
 
     try:
-        parsed_value = json.loads(raw_value)
+        parsed_value = json.loads(raw_text)
     except (TypeError, json.JSONDecodeError):
         return {}
 
