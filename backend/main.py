@@ -144,6 +144,7 @@ rate_limit_events: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 rate_limit_lock = Lock()
 notification_executor = ThreadPoolExecutor(max_workers=int(os.getenv("NOTIFICATION_WORKERS", "4") or "4"))
 DBIntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError) if psycopg is not None else (sqlite3.IntegrityError,)
+SQL_PARAM = "%s" if DATABASE_BACKEND == "postgres" else "?"
 
 
 class HybridRow:
@@ -182,6 +183,10 @@ def row_uses_mapping_access(row: object) -> bool:
 
 def row_get_value(row: Any, key: str, index: int):
     return row[key] if row_uses_mapping_access(row) else row[index]
+
+
+def sql_placeholders(count: int) -> str:
+    return ",".join(SQL_PARAM for _ in range(max(0, count)))
 
 
 def translate_sql_for_postgres(query: str) -> str:
@@ -3392,17 +3397,17 @@ def get_or_create_direct_conversation(cursor, current_user_id: int, target_user_
     cursor.execute(
         """
         INSERT INTO direct_conversations (user_one_id, user_two_id)
-        VALUES (?, ?)
+        VALUES ({param}, {param})
         ON CONFLICT(user_one_id, user_two_id) DO NOTHING
-        """,
+        """.format(param=SQL_PARAM),
         (user_one_id, user_two_id),
     )
     cursor.execute(
         """
         SELECT id
         FROM direct_conversations
-        WHERE user_one_id = ? AND user_two_id = ?
-        """,
+        WHERE user_one_id = {param} AND user_two_id = {param}
+        """.format(param=SQL_PARAM),
         (user_one_id, user_two_id),
     )
     row = cursor.fetchone()
@@ -3422,7 +3427,7 @@ def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_
             c.user_two_last_read_message_id,
             c.created_at,
             CASE
-                WHEN c.user_one_id = ? THEN c.user_two_id
+                WHEN c.user_one_id = {param} THEN c.user_two_id
                 ELSE c.user_one_id
             END AS participant_id,
             participant.username AS participant_username,
@@ -3430,12 +3435,12 @@ def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_
         FROM direct_conversations c
         JOIN users participant
             ON participant.id = CASE
-                WHEN c.user_one_id = ? THEN c.user_two_id
+                WHEN c.user_one_id = {param} THEN c.user_two_id
                 ELSE c.user_one_id
             END
-        WHERE c.id = ?
-          AND (c.user_one_id = ? OR c.user_two_id = ?)
-        """,
+        WHERE c.id = {param}
+          AND (c.user_one_id = {param} OR c.user_two_id = {param})
+        """.format(param=SQL_PARAM),
         (current_user_id, current_user_id, conversation_id, current_user_id, current_user_id),
     )
     row = cursor.fetchone()
@@ -3447,19 +3452,19 @@ def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_
 
 def mark_direct_conversation_read(cursor, conversation_row: Any, current_user_id: int):
     cursor.execute(
-        "SELECT MAX(id) FROM direct_messages WHERE conversation_id = ?",
+        f"SELECT MAX(id) FROM direct_messages WHERE conversation_id = {SQL_PARAM}",
         (conversation_row["id"],),
     )
     last_message_id = int(cursor.fetchone()[0] or 0)
 
     if conversation_row["user_one_id"] == current_user_id:
         cursor.execute(
-            "UPDATE direct_conversations SET user_one_last_read_message_id = ? WHERE id = ?",
+            f"UPDATE direct_conversations SET user_one_last_read_message_id = {SQL_PARAM} WHERE id = {SQL_PARAM}",
             (last_message_id, conversation_row["id"]),
         )
     else:
         cursor.execute(
-            "UPDATE direct_conversations SET user_two_last_read_message_id = ? WHERE id = ?",
+            f"UPDATE direct_conversations SET user_two_last_read_message_id = {SQL_PARAM} WHERE id = {SQL_PARAM}",
             (last_message_id, conversation_row["id"]),
         )
 
@@ -3472,7 +3477,7 @@ def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
             c.created_at,
             COALESCE(last_message.created_at, c.created_at) AS updated_at,
             CASE
-                WHEN c.user_one_id = ? THEN c.user_two_id
+                WHEN c.user_one_id = {param} THEN c.user_two_id
                 ELSE c.user_one_id
             END AS participant_id,
             participant.username AS participant_username,
@@ -3487,16 +3492,16 @@ def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
                 SELECT COUNT(*)
                 FROM direct_messages unread_message
                 WHERE unread_message.conversation_id = c.id
-                  AND unread_message.sender_id != ?
+                  AND unread_message.sender_id != {param}
                   AND unread_message.id > CASE
-                      WHEN c.user_one_id = ? THEN COALESCE(c.user_one_last_read_message_id, 0)
+                      WHEN c.user_one_id = {param} THEN COALESCE(c.user_one_last_read_message_id, 0)
                       ELSE COALESCE(c.user_two_last_read_message_id, 0)
                   END
             ) AS unread_count
         FROM direct_conversations c
         JOIN users participant
             ON participant.id = CASE
-                WHEN c.user_one_id = ? THEN c.user_two_id
+                WHEN c.user_one_id = {param} THEN c.user_two_id
                 ELSE c.user_one_id
             END
         LEFT JOIN direct_messages last_message
@@ -3507,8 +3512,8 @@ def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
                 ORDER BY dm.id DESC
                 LIMIT 1
             )
-        WHERE c.user_one_id = ? OR c.user_two_id = ?
-    """
+        WHERE c.user_one_id = {param} OR c.user_two_id = {param}
+    """.format(param=SQL_PARAM)
     query_params: tuple = (
         current_user_id,
         current_user_id,
@@ -3518,7 +3523,7 @@ def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
         current_user_id,
     )
     if hidden_user_ids:
-        placeholders = ",".join("?" for _ in hidden_user_ids)
+        placeholders = sql_placeholders(len(hidden_user_ids))
         query += f" AND participant.id NOT IN ({placeholders})"
         query_params = (*query_params, *hidden_user_ids)
 
@@ -3538,20 +3543,20 @@ def get_total_unread_direct_messages(cursor, current_user_id: int) -> int:
                 SELECT COUNT(*)
                 FROM direct_messages unread_message
                 WHERE unread_message.conversation_id = c.id
-                  AND unread_message.sender_id != ?
+                  AND unread_message.sender_id != {param}
                   AND unread_message.id > CASE
-                      WHEN c.user_one_id = ? THEN COALESCE(c.user_one_last_read_message_id, 0)
+                      WHEN c.user_one_id = {param} THEN COALESCE(c.user_one_last_read_message_id, 0)
                       ELSE COALESCE(c.user_two_last_read_message_id, 0)
                   END
             ) AS unread_count
             FROM direct_conversations c
             JOIN users participant
               ON participant.id = CASE
-                  WHEN c.user_one_id = ? THEN c.user_two_id
+                  WHEN c.user_one_id = {param} THEN c.user_two_id
                   ELSE c.user_one_id
               END
-            WHERE c.user_one_id = ? OR c.user_two_id = ?
-    """
+            WHERE c.user_one_id = {param} OR c.user_two_id = {param}
+    """.format(param=SQL_PARAM)
     query_params: tuple = (
         current_user_id,
         current_user_id,
@@ -3560,7 +3565,7 @@ def get_total_unread_direct_messages(cursor, current_user_id: int) -> int:
         current_user_id,
     )
     if hidden_user_ids:
-        placeholders = ",".join("?" for _ in hidden_user_ids)
+        placeholders = sql_placeholders(len(hidden_user_ids))
         query += f" AND participant.id NOT IN ({placeholders})"
         query_params = (*query_params, *hidden_user_ids)
 
@@ -3581,9 +3586,9 @@ def fetch_blocked_user_summaries(cursor, user_id: int) -> list[dict]:
             bu.created_at AS blocked_at
         FROM blocked_users bu
         JOIN users u ON u.id = bu.blocked_id
-        WHERE bu.blocker_id = ?
+        WHERE bu.blocker_id = {param}
         ORDER BY bu.created_at DESC, u.username ASC
-        """,
+        """.format(param=SQL_PARAM),
         (int(user_id),),
     )
     return [serialize_blocked_user_row(row) for row in cursor.fetchall()]
@@ -4048,7 +4053,7 @@ def compute_recommendation_feed(
     preferences = get_user_preferences(cursor, current_user_id)
 
     cursor.execute(
-        "SELECT movie_id, rating FROM user_ratings WHERE user_id = ? ORDER BY added_at DESC",
+        f"SELECT movie_id, rating FROM user_ratings WHERE user_id = {SQL_PARAM} ORDER BY added_at DESC",
         (current_user_id,),
     )
     rating_rows = [(int(row[0]), float(row[1])) for row in cursor.fetchall()]
@@ -4056,7 +4061,7 @@ def compute_recommendation_feed(
     disliked_ids = [movie_id for movie_id, rating in rating_rows if rating <= 2.5][:12]
 
     cursor.execute(
-        "SELECT movie_id FROM playlist_items WHERE playlist_id = ?",
+        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
         (watch_later_id,),
     )
     watch_later_ids = {int(row[0]) for row in cursor.fetchall()}
@@ -4065,11 +4070,11 @@ def compute_recommendation_feed(
         """
         SELECT movie_id, reaction_type, responded_at, shown_at
         FROM recommendation_impressions
-        WHERE user_id = ?
+        WHERE user_id = {param}
           AND mode = 'tinder'
         ORDER BY COALESCE(responded_at, shown_at) DESC
         LIMIT 500
-        """,
+        """.format(param=SQL_PARAM),
         (current_user_id,),
     )
     latest_reaction_by_movie: dict[int, tuple[str, str, str]] = {}
@@ -4113,7 +4118,7 @@ def compute_recommendation_feed(
         tinder_history_blocked_ids.add(movie_id)
 
     cursor.execute(
-        "SELECT movie_id FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 999999), added_at DESC LIMIT 12",
+        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(sort_index, 999999), added_at DESC LIMIT 12",
         (watch_later_id,),
     )
     recent_watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
@@ -6066,12 +6071,12 @@ def get_direct_conversation_messages(
             JOIN users sender ON sender.id = dm.sender_id
             LEFT JOIN direct_messages reply_dm ON reply_dm.id = dm.reply_to_message_id
             LEFT JOIN users reply_sender ON reply_sender.id = reply_dm.sender_id
-            WHERE dm.conversation_id = ?
+            WHERE dm.conversation_id = {param}
             ORDER BY dm.id DESC
-            LIMIT ?
+            LIMIT {param}
         ) ordered_messages
         ORDER BY id ASC
-        """,
+        """.format(param=SQL_PARAM),
         (conversation_id, safe_limit),
     )
     messages = [
@@ -6131,8 +6136,8 @@ async def create_direct_message(
             """
             SELECT id
             FROM direct_messages
-            WHERE id = ? AND conversation_id = ?
-            """,
+            WHERE id = {param} AND conversation_id = {param}
+            """.format(param=SQL_PARAM),
             (reply_to_message_id, conversation_id),
         )
         if not cursor.fetchone():
@@ -6152,8 +6157,8 @@ async def create_direct_message(
             movie_rating,
             reply_to_message_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param})
+        """.format(param=SQL_PARAM),
         (
             conversation_id,
             current_user["id"],
@@ -6168,12 +6173,12 @@ async def create_direct_message(
 
     if conversation_row["user_one_id"] == current_user["id"]:
         cursor.execute(
-            "UPDATE direct_conversations SET user_one_last_read_message_id = ? WHERE id = ?",
+            f"UPDATE direct_conversations SET user_one_last_read_message_id = {SQL_PARAM} WHERE id = {SQL_PARAM}",
             (message_id, conversation_id),
         )
     else:
         cursor.execute(
-            "UPDATE direct_conversations SET user_two_last_read_message_id = ? WHERE id = ?",
+            f"UPDATE direct_conversations SET user_two_last_read_message_id = {SQL_PARAM} WHERE id = {SQL_PARAM}",
             (message_id, conversation_id),
         )
 
@@ -6202,8 +6207,8 @@ async def create_direct_message(
         JOIN users sender ON sender.id = dm.sender_id
         LEFT JOIN direct_messages reply_dm ON reply_dm.id = dm.reply_to_message_id
         LEFT JOIN users reply_sender ON reply_sender.id = reply_dm.sender_id
-        WHERE dm.id = ?
-        """,
+        WHERE dm.id = {param}
+        """.format(param=SQL_PARAM),
         (message_id,),
     )
     message_row = cursor.fetchone()

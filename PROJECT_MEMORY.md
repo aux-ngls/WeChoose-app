@@ -175,6 +175,8 @@ PostgreSQL cleanup status:
 - the most sensitive SQLite-specific statements have already been replaced with native PostgreSQL-friendly SQL in the recommendation, ratings, playlists, follows/blocks, and direct-conversation paths.
 - `INSERT OR IGNORE`, `INSERT OR REPLACE`, and `rowid DESC` are now fully removed from `backend/main.py`;
 - the remaining compatibility debt is mainly the historical `?` placeholders plus the separate SQLite legacy bootstrap path.
+- the hottest recommendation and direct-message query paths are now also using backend-aware native placeholders instead of relying on the translator;
+- remaining raw `?` count in `backend/main.py`: 280.
 
 ## How To Resume Work
 
