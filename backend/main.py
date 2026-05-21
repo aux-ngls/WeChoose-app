@@ -3175,7 +3175,7 @@ def enqueue_push_notifications(
 
 def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, params=(), limit: Optional[int] = None) -> list[dict]:
     hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
-    query = f"""
+    query = """
         SELECT
             r.id,
             r.user_id,
