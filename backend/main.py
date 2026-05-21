@@ -201,6 +201,7 @@ def translate_sql_for_postgres(query: str) -> str:
         flags=re.IGNORECASE | re.DOTALL,
     )
     translated = translated.replace("rowid DESC", "movie_id DESC")
+    translated = translated.replace("%", "%%")
     translated = translated.replace("?", "%s")
     return translated
 
