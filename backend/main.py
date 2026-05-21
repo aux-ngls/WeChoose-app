@@ -178,29 +178,6 @@ class HybridRow:
 
 def translate_sql_for_postgres(query: str) -> str:
     translated = query
-    translated = re.sub(
-        r"INSERT\s+OR\s+IGNORE\s+INTO\s+([a-zA-Z_][\w]*)",
-        r"INSERT INTO \1",
-        translated,
-        flags=re.IGNORECASE,
-    )
-    if "INSERT OR IGNORE" in query.upper():
-        translated = f"{translated.rstrip().rstrip(';')} ON CONFLICT DO NOTHING"
-
-    translated = re.sub(
-        r"INSERT\s+OR\s+REPLACE\s+INTO\s+user_ratings\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)",
-        (
-            r"INSERT INTO user_ratings (\1) VALUES (\2) "
-            r"ON CONFLICT (user_id, movie_id) DO UPDATE SET "
-            r"rating = EXCLUDED.rating, "
-            r"title = EXCLUDED.title, "
-            r"poster_url = EXCLUDED.poster_url, "
-            r"added_at = CURRENT_TIMESTAMP"
-        ),
-        translated,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    translated = translated.replace("rowid DESC", "movie_id DESC")
     translated = translated.replace("%", "%%")
     translated = translated.replace("?", "%s")
     return translated
@@ -3398,8 +3375,9 @@ def get_or_create_direct_conversation(cursor, current_user_id: int, target_user_
     user_one_id, user_two_id = normalize_direct_pair(current_user_id, target_user_id)
     cursor.execute(
         """
-        INSERT OR IGNORE INTO direct_conversations (user_one_id, user_two_id)
+        INSERT INTO direct_conversations (user_one_id, user_two_id)
         VALUES (?, ?)
+        ON CONFLICT(user_one_id, user_two_id) DO NOTHING
         """,
         (user_one_id, user_two_id),
     )
@@ -3817,7 +3795,7 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
         real_id = get_or_create_watch_later_id(cursor, current_user["id"])
         conn.commit()
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, rowid DESC",
+            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
             (real_id,),
         )
     elif playlist_id == FAVORITES_SYSTEM_ID:
@@ -3833,7 +3811,7 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
     else:
         target_id = get_custom_playlist_id(cursor, playlist_id, current_user["id"])
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, rowid DESC",
+            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
             (target_id,),
         )
     
@@ -3959,7 +3937,15 @@ def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_cu
             poster = details["poster_url"] or poster
     
     cursor.execute(
-        "INSERT OR REPLACE INTO user_ratings (user_id, movie_id, rating, title, poster_url) VALUES (?, ?, ?, ?, ?)",
+        """
+        INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+            rating = EXCLUDED.rating,
+            title = EXCLUDED.title,
+            poster_url = EXCLUDED.poster_url,
+            added_at = CURRENT_TIMESTAMP
+        """,
         (current_user["id"], movie_id, rounded_rating, title, poster),
     )
     cursor.execute(
@@ -5253,7 +5239,11 @@ def follow_user(target_user_id: int, current_user: dict = Depends(get_current_us
     ensure_user_interaction_allowed(cursor, current_user["id"], target_user_id)
 
     cursor.execute(
-        "INSERT OR IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)",
+        """
+        INSERT INTO follows (follower_id, followed_id)
+        VALUES (?, ?)
+        ON CONFLICT(follower_id, followed_id) DO NOTHING
+        """,
         (current_user["id"], target_user_id),
     )
     should_notify = cursor.rowcount > 0
@@ -5313,7 +5303,11 @@ def block_user(target_user_id: int, current_user: dict = Depends(get_current_use
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
 
     cursor.execute(
-        "INSERT OR IGNORE INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?)",
+        """
+        INSERT INTO blocked_users (blocker_id, blocked_id)
+        VALUES (?, ?)
+        ON CONFLICT(blocker_id, blocked_id) DO NOTHING
+        """,
         (current_user["id"], target_user_id),
     )
     cursor.execute(
@@ -5560,8 +5554,13 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     )
     cursor.execute(
         """
-        INSERT OR REPLACE INTO user_ratings (user_id, movie_id, rating, title, poster_url)
+        INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
         VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+            rating = EXCLUDED.rating,
+            title = EXCLUDED.title,
+            poster_url = EXCLUDED.poster_url,
+            added_at = CURRENT_TIMESTAMP
         """,
         (
             current_user["id"],
@@ -5650,8 +5649,13 @@ def update_review(
     )
     cursor.execute(
         """
-        INSERT OR REPLACE INTO user_ratings (user_id, movie_id, rating, title, poster_url)
+        INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
         VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+            rating = EXCLUDED.rating,
+            title = EXCLUDED.title,
+            poster_url = EXCLUDED.poster_url,
+            added_at = CURRENT_TIMESTAMP
         """,
         (
             current_user["id"],

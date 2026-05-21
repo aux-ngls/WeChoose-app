@@ -169,6 +169,11 @@ SQLITE_PATH=/home/wechoose/backend/wechoose.db
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/qulte
 ```
 
+PostgreSQL cleanup status:
+- production runs on PostgreSQL;
+- the temporary SQL compatibility translator still exists for legacy `?` placeholders;
+- the most sensitive SQLite-specific statements have already been replaced with native PostgreSQL-friendly SQL in the recommendation, ratings, playlists, follows/blocks, and direct-conversation paths.
+
 ## How To Resume Work
 
 When starting a new conversation or after context compaction:

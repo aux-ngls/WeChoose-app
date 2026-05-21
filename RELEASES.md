@@ -143,3 +143,4 @@ npx eas submit --platform ios
 - If tunnel mode fails, it can be an ngrok issue rather than a Qulte code issue.
 - The server repository source of truth is `origin/main` at `git@github.com:aux-ngls/WeChoose-app.git`.
 - For the simplest first App Store release, the mobile app now targets iPhone only and expects support/privacy URLs from the web app.
+- Backend now runs on PostgreSQL in production, with the busiest former SQLite-only upsert/conflict paths already converted to native PostgreSQL SQL.
