@@ -3,6 +3,7 @@ import asyncio
 import base64
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
 import importlib.util
 import json
 import logging
@@ -249,26 +250,45 @@ class PostgresCompatConnection:
 
 class RealtimeConnectionManager:
     def __init__(self):
-        self.active_connections: dict[int, list[WebSocket]] = {}
+        self.active_connections: dict[int, list[asyncio.Queue]] = {}
 
     async def connect(self, user_id: int, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.setdefault(user_id, []).append(websocket)
+        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        self.active_connections.setdefault(user_id, []).append(queue)
+        logger.debug(
+            "Realtime connect user=%s connections=%s",
+            user_id,
+            len(self.active_connections.get(user_id, [])),
+        )
+        return queue
 
-    def disconnect(self, user_id: int, websocket: WebSocket):
+    def disconnect(self, user_id: int, queue: asyncio.Queue):
         user_connections = self.active_connections.get(user_id, [])
-        if websocket in user_connections:
-            user_connections.remove(websocket)
+        if queue in user_connections:
+            user_connections.remove(queue)
         if not user_connections and user_id in self.active_connections:
             del self.active_connections[user_id]
+        logger.debug(
+            "Realtime disconnect user=%s remaining=%s",
+            user_id,
+            len(self.active_connections.get(user_id, [])),
+        )
 
     async def send_to_user(self, user_id: int, payload: dict):
         user_connections = list(self.active_connections.get(user_id, []))
-        for connection in user_connections:
+        logger.debug(
+            "Realtime send user=%s connections=%s type=%s",
+            user_id,
+            len(user_connections),
+            payload.get("type"),
+        )
+        for queue in user_connections:
             try:
-                await connection.send_json(payload)
-            except Exception:
-                self.disconnect(user_id, connection)
+                queue.put_nowait(payload)
+            except asyncio.QueueFull:
+                logger.warning("Realtime queue pleine pour user=%s, fermeture de la connexion.", user_id)
+                self.disconnect(user_id, queue)
 
     async def broadcast_to_users(self, user_ids: list[int], payload: dict):
         unique_user_ids = list(dict.fromkeys(user_ids))
@@ -2631,6 +2651,26 @@ def get_tmdb_discover_movies(page: int, genre_ids_key: str) -> tuple[dict, ...]:
     return tuple(normalized_movies)
 
 
+def serialize_db_datetime(value):
+    if isinstance(value, datetime.datetime):
+        return value.isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    return value
+
+
+def serialize_json_safe(value):
+    if isinstance(value, bytes):
+        return decode_db_text(value)
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): serialize_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [serialize_json_safe(item) for item in value]
+    return value
+
+
 def serialize_review_row(row: Any) -> dict:
     row_keys = set(row.keys())
     return {
@@ -2640,7 +2680,7 @@ def serialize_review_row(row: Any) -> dict:
         "poster_url": row["poster_url"],
         "rating": row["rating"],
         "content": row["content"],
-        "created_at": row["created_at"],
+        "created_at": serialize_db_datetime(row["created_at"]),
         "author": {
             "id": row["user_id"],
             "username": row["username"],
@@ -2670,7 +2710,7 @@ def serialize_blocked_user_row(row: Any) -> dict:
         "id": row["id"],
         "username": row["username"],
         "avatar_url": row["avatar_url"],
-        "blocked_at": row["blocked_at"],
+        "blocked_at": serialize_db_datetime(row["blocked_at"]),
     }
 
 
@@ -2681,7 +2721,7 @@ def serialize_comment_row(row: Any) -> dict:
         "review_id": row["review_id"],
         "parent_id": row["parent_id"],
         "content": row["content"],
-        "created_at": row["created_at"],
+        "created_at": serialize_db_datetime(row["created_at"]),
         "author": {
             "id": row["user_id"],
             "username": row["username"],
@@ -2714,7 +2754,7 @@ def serialize_notification_row(row: Any) -> dict:
     return {
         "id": row["id"],
         "type": row["type"],
-        "created_at": row["created_at"],
+        "created_at": serialize_db_datetime(row["created_at"]),
         "is_read": bool(row["is_read"]),
         "message": build_notification_message(row),
         "actor": {
@@ -3315,7 +3355,7 @@ def serialize_direct_message_row(row: Any, current_user_id: int) -> dict:
     return {
         "id": row["id"],
         "content": row["content"] or "",
-        "created_at": row["created_at"],
+        "created_at": serialize_db_datetime(row["created_at"]),
         "is_mine": row["sender_id"] == current_user_id,
         "sender": {
             "id": row["sender_id"],
@@ -3371,8 +3411,8 @@ def serialize_direct_conversation_row(row: Any) -> dict:
     row_keys = set(row.keys())
     return {
         "id": row["id"],
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
+        "created_at": serialize_db_datetime(row["created_at"]),
+        "updated_at": serialize_db_datetime(row["updated_at"]),
         "participant": {
             "id": row["participant_id"],
             "username": row["participant_username"],
@@ -3382,7 +3422,7 @@ def serialize_direct_conversation_row(row: Any) -> dict:
             {
                 "id": row["last_message_id"],
                 "content": row["last_message_content"] or "",
-                "created_at": row["updated_at"],
+                "created_at": serialize_db_datetime(row["updated_at"]),
                 "sender_id": row["last_sender_id"],
                 "preview": build_message_preview(row["last_message_content"], row["last_movie_title"]),
                 "movie": (
@@ -6123,6 +6163,20 @@ def get_direct_conversation_messages(
     }
 
 
+@app.post("/messages/conversations/{conversation_id}/read")
+def mark_direct_conversation_as_read(
+    conversation_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
+    mark_direct_conversation_read(cursor, conversation_row, current_user["id"])
+    conn.commit()
+    conn.close()
+    return {"status": "ok"}
+
+
 @app.post("/messages/conversations/{conversation_id}/messages")
 async def create_direct_message(
     conversation_id: int,
@@ -6302,6 +6356,11 @@ def report_direct_conversation(
     return {"status": "reported"}
 
 
+async def consume_realtime_websocket(websocket: WebSocket):
+    while True:
+        await websocket.receive_text()
+
+
 @app.websocket("/ws/realtime")
 async def realtime_websocket(websocket: WebSocket, token: str = Query(...)):
     try:
@@ -6310,14 +6369,34 @@ async def realtime_websocket(websocket: WebSocket, token: str = Query(...)):
         await websocket.close(code=1008)
         return
 
-    await realtime_manager.connect(user["id"], websocket)
+    queue = await realtime_manager.connect(user["id"], websocket)
+    receive_task = asyncio.create_task(consume_realtime_websocket(websocket))
     try:
         while True:
-            await websocket.receive_text()
+            send_task = asyncio.create_task(queue.get())
+            done, pending = await asyncio.wait(
+                {receive_task, send_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if receive_task in done:
+                receive_task.result()
+
+            if send_task in done:
+                await websocket.send_json(serialize_json_safe(send_task.result()))
+            else:
+                send_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await send_task
     except WebSocketDisconnect:
-        realtime_manager.disconnect(user["id"], websocket)
+        realtime_manager.disconnect(user["id"], queue)
     except Exception:
-        realtime_manager.disconnect(user["id"], websocket)
+        logger.exception("Realtime websocket ferme sur erreur.")
+        realtime_manager.disconnect(user["id"], queue)
+    finally:
+        receive_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await receive_task
 
 
 # --- 8. ENDPOINTS STANDARDS (Inchangé) ---

@@ -416,6 +416,14 @@ export async function fetchConversation(
   return request<DirectConversationDetails>(`/messages/conversations/${conversationId}${suffix}`, undefined, token);
 }
 
+export async function markConversationRead(token: string, conversationId: number): Promise<void> {
+  await request<null>(
+    `/messages/conversations/${conversationId}/read`,
+    { method: 'POST' },
+    token,
+  );
+}
+
 export async function sendMessage(
   token: string,
   conversationId: number,

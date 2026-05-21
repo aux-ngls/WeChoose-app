@@ -14,13 +14,13 @@ import {
   searchSocialUsers,
   startConversation,
 } from '../api/client';
-import { API_URL } from '../api/config';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import type { DirectConversationSummary, SocialUser } from '../types';
 import { formatDate } from '../utils/format';
 import { NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
+import { connectRealtimeSocket } from '../utils/realtime';
 
 let conversationsCache: {
   username: string;
@@ -190,12 +190,10 @@ export default function MessagesScreen() {
       return undefined;
     }
 
-    const websocketUrl = `${API_URL.replace(/^http/, 'ws')}/ws/realtime?token=${encodeURIComponent(session.token)}`;
-    const socket = new WebSocket(websocketUrl);
-
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(String(event.data)) as RealtimeConversationPayload;
+    return connectRealtimeSocket({
+      token: session.token,
+      onMessage: (rawPayload) => {
+        const payload = rawPayload as RealtimeConversationPayload;
         if (payload.type !== 'messages.updated') {
           return;
         }
@@ -213,12 +211,8 @@ export default function MessagesScreen() {
         }
 
         void loadConversations();
-      } catch {
-        // Best-effort realtime update; focus refresh still reconciles the inbox.
-      }
-    };
-
-    return () => socket.close();
+      },
+    });
   }, [loadConversations, session, updateConversations]);
 
   useEffect(() => {

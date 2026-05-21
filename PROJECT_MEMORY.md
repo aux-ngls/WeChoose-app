@@ -181,6 +181,7 @@ PostgreSQL cleanup status:
 - the remaining database compatibility surface is only the explicit SQLite legacy path plus backend-aware helpers like `SQL_PARAM`.
 - some PostgreSQL `TEXT` values in the current runtime can surface as `bytes`; JSON/text preference loaders now decode DB text defensively before parsing or normalizing.
 - a full backend smoke test after the migration passed end-to-end with temporary users: auth, onboarding, profile prefs, Tinder feed, movie details, playlists, ratings, social profile/feed/reviews/comments/likes/notifications, and private messages.
+- private messaging realtime is now validated through WebSocket: backend includes `websockets`, the manager uses per-connection send queues, mobile reconnects automatically with heartbeat, and a local end-to-end latency check received `messages.updated` in about 58 ms.
 
 ## How To Resume Work
 

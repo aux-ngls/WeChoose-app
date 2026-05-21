@@ -24,16 +24,17 @@ import {
   ApiError,
   blockUser,
   fetchConversation,
+  markConversationRead,
   reportConversation,
   sendMessage,
 } from '../api/client';
-import { API_URL } from '../api/config';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type DirectMessage } from '../types';
 import { NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
+import { connectRealtimeSocket } from '../utils/realtime';
 
 type ConversationItem =
   | { type: 'day'; id: string; label: string }
@@ -217,10 +218,15 @@ export default function ConversationScreen({
   const messageCountRef = useRef(0);
   const optimisticMessageIdRef = useRef(-1);
   const loadingConversationRef = useRef(false);
+  const participantSnapshotRef = useRef({ participantId, participantUsername });
   const composerBottomGap = keyboardLift > 0 ? keyboardLift : Math.max(insets.bottom, 10);
   const replyBannerOpacity = useRef(new Animated.Value(0)).current;
   const replyBannerTranslateY = useRef(new Animated.Value(10)).current;
   const activeReplyTarget = swipePreviewTarget ?? replyTarget;
+
+  useEffect(() => {
+    participantSnapshotRef.current = { participantId, participantUsername };
+  }, [participantId, participantUsername]);
 
   const scrollToLatestMessage = useCallback((animated = false) => {
     requestAnimationFrame(() => {
@@ -325,40 +331,39 @@ export default function ConversationScreen({
       return undefined;
     }
 
-    const websocketUrl = `${API_URL.replace(/^http/, 'ws')}/ws/realtime?token=${encodeURIComponent(session.token)}`;
-    const socket = new WebSocket(websocketUrl);
-
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(String(event.data)) as { type?: string; conversation_id?: number; message?: DirectMessage };
+    return connectRealtimeSocket({
+      token: session.token,
+      onMessage: (rawPayload) => {
+        const payload = rawPayload as { type?: string; conversation_id?: number; message?: DirectMessage };
         if (payload.type === 'messages.updated' && payload.conversation_id === route.params.conversationId) {
           if (payload.message) {
             const realtimeMessage = normalizeRealtimeMessage(payload.message, session.username);
+            const participantSnapshot = participantSnapshotRef.current;
             shouldScrollToEndRef.current = true;
             isNearBottomRef.current = true;
             setMessages((current) => {
               const nextMessages = mergeRealtimeMessage(current, realtimeMessage);
               conversationCache.set(cacheKey, {
-                participantId,
-                participantUsername,
+                participantId: participantSnapshot.participantId,
+                participantUsername: participantSnapshot.participantUsername,
                 messages: nextMessages,
               });
               return areMessageListsEquivalent(current, nextMessages) ? current : nextMessages;
             });
             if (!realtimeMessage.is_mine) {
-              void loadConversation();
+              void markConversationRead(session.token, route.params.conversationId).then(() => {
+                DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
+              }).catch(() => {
+                void loadConversation();
+              });
             }
             return;
           }
           void loadConversation();
         }
-      } catch {
-        // Realtime payloads are best-effort; the fallback polling still keeps the conversation fresh.
-      }
-    };
-
-    return () => socket.close();
-  }, [cacheKey, loadConversation, participantId, participantUsername, route.params.conversationId, session]);
+      },
+    });
+  }, [cacheKey, loadConversation, route.params.conversationId, session]);
 
   useFocusEffect(
     useCallback(() => {
@@ -372,7 +377,7 @@ export default function ConversationScreen({
       void loadConversation();
       const interval = setInterval(() => {
         void loadConversation();
-      }, 15000);
+      }, 45000);
       return () => clearInterval(interval);
     }, [loadConversation]),
   );

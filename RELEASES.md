@@ -149,3 +149,4 @@ npx eas submit --platform ios
 - Backend PostgreSQL runtime now executes native SQL directly: the temporary SQL translation layer has been removed from the Postgres cursor path.
 - Preference/profile reads now defensively decode PostgreSQL text values before JSON parsing/normalization, fixing profile description and soundtrack round-trips.
 - A full production smoke test passed after the PostgreSQL migration across auth, recommendations, playlists, ratings, social flows, notifications, and direct messages.
+- Direct messaging realtime delivery is now active: WebSocket support is installed server-side, outgoing events use per-socket queues, mobile reconnects with heartbeat, and local latency validation received a message event in 58 ms.
