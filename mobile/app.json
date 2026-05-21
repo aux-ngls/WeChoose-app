@@ -2,7 +2,7 @@
   "expo": {
     "name": "Qulte",
     "slug": "qulte-mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -16,7 +16,8 @@
       "icon": "./assets/icon.png",
       "supportsTablet": false,
       "requireFullScreen": true,
-      "bundleIdentifier": "dev.dury.qulte"
+      "bundleIdentifier": "dev.dury.qulte",
+      "buildNumber": "19"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +25,8 @@
         "backgroundColor": "#09090b"
       },
       "edgeToEdgeEnabled": true,
-      "package": "dev.dury.qulte"
+      "package": "dev.dury.qulte",
+      "versionCode": 19
     },
     "web": {
       "favicon": "./assets/favicon.png"
