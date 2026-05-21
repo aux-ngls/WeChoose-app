@@ -191,7 +191,7 @@ def sql_placeholders(count: int) -> str:
 
 def translate_sql_for_postgres(query: str) -> str:
     translated = query
-    translated = translated.replace("%", "%%")
+    translated = re.sub(r"%(?![%sbt])", "%%", translated)
     translated = translated.replace("?", "%s")
     return translated
 
@@ -2445,7 +2445,7 @@ def build_collaborative_candidate_scores(cursor, current_user_id: int, blocked_i
         WITH base AS (
             SELECT movie_id, rating
             FROM user_ratings
-            WHERE user_id = ?
+            WHERE user_id = {param}
         )
         SELECT
             other.user_id,
@@ -2463,12 +2463,12 @@ def build_collaborative_candidate_scores(cursor, current_user_id: int, blocked_i
         FROM base
         JOIN user_ratings other
           ON other.movie_id = base.movie_id
-         AND other.user_id != ?
+         AND other.user_id != {param}
         GROUP BY other.user_id
         HAVING overlap_count >= 2 AND similarity_score > 0
         ORDER BY similarity_score DESC, overlap_count DESC
         LIMIT 10
-        """,
+        """.format(param=SQL_PARAM),
         (current_user_id, current_user_id),
     )
     neighbors = cursor.fetchall()
@@ -2483,10 +2483,10 @@ def build_collaborative_candidate_scores(cursor, current_user_id: int, blocked_i
             """
             SELECT movie_id, rating
             FROM user_ratings
-            WHERE user_id = ? AND rating >= 4
+            WHERE user_id = {param} AND rating >= 4
             ORDER BY added_at DESC
             LIMIT 24
-            """,
+            """.format(param=SQL_PARAM),
             (neighbor_id,),
         )
         for rank, (movie_id, rating) in enumerate(cursor.fetchall()):
@@ -3606,24 +3606,24 @@ def fetch_blocked_user_summaries(cursor, user_id: int) -> list[dict]:
 def purge_user_data(cursor, user_id: int, *, delete_account: bool) -> tuple[dict[str, int], Optional[str]]:
     reset_counts: dict[str, int] = {}
 
-    cursor.execute("SELECT id FROM reviews WHERE user_id = ?", (user_id,))
+    cursor.execute(f"SELECT id FROM reviews WHERE user_id = {SQL_PARAM}", (user_id,))
     review_ids = [int(row["id"]) for row in cursor.fetchall()]
-    cursor.execute("SELECT id FROM comments WHERE user_id = ?", (user_id,))
+    cursor.execute(f"SELECT id FROM comments WHERE user_id = {SQL_PARAM}", (user_id,))
     comment_ids = [int(row["id"]) for row in cursor.fetchall()]
-    cursor.execute("SELECT id FROM playlists WHERE user_id = ?", (user_id,))
+    cursor.execute(f"SELECT id FROM playlists WHERE user_id = {SQL_PARAM}", (user_id,))
     playlist_ids = [int(row["id"]) for row in cursor.fetchall()]
     cursor.execute(
-        "SELECT id FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?",
+        f"SELECT id FROM direct_conversations WHERE user_one_id = {SQL_PARAM} OR user_two_id = {SQL_PARAM}",
         (user_id, user_id),
     )
     conversation_ids = [int(row["id"]) for row in cursor.fetchall()]
-    cursor.execute("SELECT avatar_url FROM users WHERE id = ?", (user_id,))
+    cursor.execute(f"SELECT avatar_url FROM users WHERE id = {SQL_PARAM}", (user_id,))
     avatar_row = cursor.fetchone()
     previous_avatar_url = avatar_row["avatar_url"] if avatar_row else None
 
     reset_counts["notifications"] = 0
     cursor.execute(
-        "DELETE FROM notifications WHERE user_id = ? OR actor_user_id = ?",
+        f"DELETE FROM notifications WHERE user_id = {SQL_PARAM} OR actor_user_id = {SQL_PARAM}",
         (user_id, user_id),
     )
     reset_counts["notifications"] += max(cursor.rowcount, 0)
@@ -3633,49 +3633,58 @@ def purge_user_data(cursor, user_id: int, *, delete_account: bool) -> tuple[dict
     reset_counts["comments"] = 0
     reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "review_id", review_ids)
     reset_counts["comments"] += delete_many_by_ids(cursor, "comments", "parent_id", comment_ids)
-    cursor.execute("DELETE FROM comments WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM comments WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["comments"] += max(cursor.rowcount, 0)
 
     reset_counts["review_likes"] = 0
     reset_counts["review_likes"] += delete_many_by_ids(cursor, "review_likes", "review_id", review_ids)
-    cursor.execute("DELETE FROM review_likes WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM review_likes WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["review_likes"] += max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM reviews WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM reviews WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["reviews"] = max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM follows WHERE follower_id = ? OR followed_id = ?", (user_id, user_id))
+    cursor.execute(
+        f"DELETE FROM follows WHERE follower_id = {SQL_PARAM} OR followed_id = {SQL_PARAM}",
+        (user_id, user_id),
+    )
     reset_counts["follows"] = max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM user_ratings WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM user_ratings WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["ratings"] = max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM recommendation_impressions WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM recommendation_impressions WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["recommendation_impressions"] = max(cursor.rowcount, 0)
 
     reset_counts["playlist_items"] = delete_many_by_ids(cursor, "playlist_items", "playlist_id", playlist_ids)
-    cursor.execute("DELETE FROM playlists WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM playlists WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["playlists"] = max(cursor.rowcount, 0)
 
     reset_counts["direct_messages"] = delete_many_by_ids(cursor, "direct_messages", "conversation_id", conversation_ids)
-    cursor.execute("DELETE FROM direct_conversations WHERE user_one_id = ? OR user_two_id = ?", (user_id, user_id))
+    cursor.execute(
+        f"DELETE FROM direct_conversations WHERE user_one_id = {SQL_PARAM} OR user_two_id = {SQL_PARAM}",
+        (user_id, user_id),
+    )
     reset_counts["direct_conversations"] = max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM user_preferences WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM user_preferences WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["preferences"] = max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM mobile_devices WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM mobile_devices WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["mobile_devices"] = max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM web_push_subscriptions WHERE user_id = ?", (user_id,))
+    cursor.execute(f"DELETE FROM web_push_subscriptions WHERE user_id = {SQL_PARAM}", (user_id,))
     reset_counts["web_push_subscriptions"] = max(cursor.rowcount, 0)
 
-    cursor.execute("DELETE FROM blocked_users WHERE blocker_id = ? OR blocked_id = ?", (user_id, user_id))
+    cursor.execute(
+        f"DELETE FROM blocked_users WHERE blocker_id = {SQL_PARAM} OR blocked_id = {SQL_PARAM}",
+        (user_id, user_id),
+    )
     reset_counts["blocked_users"] = max(cursor.rowcount, 0)
 
     reset_counts["moderation_reports"] = 0
     cursor.execute(
-        "DELETE FROM moderation_reports WHERE reporter_user_id = ? OR target_user_id = ?",
+        f"DELETE FROM moderation_reports WHERE reporter_user_id = {SQL_PARAM} OR target_user_id = {SQL_PARAM}",
         (user_id, user_id),
     )
     reset_counts["moderation_reports"] += max(cursor.rowcount, 0)
@@ -3684,10 +3693,10 @@ def purge_user_data(cursor, user_id: int, *, delete_account: bool) -> tuple[dict
     reset_counts["moderation_reports"] += delete_many_by_ids(cursor, "moderation_reports", "target_conversation_id", conversation_ids)
 
     if delete_account:
-        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        cursor.execute(f"DELETE FROM users WHERE id = {SQL_PARAM}", (user_id,))
         reset_counts["user"] = max(cursor.rowcount, 0)
     else:
-        cursor.execute("UPDATE users SET avatar_url = NULL WHERE id = ?", (user_id,))
+        cursor.execute(f"UPDATE users SET avatar_url = NULL WHERE id = {SQL_PARAM}", (user_id,))
         reset_counts["avatar"] = 1 if previous_avatar_url else 0
         get_or_create_watch_later_id(cursor, user_id)
 
@@ -3756,7 +3765,7 @@ def get_all_playlists(current_user: dict = Depends(get_current_user)):
     get_or_create_watch_later_id(cursor, current_user["id"])
     conn.commit()
     cursor.execute(
-        "SELECT id, name FROM playlists WHERE user_id = ? AND name != ? ORDER BY id DESC",
+        f"SELECT id, name FROM playlists WHERE user_id = {SQL_PARAM} AND name != {SQL_PARAM} ORDER BY id DESC",
         (current_user["id"], WATCH_LATER_NAME),
     )
     custom = [
@@ -3800,7 +3809,7 @@ def create_playlist(p: PlaylistCreate, current_user: dict = Depends(get_current_
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT 1 FROM playlists WHERE user_id = ? AND lower(name) = lower(?)",
+        f"SELECT 1 FROM playlists WHERE user_id = {SQL_PARAM} AND lower(name) = lower({SQL_PARAM})",
         (current_user["id"], playlist_name),
     )
     if cursor.fetchone():
@@ -3809,7 +3818,7 @@ def create_playlist(p: PlaylistCreate, current_user: dict = Depends(get_current_
 
     new_id = execute_insert_and_get_id(
         cursor,
-        "INSERT INTO playlists (name, user_id) VALUES (?, ?)",
+        f"INSERT INTO playlists (name, user_id) VALUES ({SQL_PARAM}, {SQL_PARAM})",
         (playlist_name, current_user["id"]),
     )
     conn.commit()
@@ -3825,23 +3834,23 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
         real_id = get_or_create_watch_later_id(cursor, current_user["id"])
         conn.commit()
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
+            f"SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
             (real_id,),
         )
     elif playlist_id == FAVORITES_SYSTEM_ID:
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = ? AND rating >= 4 ORDER BY added_at DESC",
+            f"SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = {SQL_PARAM} AND rating >= 4 ORDER BY added_at DESC",
             (current_user["id"],),
         )
     elif playlist_id == HISTORY_SYSTEM_ID:
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = ? ORDER BY added_at DESC",
+            f"SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = {SQL_PARAM} ORDER BY added_at DESC",
             (current_user["id"],),
         )
     else:
         target_id = get_custom_playlist_id(cursor, playlist_id, current_user["id"])
         cursor.execute(
-            "SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index FROM playlist_items WHERE playlist_id = ? ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
+            f"SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
             (target_id,),
         )
     
@@ -3871,12 +3880,12 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
     if info:
         try:
             cursor.execute(
-                "SELECT COALESCE(MAX(sort_index), 0) + 1 FROM playlist_items WHERE playlist_id = ?",
+                f"SELECT COALESCE(MAX(sort_index), 0) + 1 FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
                 (target_id,),
             )
             next_sort_index = int(cursor.fetchone()[0] or 1)
             cursor.execute(
-                "INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating, added_at, sort_index) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)",
+                f"INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating, added_at, sort_index) VALUES ({SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, CURRENT_TIMESTAMP, {SQL_PARAM})",
                 (target_id, info["id"], info["title"], info["poster_url"], info["rating"], next_sort_index),
             )
             reaction_type = "watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "playlist_add"
@@ -3900,7 +3909,7 @@ def remove_from_specific_playlist(playlist_id: int, movie_id: int, current_user:
     target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
 
     cursor.execute(
-        "DELETE FROM playlist_items WHERE playlist_id = ? AND movie_id = ?",
+        f"DELETE FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
         (target_id, movie_id),
     )
     reaction_type = "undo_watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "undo_playlist_add"
@@ -3929,7 +3938,7 @@ def reorder_playlist(
     target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
 
     cursor.execute(
-        "SELECT movie_id FROM playlist_items WHERE playlist_id = ?",
+        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
         (target_id,),
     )
     existing_movie_ids = {int(row[0]) for row in cursor.fetchall()}
@@ -3939,7 +3948,7 @@ def reorder_playlist(
 
     for index, movie_id in enumerate(ordered_movie_ids, start=1):
         cursor.execute(
-            "UPDATE playlist_items SET sort_index = ? WHERE playlist_id = ? AND movie_id = ?",
+            f"UPDATE playlist_items SET sort_index = {SQL_PARAM} WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
             (index, target_id, movie_id),
         )
 
@@ -3969,21 +3978,21 @@ def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_cu
     cursor.execute(
         """
         INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES ({param}, {param}, {param}, {param}, {param})
         ON CONFLICT(user_id, movie_id) DO UPDATE SET
             rating = EXCLUDED.rating,
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url,
             added_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"], movie_id, rounded_rating, title, poster),
     )
     cursor.execute(
-        "UPDATE reviews SET rating = ? WHERE user_id = ? AND movie_id = ?",
+        f"UPDATE reviews SET rating = {SQL_PARAM} WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
         (rounded_rating, current_user["id"], movie_id),
     )
     cursor.execute(
-        "DELETE FROM playlist_items WHERE playlist_id = ? AND movie_id = ?",
+        f"DELETE FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
         (watch_later_id, movie_id),
     )
     mark_recommendation_reaction(
@@ -4003,7 +4012,7 @@ def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id FROM reviews WHERE user_id = ? AND movie_id = ? LIMIT 1",
+        f"SELECT id FROM reviews WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM} LIMIT 1",
         (current_user["id"], movie_id),
     )
     if cursor.fetchone():
@@ -4013,7 +4022,7 @@ def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_
             detail="Cette note est liée à une critique. Modifie ou supprime la critique pour retirer la note.",
         )
     cursor.execute(
-        "DELETE FROM user_ratings WHERE user_id = ? AND movie_id = ?",
+        f"DELETE FROM user_ratings WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
         (current_user["id"], movie_id),
     )
     mark_recommendation_reaction(
@@ -4032,7 +4041,7 @@ def get_user_movie_rating(movie_id: int, current_user: dict = Depends(get_curren
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT rating FROM user_ratings WHERE user_id = ? AND movie_id = ?",
+        f"SELECT rating FROM user_ratings WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
         (current_user["id"], movie_id),
     )
     row = cursor.fetchone()
@@ -4797,8 +4806,8 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = ?
-        """,
+        WHERE user_id = {param}
+        """.format(param=SQL_PARAM),
         (current_user["id"],),
     )
     overview_row = dict(cursor.fetchone() or {})
@@ -4814,10 +4823,10 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = ?
+        WHERE user_id = {param}
         GROUP BY algorithm_variant, mode
         ORDER BY shown_count DESC
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"],),
     )
     grouped_rows = [dict(row) for row in cursor.fetchall()]
@@ -4835,10 +4844,10 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             responded_at,
             seed_title
         FROM recommendation_impressions
-        WHERE user_id = ?
+        WHERE user_id = {param}
         ORDER BY shown_at DESC
         LIMIT 24
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"],),
     )
     recent_rows = [dict(row) for row in cursor.fetchall()]
@@ -4853,12 +4862,12 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = ?
+        WHERE user_id = {param}
         GROUP BY movie_id
         HAVING SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) > 0
         ORDER BY positive_count DESC, response_count DESC, average_rating DESC
         LIMIT 6
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"],),
     )
     top_movie_rows = [dict(row) for row in cursor.fetchall()]
@@ -4874,13 +4883,13 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = ?
+        WHERE user_id = {param}
           AND COALESCE(seed_title, '') != ''
         GROUP BY seed_movie_id, seed_title
         HAVING SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) > 0
         ORDER BY positive_count DESC, response_count DESC, average_rating DESC
         LIMIT 6
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"],),
     )
     top_seed_rows = [dict(row) for row in cursor.fetchall()]
@@ -5065,10 +5074,10 @@ def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dic
         FROM user_ratings ur
         JOIN follows f ON f.followed_id = ur.user_id
         JOIN users u ON u.id = ur.user_id
-        WHERE f.follower_id = ?
+        WHERE f.follower_id = {param}
         ORDER BY ur.added_at DESC
-        LIMIT ?
-        """,
+        LIMIT {param}
+        """.format(param=SQL_PARAM),
         (current_user_id, limit),
     )
     movies = [dict(row) for row in cursor.fetchall()]
@@ -5163,12 +5172,12 @@ def social_users(
             EXISTS(
                 SELECT 1
                 FROM follows f
-                WHERE f.follower_id = ? AND f.followed_id = u.id
+                WHERE f.follower_id = {param} AND f.followed_id = u.id
             ) AS is_following
         FROM users u
-        WHERE u.id != ?
-          AND (? = '' OR lower(u.username) LIKE lower(?))
-    """
+        WHERE u.id != {param}
+          AND ({param} = '' OR lower(u.username) LIKE lower({param}))
+    """.format(param=SQL_PARAM)
     query_params: tuple = (
         current_user["id"],
         current_user["id"],
@@ -5176,14 +5185,14 @@ def social_users(
         f"%{search_value}%",
     )
     if hidden_user_ids:
-        placeholders = ",".join("?" for _ in hidden_user_ids)
+        placeholders = sql_placeholders(len(hidden_user_ids))
         query_sql += f" AND u.id NOT IN ({placeholders})"
         query_params = (*query_params, *hidden_user_ids)
 
     query_sql += """
         ORDER BY reviews_count DESC, followers_count DESC, u.username ASC
-        LIMIT ?
-    """
+        LIMIT {param}
+    """.format(param=SQL_PARAM)
     query_params = (*query_params, safe_limit)
     cursor.execute(query_sql, query_params)
     users = [serialize_user_row(row) for row in cursor.fetchall()]
@@ -5963,7 +5972,7 @@ def report_social_user(
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    cursor.execute(f"SELECT id FROM users WHERE id = {SQL_PARAM}", (target_user_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -5988,7 +5997,7 @@ def report_social_review(
 ):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, user_id FROM reviews WHERE id = ?", (review_id,))
+    cursor.execute(f"SELECT id, user_id FROM reviews WHERE id = {SQL_PARAM}", (review_id,))
     review_row = cursor.fetchone()
     if not review_row:
         conn.close()
@@ -6024,7 +6033,7 @@ def start_direct_conversation(target_user_id: int, current_user: dict = Depends(
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    cursor.execute(f"SELECT id FROM users WHERE id = {SQL_PARAM}", (target_user_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -6639,7 +6648,7 @@ def dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user))
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT 1 FROM user_ratings WHERE user_id = ? AND movie_id = ? LIMIT 1",
+        f"SELECT 1 FROM user_ratings WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM} LIMIT 1",
         (current_user["id"], movie_id),
     )
     if cursor.fetchone():

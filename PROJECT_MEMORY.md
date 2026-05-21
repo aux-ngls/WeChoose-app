@@ -178,6 +178,8 @@ PostgreSQL cleanup status:
 - the hottest recommendation and direct-message query paths are now also using backend-aware native placeholders instead of relying on the translator;
 - remaining raw `?` count in `backend/main.py`: 103;
 - auth/profile helpers, recommendation helpers, push/webpush helpers, notifications, and a large part of the social flows are now also converted off raw SQL `?` placeholders.
+- there are no remaining SQL queries in `backend/main.py` that still rely on raw `?` placeholders;
+- the only remaining `?` characters in the file are non-SQL ones: URLs, HTML text, route strings, the `SQL_PARAM` definition, and the compatibility translator itself.
 
 ## How To Resume Work
 
