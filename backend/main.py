@@ -14,7 +14,7 @@ import time
 import uuid
 from functools import lru_cache
 from threading import Lock
-from typing import Optional
+from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
@@ -174,6 +174,14 @@ class HybridRow:
 
     def __len__(self):
         return len(self._values)
+
+
+def row_uses_mapping_access(row: object) -> bool:
+    return hasattr(row, "keys")
+
+
+def row_get_value(row: Any, key: str, index: int):
+    return row[key] if row_uses_mapping_access(row) else row[index]
 
 
 def translate_sql_for_postgres(query: str) -> str:
@@ -591,18 +599,16 @@ def get_display_movie_title(movie_id: int) -> str:
     return f"Film #{movie_id}"
 
 
-def init_db():
-    os.makedirs(AVATAR_UPLOAD_DIR, exist_ok=True)
+def init_postgres_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    with open(POSTGRES_SCHEMA_PATH, "r", encoding="utf-8") as schema_file:
+        cursor.execute(schema_file.read())
+    conn.commit()
+    conn.close()
 
-    if DATABASE_BACKEND == "postgres":
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        with open(POSTGRES_SCHEMA_PATH, "r", encoding="utf-8") as schema_file:
-            cursor.execute(schema_file.read())
-        conn.commit()
-        conn.close()
-        return
 
+def init_sqlite_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -878,6 +884,16 @@ def init_db():
     
     conn.commit()
     conn.close()
+
+
+def init_db():
+    os.makedirs(AVATAR_UPLOAD_DIR, exist_ok=True)
+
+    if DATABASE_BACKEND == "postgres":
+        init_postgres_db()
+        return
+
+    init_sqlite_db()
 
 init_db()
 
@@ -2600,7 +2616,7 @@ def get_tmdb_discover_movies(page: int, genre_ids_key: str) -> tuple[dict, ...]:
     return tuple(normalized_movies)
 
 
-def serialize_review_row(row: sqlite3.Row) -> dict:
+def serialize_review_row(row: Any) -> dict:
     row_keys = set(row.keys())
     return {
         "id": row["id"],
@@ -2621,7 +2637,7 @@ def serialize_review_row(row: sqlite3.Row) -> dict:
     }
 
 
-def serialize_user_row(row: sqlite3.Row) -> dict:
+def serialize_user_row(row: Any) -> dict:
     row_keys = set(row.keys())
     return {
         "id": row["id"],
@@ -2634,7 +2650,7 @@ def serialize_user_row(row: sqlite3.Row) -> dict:
     }
 
 
-def serialize_blocked_user_row(row: sqlite3.Row) -> dict:
+def serialize_blocked_user_row(row: Any) -> dict:
     return {
         "id": row["id"],
         "username": row["username"],
@@ -2643,7 +2659,7 @@ def serialize_blocked_user_row(row: sqlite3.Row) -> dict:
     }
 
 
-def serialize_comment_row(row: sqlite3.Row) -> dict:
+def serialize_comment_row(row: Any) -> dict:
     row_keys = set(row.keys())
     return {
         "id": row["id"],
@@ -2660,7 +2676,7 @@ def serialize_comment_row(row: sqlite3.Row) -> dict:
     }
 
 
-def build_notification_message(row: sqlite3.Row) -> str:
+def build_notification_message(row: Any) -> str:
     actor_username = row["actor_username"]
     review_title = row["review_title"] or "ce film"
     notification_type = row["type"]
@@ -2678,7 +2694,7 @@ def build_notification_message(row: sqlite3.Row) -> str:
     return f"Nouvelle activité de @{actor_username}"
 
 
-def serialize_notification_row(row: sqlite3.Row) -> dict:
+def serialize_notification_row(row: Any) -> dict:
     comment_preview = row["comment_preview"] or ""
     return {
         "id": row["id"],
@@ -2790,7 +2806,7 @@ def fetch_active_mobile_tokens(cursor, user_ids: list[int]) -> list[str]:
 
     tokens: list[str] = []
     for row in cursor.fetchall():
-        token = row["token"] if isinstance(row, sqlite3.Row) else row[0]
+        token = row_get_value(row, "token", 0)
         if token:
             tokens.append(str(token))
     return tokens
@@ -2801,7 +2817,7 @@ def get_app_setting(cursor, key: str) -> Optional[str]:
     row = cursor.fetchone()
     if not row:
         return None
-    return str(row["value"] if isinstance(row, sqlite3.Row) else row[0])
+    return str(row_get_value(row, "value", 0))
 
 
 def set_app_setting(cursor, key: str, value: str):
@@ -2878,9 +2894,9 @@ def fetch_active_web_push_subscriptions(cursor, user_ids: list[int]) -> list[dic
 
     subscriptions: list[dict] = []
     for row in cursor.fetchall():
-        row_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
-        endpoint = row["endpoint"] if isinstance(row, sqlite3.Row) else row[1]
-        raw_subscription = row["subscription_json"] if isinstance(row, sqlite3.Row) else row[2]
+        row_id = row_get_value(row, "id", 0)
+        endpoint = row_get_value(row, "endpoint", 1)
+        raw_subscription = row_get_value(row, "subscription_json", 2)
         try:
             subscription_info = json.loads(raw_subscription or "{}")
         except (TypeError, json.JSONDecodeError):
@@ -3279,7 +3295,7 @@ def normalize_direct_pair(user_one_id: int, user_two_id: int) -> tuple[int, int]
     return (user_one_id, user_two_id) if user_one_id < user_two_id else (user_two_id, user_one_id)
 
 
-def serialize_direct_message_row(row: sqlite3.Row, current_user_id: int) -> dict:
+def serialize_direct_message_row(row: Any, current_user_id: int) -> dict:
     row_keys = set(row.keys())
     return {
         "id": row["id"],
@@ -3336,7 +3352,7 @@ def build_message_preview(content: Optional[str], movie_title: Optional[str]) ->
     return "Nouvelle conversation"
 
 
-def serialize_direct_conversation_row(row: sqlite3.Row) -> dict:
+def serialize_direct_conversation_row(row: Any) -> dict:
     row_keys = set(row.keys())
     return {
         "id": row["id"],
@@ -3392,10 +3408,10 @@ def get_or_create_direct_conversation(cursor, current_user_id: int, target_user_
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Impossible de creer la conversation")
-    return int(row["id"] if isinstance(row, sqlite3.Row) else row[0])
+    return int(row_get_value(row, "id", 0))
 
 
-def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_id: int) -> sqlite3.Row:
+def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_id: int):
     cursor.execute(
         """
         SELECT
@@ -3429,7 +3445,7 @@ def get_direct_conversation_for_user(cursor, conversation_id: int, current_user_
     return row
 
 
-def mark_direct_conversation_read(cursor, conversation_row: sqlite3.Row, current_user_id: int):
+def mark_direct_conversation_read(cursor, conversation_row: Any, current_user_id: int):
     cursor.execute(
         "SELECT MAX(id) FROM direct_messages WHERE conversation_id = ?",
         (conversation_row["id"],),

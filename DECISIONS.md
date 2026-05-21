@@ -136,3 +136,4 @@ Current implementation status:
 - the API runtime can now boot in PostgreSQL mode through `DATABASE_URL` / `POSTGRES_URL`;
 - the first production cutover has now been completed after migrating data and validating a smoke-test path on PostgreSQL.
 - the highest-traffic write paths are now being converted to native PostgreSQL SQL to reduce reliance on the temporary SQLite compatibility translator.
+- the migration strategy remains incremental: remove SQLite-only SQL patterns first, then tackle the remaining placeholder-level compatibility once the hot paths are stable.

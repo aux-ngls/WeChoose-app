@@ -173,6 +173,8 @@ PostgreSQL cleanup status:
 - production runs on PostgreSQL;
 - the temporary SQL compatibility translator still exists for legacy `?` placeholders;
 - the most sensitive SQLite-specific statements have already been replaced with native PostgreSQL-friendly SQL in the recommendation, ratings, playlists, follows/blocks, and direct-conversation paths.
+- `INSERT OR IGNORE`, `INSERT OR REPLACE`, and `rowid DESC` are now fully removed from `backend/main.py`;
+- the remaining compatibility debt is mainly the historical `?` placeholders plus the separate SQLite legacy bootstrap path.
 
 ## How To Resume Work
 
