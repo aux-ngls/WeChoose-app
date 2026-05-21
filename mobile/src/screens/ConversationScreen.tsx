@@ -32,7 +32,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type DirectMessage } from '../types';
-import { NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
+import { INBOX_CONVERSATION_EVENT, NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { connectRealtimeSocket } from '../utils/realtime';
 
@@ -48,6 +48,16 @@ interface ConversationCacheEntry {
   participantId: number | null;
   participantUsername: string;
   messages: LocalDirectMessage[];
+}
+
+interface InboxConversationEventPayload {
+  type: 'messages.updated';
+  conversation_id: number;
+  message_id: number;
+  sender_id: number;
+  sender_username: string;
+  preview: string;
+  message: DirectMessage;
 }
 
 const conversationCache = new Map<string, ConversationCacheEntry>();
@@ -188,6 +198,24 @@ function areMessageListsEquivalent(left: LocalDirectMessage[], right: LocalDirec
       message.movie?.id === nextMessage.movie?.id
     );
   });
+}
+
+function buildInboxConversationEventPayload(
+  conversationId: number,
+  message: DirectMessage,
+): InboxConversationEventPayload {
+  const movieTitle = message.movie?.title?.trim();
+  const textPreview = message.content.trim();
+
+  return {
+    type: 'messages.updated',
+    conversation_id: conversationId,
+    message_id: message.id,
+    sender_id: message.sender.id,
+    sender_username: message.sender.username,
+    preview: movieTitle ? `Film partage : ${movieTitle}` : textPreview || 'Nouveau message',
+    message,
+  };
 }
 
 export default function ConversationScreen({
@@ -338,6 +366,10 @@ export default function ConversationScreen({
         if (payload.type === 'messages.updated' && payload.conversation_id === route.params.conversationId) {
           if (payload.message) {
             const realtimeMessage = normalizeRealtimeMessage(payload.message, session.username);
+            DeviceEventEmitter.emit(
+              INBOX_CONVERSATION_EVENT,
+              buildInboxConversationEventPayload(route.params.conversationId, realtimeMessage),
+            );
             const participantSnapshot = participantSnapshotRef.current;
             shouldScrollToEndRef.current = true;
             isNearBottomRef.current = true;
@@ -566,6 +598,10 @@ export default function ConversationScreen({
         });
         return nextMessages;
       });
+      DeviceEventEmitter.emit(
+        INBOX_CONVERSATION_EVENT,
+        buildInboxConversationEventPayload(route.params.conversationId, confirmedMessage),
+      );
       shouldScrollToEndRef.current = true;
       setError('');
       DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);

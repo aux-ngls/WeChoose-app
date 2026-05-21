@@ -150,3 +150,4 @@ npx eas submit --platform ios
 - Preference/profile reads now defensively decode PostgreSQL text values before JSON parsing/normalization, fixing profile description and soundtrack round-trips.
 - A full production smoke test passed after the PostgreSQL migration across auth, recommendations, playlists, ratings, social flows, notifications, and direct messages.
 - Direct messaging realtime delivery is now active: WebSocket support is installed server-side, outgoing events use per-socket queues, mobile reconnects with heartbeat, and local latency validation received a message event in 58 ms.
+- Inbox refresh is now more reliable on mobile: conversation threads emit a shared update event so the messages list updates immediately when a message is received or sent from an open thread.

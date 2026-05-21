@@ -19,7 +19,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import type { DirectConversationSummary, SocialUser } from '../types';
 import { formatDate } from '../utils/format';
-import { NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
+import { INBOX_CONVERSATION_EVENT, NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
 import { connectRealtimeSocket } from '../utils/realtime';
 
 let conversationsCache: {
@@ -85,6 +85,7 @@ function mergeRealtimeConversationSummary(
   const isOwnMessage = senderUsername === currentUsername;
   const updatedAt = payload.message?.created_at ?? new Date().toISOString();
   const preview = buildConversationPreview(payload);
+  const alreadyApplied = baseConversation.last_message?.id === payload.message_id;
   const updatedConversation: DirectConversationSummary = {
     ...baseConversation,
     updated_at: updatedAt,
@@ -102,7 +103,7 @@ function mergeRealtimeConversationSummary(
           }
         : null,
     },
-    unread_count: isOwnMessage ? baseConversation.unread_count : baseConversation.unread_count + 1,
+    unread_count: isOwnMessage || alreadyApplied ? baseConversation.unread_count : baseConversation.unread_count + 1,
   };
 
   const nextConversations = [...currentConversations];
@@ -170,6 +171,26 @@ export default function MessagesScreen() {
     }
   }, [session, signOut, updateConversations]);
 
+  const handleRealtimeConversationUpdate = useCallback((payload: RealtimeConversationPayload) => {
+    if (!session || payload.type !== 'messages.updated') {
+      return;
+    }
+
+    const mergedConversations = mergeRealtimeConversationSummary(
+      conversationsRef.current,
+      payload,
+      session.username,
+    );
+
+    if (mergedConversations) {
+      updateConversations(mergedConversations);
+      DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
+      return;
+    }
+
+    void loadConversations();
+  }, [loadConversations, session, updateConversations]);
+
   const refreshConversations = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -193,27 +214,21 @@ export default function MessagesScreen() {
     return connectRealtimeSocket({
       token: session.token,
       onMessage: (rawPayload) => {
-        const payload = rawPayload as RealtimeConversationPayload;
-        if (payload.type !== 'messages.updated') {
-          return;
-        }
-
-        const mergedConversations = mergeRealtimeConversationSummary(
-          conversationsRef.current,
-          payload,
-          session.username,
-        );
-
-        if (mergedConversations) {
-          updateConversations(mergedConversations);
-          DeviceEventEmitter.emit(NOTIFICATIONS_REFRESH_EVENT);
-          return;
-        }
-
-        void loadConversations();
+        handleRealtimeConversationUpdate(rawPayload as RealtimeConversationPayload);
       },
     });
-  }, [loadConversations, session, updateConversations]);
+  }, [handleRealtimeConversationUpdate, session]);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      INBOX_CONVERSATION_EVENT,
+      (payload: RealtimeConversationPayload) => {
+        handleRealtimeConversationUpdate(payload);
+      },
+    );
+
+    return () => subscription.remove();
+  }, [handleRealtimeConversationUpdate]);
 
   useEffect(() => {
     if (!session) {
