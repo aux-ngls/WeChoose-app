@@ -1134,7 +1134,7 @@ def dedupe_list(values: list) -> list:
 
 def get_blocked_user_ids(cursor, user_id: int) -> set[int]:
     cursor.execute(
-        "SELECT blocked_id FROM blocked_users WHERE blocker_id = ?",
+        f"SELECT blocked_id FROM blocked_users WHERE blocker_id = {SQL_PARAM}",
         (int(user_id),),
     )
     return {int(row[0]) for row in cursor.fetchall()}
@@ -1143,7 +1143,7 @@ def get_blocked_user_ids(cursor, user_id: int) -> set[int]:
 def get_hidden_user_ids(cursor, user_id: int) -> set[int]:
     hidden_user_ids = set(get_blocked_user_ids(cursor, user_id))
     cursor.execute(
-        "SELECT blocker_id FROM blocked_users WHERE blocked_id = ?",
+        f"SELECT blocker_id FROM blocked_users WHERE blocked_id = {SQL_PARAM}",
         (int(user_id),),
     )
     hidden_user_ids.update(int(row[0]) for row in cursor.fetchall())
@@ -1158,10 +1158,10 @@ def is_hidden_user_relationship(cursor, current_user_id: int, target_user_id: in
         """
         SELECT 1
         FROM blocked_users
-        WHERE (blocker_id = ? AND blocked_id = ?)
-           OR (blocker_id = ? AND blocked_id = ?)
+        WHERE (blocker_id = {param} AND blocked_id = {param})
+           OR (blocker_id = {param} AND blocked_id = {param})
         LIMIT 1
-        """,
+        """.format(param=SQL_PARAM),
         (int(current_user_id), int(target_user_id), int(target_user_id), int(current_user_id)),
     )
     return cursor.fetchone() is not None
@@ -1361,15 +1361,15 @@ def search_soundtracks(query: str) -> tuple[dict, ...]:
 
 
 def has_existing_taste_signals(cursor, user_id: int) -> bool:
-    cursor.execute("SELECT COUNT(*) FROM user_ratings WHERE user_id = ?", (user_id,))
+    cursor.execute(f"SELECT COUNT(*) FROM user_ratings WHERE user_id = {SQL_PARAM}", (user_id,))
     ratings_count = int(cursor.fetchone()[0] or 0)
     cursor.execute(
         """
         SELECT COUNT(*)
         FROM playlist_items pi
         JOIN playlists p ON p.id = pi.playlist_id
-        WHERE p.user_id = ? AND p.name = ?
-        """,
+        WHERE p.user_id = {param} AND p.name = {param}
+        """.format(param=SQL_PARAM),
         (user_id, WATCH_LATER_NAME),
     )
     watch_later_count = int(cursor.fetchone()[0] or 0)
@@ -1393,8 +1393,8 @@ def get_user_preferences(cursor, user_id: int) -> dict:
             profile_description,
             tutorial_completed_at
         FROM user_preferences
-        WHERE user_id = ?
-        """,
+        WHERE user_id = {param}
+        """.format(param=SQL_PARAM),
         (user_id,),
     )
     row = cursor.fetchone()
@@ -1506,7 +1506,7 @@ def get_user_from_token(token: str) -> dict:
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, avatar_url FROM users WHERE username = ?", (username,))
+    cursor.execute(f"SELECT id, username, avatar_url FROM users WHERE username = {SQL_PARAM}", (username,))
     user = cursor.fetchone()
     if user is None:
         conn.close()
@@ -1543,7 +1543,7 @@ def signup(user: UserCreate):
         hashed_pw = get_password_hash(password)
         user_id = execute_insert_and_get_id(
             cursor,
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            f"INSERT INTO users (username, password_hash) VALUES ({SQL_PARAM}, {SQL_PARAM})",
             (username, hashed_pw),
         )
         get_or_create_watch_later_id(cursor, user_id)
@@ -1567,7 +1567,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     username = normalize_username(form_data.username)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,))
+    cursor.execute(f"SELECT id, password_hash FROM users WHERE username = {SQL_PARAM}", (username,))
     row = cursor.fetchone()
     
     if not row or not verify_password(form_data.password, row[1]):
@@ -1630,10 +1630,13 @@ async def upload_profile_avatar(
     avatar_url = f"{AVATAR_PUBLIC_PREFIX}/{filename}"
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute("SELECT avatar_url FROM users WHERE id = ?", (current_user["id"],))
+    cursor.execute(f"SELECT avatar_url FROM users WHERE id = {SQL_PARAM}", (current_user["id"],))
     row = cursor.fetchone()
     previous_avatar_url = row["avatar_url"] if row else None
-    cursor.execute("UPDATE users SET avatar_url = ? WHERE id = ?", (avatar_url, current_user["id"]))
+    cursor.execute(
+        f"UPDATE users SET avatar_url = {SQL_PARAM} WHERE id = {SQL_PARAM}",
+        (avatar_url, current_user["id"]),
+    )
     conn.commit()
     conn.close()
 
@@ -1654,11 +1657,11 @@ def complete_tutorial(current_user: dict = Depends(get_current_user)):
     cursor.execute(
         """
         INSERT INTO user_preferences (user_id, tutorial_completed_at, updated_at)
-        VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        VALUES ({param}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET
             tutorial_completed_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"],),
     )
     conn.commit()
@@ -1671,7 +1674,7 @@ def delete_many_by_ids(cursor, table_name: str, column_name: str, values: list[i
     if not ids:
         return 0
 
-    placeholders = ",".join("?" for _ in ids)
+    placeholders = sql_placeholders(len(ids))
     cursor.execute(
         f"DELETE FROM {table_name} WHERE {column_name} IN ({placeholders})",
         ids,
@@ -1780,7 +1783,7 @@ def save_onboarding_preferences(
             people_seed_movie_ids,
             onboarding_completed_at,
             updated_at
-        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES ({param}, {param}, {param}, {param}, {param}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET
             favorite_genres = excluded.favorite_genres,
             favorite_people = excluded.favorite_people,
@@ -1788,7 +1791,7 @@ def save_onboarding_preferences(
             people_seed_movie_ids = excluded.people_seed_movie_ids,
             onboarding_completed_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (
             current_user["id"],
             dump_json_list(favorite_genres),
@@ -1845,7 +1848,7 @@ def save_profile_preferences(
             profile_soundtrack,
             profile_description,
             updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ) VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET
             profile_genres = excluded.profile_genres,
             profile_people = excluded.profile_people,
@@ -1854,7 +1857,7 @@ def save_profile_preferences(
             profile_soundtrack = excluded.profile_soundtrack,
             profile_description = excluded.profile_description,
             updated_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (
             current_user["id"],
             dump_json_list(profile_genres),
@@ -2057,20 +2060,26 @@ def get_tmdb_person_details(person_id: int) -> Optional[dict]:
 
 # --- Helpers Playlists ---
 def get_or_create_watch_later_id(cursor, user_id):
-    cursor.execute("SELECT id FROM playlists WHERE user_id = ? AND name = ?", (user_id, WATCH_LATER_NAME))
+    cursor.execute(
+        f"SELECT id FROM playlists WHERE user_id = {SQL_PARAM} AND name = {SQL_PARAM}",
+        (user_id, WATCH_LATER_NAME),
+    )
     row = cursor.fetchone()
     if row:
         return row[0]
 
     return execute_insert_and_get_id(
         cursor,
-        "INSERT INTO playlists (name, user_id) VALUES (?, ?)",
+        f"INSERT INTO playlists (name, user_id) VALUES ({SQL_PARAM}, {SQL_PARAM})",
         (WATCH_LATER_NAME, user_id),
     )
 
 
 def get_custom_playlist_id(cursor, playlist_id: int, user_id: int) -> int:
-    cursor.execute("SELECT id FROM playlists WHERE id = ? AND user_id = ?", (playlist_id, user_id))
+    cursor.execute(
+        f"SELECT id FROM playlists WHERE id = {SQL_PARAM} AND user_id = {SQL_PARAM}",
+        (playlist_id, user_id),
+    )
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=403, detail="Playlist introuvable ou accès refusé")
@@ -2106,7 +2115,7 @@ def is_test_dashboard_username(username: str) -> bool:
 
 
 def is_test_dashboard_user(cursor, user_id: int) -> bool:
-    cursor.execute("SELECT username FROM users WHERE id = ?", (int(user_id),))
+    cursor.execute(f"SELECT username FROM users WHERE id = {SQL_PARAM}", (int(user_id),))
     row = cursor.fetchone()
     if not row:
         return False
@@ -2124,12 +2133,12 @@ def get_test_ai_feedback_profile(cursor, user_id: int) -> dict[str, object]:
         """
         SELECT movie_id, reaction_type, reaction_rating
         FROM recommendation_impressions
-        WHERE user_id = ?
+        WHERE user_id = {param}
           AND responded_at IS NOT NULL
           AND COALESCE(reaction_type, '') NOT LIKE 'undo%'
         ORDER BY responded_at DESC
         LIMIT 160
-        """,
+        """.format(param=SQL_PARAM),
         (int(user_id),),
     )
     feedback_rows = cursor.fetchall()
@@ -2193,10 +2202,10 @@ def mark_recommendation_reaction(
         """
         SELECT id
         FROM recommendation_impressions
-        WHERE user_id = ? AND movie_id = ?
+        WHERE user_id = {param} AND movie_id = {param}
         ORDER BY shown_at DESC
         LIMIT 1
-        """,
+        """.format(param=SQL_PARAM),
         (int(user_id), int(movie_id)),
     )
     row = cursor.fetchone()
@@ -2212,11 +2221,11 @@ def mark_recommendation_reaction(
                 rank,
                 reason,
                 responded_at,
-                reaction_type,
-                reaction_rating
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
-            """,
+            reaction_type,
+            reaction_rating
+        )
+            VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, CURRENT_TIMESTAMP, {param}, {param})
+            """.format(param=SQL_PARAM),
             (
                 str(uuid.uuid4()),
                 int(user_id),
@@ -2235,10 +2244,10 @@ def mark_recommendation_reaction(
         """
         UPDATE recommendation_impressions
         SET responded_at = CURRENT_TIMESTAMP,
-            reaction_type = ?,
-            reaction_rating = ?
-        WHERE id = ?
-        """,
+            reaction_type = {param},
+            reaction_rating = {param}
+        WHERE id = {param}
+        """.format(param=SQL_PARAM),
         (reaction_type, reaction_rating, int(row[0])),
     )
 
@@ -2271,8 +2280,8 @@ def insert_recommendation_impression(
             seed_title,
             seed_similarity
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param})
+        """.format(param=SQL_PARAM),
         (
             request_id,
             int(user_id),
@@ -2739,8 +2748,8 @@ def create_notification(
     cursor.execute(
         """
         INSERT INTO notifications (user_id, actor_user_id, type, review_id, comment_id)
-        VALUES (?, ?, ?, ?, ?)
-        """,
+        VALUES ({param}, {param}, {param}, {param}, {param})
+        """.format(param=SQL_PARAM),
         (user_id, actor_user_id, notification_type, review_id, comment_id),
     )
 
@@ -2767,8 +2776,8 @@ def insert_moderation_report(
             reason,
             details
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param})
+        """.format(param=SQL_PARAM),
         (
             int(reporter_user_id),
             target_user_id,
@@ -2798,7 +2807,7 @@ def fetch_active_mobile_tokens(cursor, user_ids: list[int]) -> list[str]:
     if not unique_user_ids:
         return []
 
-    placeholders = ",".join("?" for _ in unique_user_ids)
+    placeholders = sql_placeholders(len(unique_user_ids))
     cursor.execute(
         f"""
         SELECT token
@@ -2818,7 +2827,7 @@ def fetch_active_mobile_tokens(cursor, user_ids: list[int]) -> list[str]:
 
 
 def get_app_setting(cursor, key: str) -> Optional[str]:
-    cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+    cursor.execute(f"SELECT value FROM app_settings WHERE key = {SQL_PARAM}", (key,))
     row = cursor.fetchone()
     if not row:
         return None
@@ -2829,11 +2838,11 @@ def set_app_setting(cursor, key: str, value: str):
     cursor.execute(
         """
         INSERT INTO app_settings (key, value, updated_at)
-        VALUES (?, ?, CURRENT_TIMESTAMP)
+        VALUES ({param}, {param}, CURRENT_TIMESTAMP)
         ON CONFLICT(key) DO UPDATE SET
             value = excluded.value,
             updated_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (key, value),
     )
 
@@ -2886,7 +2895,7 @@ def fetch_active_web_push_subscriptions(cursor, user_ids: list[int]) -> list[dic
     if not unique_user_ids:
         return []
 
-    placeholders = ",".join("?" for _ in unique_user_ids)
+    placeholders = sql_placeholders(len(unique_user_ids))
     cursor.execute(
         f"""
         SELECT id, endpoint, subscription_json
@@ -2990,8 +2999,8 @@ def send_native_push_notifications(
                         """
                         UPDATE mobile_devices
                         SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-                        WHERE token = ?
-                        """,
+                        WHERE token = {param}
+                        """.format(param=SQL_PARAM),
                         (token,),
                     )
 
@@ -3042,8 +3051,8 @@ def send_native_push_notifications(
                 """
                 UPDATE mobile_devices
                 SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-                WHERE token = ?
-                """,
+                WHERE token = {param}
+                """.format(param=SQL_PARAM),
                 (device_token,),
             )
 
@@ -3098,8 +3107,8 @@ def send_web_push_notifications(
                     """
                     UPDATE web_push_subscriptions
                     SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """,
+                    WHERE id = {param}
+                    """.format(param=SQL_PARAM),
                     (subscription["id"],),
                 )
         except Exception:
@@ -3190,17 +3199,17 @@ def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, pa
             EXISTS(
                 SELECT 1
                 FROM review_likes rl
-                WHERE rl.review_id = r.id AND rl.user_id = ?
+                WHERE rl.review_id = r.id AND rl.user_id = {param}
             ) AS liked_by_me,
             (SELECT COUNT(*) FROM comments c WHERE c.review_id = r.id) AS comments_count
         FROM reviews r
         JOIN users u ON u.id = r.user_id
         WHERE {where_clause}
-    """
+    """.format(param=SQL_PARAM, where_clause=where_clause)
 
     query_params = (current_user_id, *params)
     if hidden_user_ids:
-        placeholders = ",".join("?" for _ in hidden_user_ids)
+        placeholders = sql_placeholders(len(hidden_user_ids))
         query += f" AND r.user_id NOT IN ({placeholders})"
         query_params = (*query_params, *hidden_user_ids)
 
@@ -3208,7 +3217,7 @@ def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, pa
         ORDER BY r.created_at DESC, r.id DESC
     """
     if limit is not None:
-        query += " LIMIT ?"
+        query += f" LIMIT {SQL_PARAM}"
         query_params = (*query_params, limit)
 
     cursor.execute(query, query_params)
@@ -3232,11 +3241,11 @@ def fetch_review_comments(cursor, review_id: int, current_user_id: int) -> list[
         JOIN users u ON u.id = c.user_id
         LEFT JOIN comments parent_comment ON parent_comment.id = c.parent_id
         LEFT JOIN users parent_user ON parent_user.id = parent_comment.user_id
-        WHERE c.review_id = ?
-    """
+        WHERE c.review_id = {param}
+    """.format(param=SQL_PARAM)
     query_params: tuple = (review_id,)
     if hidden_user_ids:
-        placeholders = ",".join("?" for _ in hidden_user_ids)
+        placeholders = sql_placeholders(len(hidden_user_ids))
         query += f" AND c.user_id NOT IN ({placeholders})"
         query_params = (*query_params, *hidden_user_ids)
 
@@ -3249,10 +3258,10 @@ def fetch_review_comments(cursor, review_id: int, current_user_id: int) -> list[
 
 def fetch_notifications_payload(cursor, user_id: int, limit: int) -> dict:
     hidden_user_ids = get_hidden_user_ids(cursor, user_id)
-    unread_query = "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0"
+    unread_query = f"SELECT COUNT(*) FROM notifications WHERE user_id = {SQL_PARAM} AND is_read = 0"
     unread_params: tuple = (user_id,)
     if hidden_user_ids:
-        placeholders = ",".join("?" for _ in hidden_user_ids)
+        placeholders = sql_placeholders(len(hidden_user_ids))
         unread_query += f" AND actor_user_id NOT IN ({placeholders})"
         unread_params = (*unread_params, *hidden_user_ids)
     cursor.execute(unread_query, unread_params)
@@ -3275,19 +3284,19 @@ def fetch_notifications_payload(cursor, user_id: int, limit: int) -> dict:
         JOIN users actor ON actor.id = n.actor_user_id
         LEFT JOIN reviews r ON r.id = n.review_id
         LEFT JOIN comments c ON c.id = n.comment_id
-        WHERE n.user_id = ?
+        WHERE n.user_id = {param}
         AND n.is_read = 0
-    """
+    """.format(param=SQL_PARAM)
     query_params: tuple = (user_id,)
     if hidden_user_ids:
-        placeholders = ",".join("?" for _ in hidden_user_ids)
+        placeholders = sql_placeholders(len(hidden_user_ids))
         query += f" AND n.actor_user_id NOT IN ({placeholders})"
         query_params = (*query_params, *hidden_user_ids)
 
     query += """
         ORDER BY n.created_at DESC, n.id DESC
-        LIMIT ?
-    """
+        LIMIT {param}
+    """.format(param=SQL_PARAM)
     query_params = (*query_params, limit)
     cursor.execute(query, query_params)
     return {
@@ -5206,11 +5215,11 @@ def social_profile(
             EXISTS(
                 SELECT 1
                 FROM follows f
-                WHERE f.follower_id = ? AND f.followed_id = u.id
+                WHERE f.follower_id = {param} AND f.followed_id = u.id
             ) AS is_following
         FROM users u
-        WHERE lower(u.username) = lower(?)
-        """,
+        WHERE lower(u.username) = lower({param})
+        """.format(param=SQL_PARAM),
         (current_user["id"], profile_username),
     )
     profile_row = cursor.fetchone()
@@ -5224,7 +5233,7 @@ def social_profile(
     reviews = fetch_serialized_reviews(
         cursor,
         current_user["id"],
-        "r.user_id = ?",
+        f"r.user_id = {SQL_PARAM}",
         (profile_row["id"],),
         safe_limit,
     )
@@ -5253,7 +5262,7 @@ def follow_user(target_user_id: int, current_user: dict = Depends(get_current_us
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    cursor.execute(f"SELECT id FROM users WHERE id = {SQL_PARAM}", (target_user_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -5262,9 +5271,9 @@ def follow_user(target_user_id: int, current_user: dict = Depends(get_current_us
     cursor.execute(
         """
         INSERT INTO follows (follower_id, followed_id)
-        VALUES (?, ?)
+        VALUES ({param}, {param})
         ON CONFLICT(follower_id, followed_id) DO NOTHING
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"], target_user_id),
     )
     should_notify = cursor.rowcount > 0
@@ -5294,7 +5303,7 @@ def unfollow_user(target_user_id: int, current_user: dict = Depends(get_current_
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "DELETE FROM follows WHERE follower_id = ? AND followed_id = ?",
+        f"DELETE FROM follows WHERE follower_id = {SQL_PARAM} AND followed_id = {SQL_PARAM}",
         (current_user["id"], target_user_id),
     )
     conn.commit()
@@ -5318,7 +5327,7 @@ def block_user(target_user_id: int, current_user: dict = Depends(get_current_use
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE id = ?", (target_user_id,))
+    cursor.execute(f"SELECT id FROM users WHERE id = {SQL_PARAM}", (target_user_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -5326,13 +5335,13 @@ def block_user(target_user_id: int, current_user: dict = Depends(get_current_use
     cursor.execute(
         """
         INSERT INTO blocked_users (blocker_id, blocked_id)
-        VALUES (?, ?)
+        VALUES ({param}, {param})
         ON CONFLICT(blocker_id, blocked_id) DO NOTHING
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"], target_user_id),
     )
     cursor.execute(
-        "DELETE FROM follows WHERE (follower_id = ? AND followed_id = ?) OR (follower_id = ? AND followed_id = ?)",
+        f"DELETE FROM follows WHERE (follower_id = {SQL_PARAM} AND followed_id = {SQL_PARAM}) OR (follower_id = {SQL_PARAM} AND followed_id = {SQL_PARAM})",
         (current_user["id"], target_user_id, target_user_id, current_user["id"]),
     )
     conn.commit()
@@ -5345,7 +5354,7 @@ def unblock_user(target_user_id: int, current_user: dict = Depends(get_current_u
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "DELETE FROM blocked_users WHERE blocker_id = ? AND blocked_id = ?",
+        f"DELETE FROM blocked_users WHERE blocker_id = {SQL_PARAM} AND blocked_id = {SQL_PARAM}",
         (current_user["id"], target_user_id),
     )
     conn.commit()
@@ -5372,14 +5381,14 @@ def register_mobile_device(
     cursor.execute(
         """
         INSERT INTO mobile_devices (user_id, platform, token, app_version, is_active)
-        VALUES (?, ?, ?, ?, 1)
+        VALUES ({param}, {param}, {param}, {param}, 1)
         ON CONFLICT(token) DO UPDATE SET
             user_id = excluded.user_id,
             platform = excluded.platform,
             app_version = excluded.app_version,
             is_active = 1,
             updated_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"], platform, device_token, app_version),
     )
     conn.commit()
@@ -5402,8 +5411,8 @@ def unregister_mobile_device(
         """
         UPDATE mobile_devices
         SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND token = ?
-        """,
+        WHERE user_id = {param} AND token = {param}
+        """.format(param=SQL_PARAM),
         (current_user["id"], device_token),
     )
     conn.commit()
@@ -5461,14 +5470,14 @@ def register_web_push_subscription(
             user_agent,
             is_active
         )
-        VALUES (?, ?, ?, ?, 1)
+        VALUES ({param}, {param}, {param}, {param}, 1)
         ON CONFLICT(endpoint) DO UPDATE SET
             user_id = excluded.user_id,
             subscription_json = excluded.subscription_json,
             user_agent = excluded.user_agent,
             is_active = 1,
             updated_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (
             current_user["id"],
             endpoint,
@@ -5496,8 +5505,8 @@ def unregister_web_push_subscription(
         """
         UPDATE web_push_subscriptions
         SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND endpoint = ?
-        """,
+        WHERE user_id = {param} AND endpoint = {param}
+        """.format(param=SQL_PARAM),
         (current_user["id"], endpoint),
     )
     conn.commit()
@@ -5515,13 +5524,13 @@ def social_feed(limit: int = 30, current_user: dict = Depends(get_current_user))
         cursor,
         current_user["id"],
         """
-        r.user_id = ?
+        r.user_id = {param}
         OR r.user_id IN (
             SELECT followed_id
             FROM follows
-            WHERE follower_id = ?
+            WHERE follower_id = {param}
         )
-        """,
+        """.format(param=SQL_PARAM),
         (current_user["id"], current_user["id"]),
         safe_limit,
     )
@@ -5533,7 +5542,7 @@ def social_feed(limit: int = 30, current_user: dict = Depends(get_current_user))
 def get_social_review(review_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    reviews = fetch_serialized_reviews(cursor, current_user["id"], "r.id = ?", (review_id,), 1)
+    reviews = fetch_serialized_reviews(cursor, current_user["id"], f"r.id = {SQL_PARAM}", (review_id,), 1)
     conn.close()
     if not reviews:
         raise HTTPException(status_code=404, detail="Critique introuvable")
@@ -5562,8 +5571,8 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         cursor,
         """
         INSERT INTO reviews (user_id, movie_id, title, poster_url, rating, content)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param})
+        """.format(param=SQL_PARAM),
         (
             current_user["id"],
             review.movie_id,
@@ -5576,13 +5585,13 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     cursor.execute(
         """
         INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES ({param}, {param}, {param}, {param}, {param})
         ON CONFLICT(user_id, movie_id) DO UPDATE SET
             rating = EXCLUDED.rating,
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url,
             added_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (
             current_user["id"],
             review.movie_id,
@@ -5592,7 +5601,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         ),
     )
     cursor.execute(
-        "SELECT follower_id FROM follows WHERE followed_id = ?",
+        f"SELECT follower_id FROM follows WHERE followed_id = {SQL_PARAM}",
         (current_user["id"],),
     )
     follower_ids: list[int] = []
@@ -5618,7 +5627,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     created_reviews = fetch_serialized_reviews(
         cursor,
         current_user["id"],
-        "r.id = ?",
+        f"r.id = {SQL_PARAM}",
         (review_id,),
         1,
     )
@@ -5651,8 +5660,8 @@ def update_review(
         """
         SELECT movie_id, title, poster_url
         FROM reviews
-        WHERE id = ? AND user_id = ?
-        """,
+        WHERE id = {param} AND user_id = {param}
+        """.format(param=SQL_PARAM),
         (review_id, current_user["id"]),
     )
     review_row = cursor.fetchone()
@@ -5663,21 +5672,21 @@ def update_review(
     cursor.execute(
         """
         UPDATE reviews
-        SET rating = ?, content = ?
-        WHERE id = ? AND user_id = ?
-        """,
+        SET rating = {param}, content = {param}
+        WHERE id = {param} AND user_id = {param}
+        """.format(param=SQL_PARAM),
         (review_rating, review_content, review_id, current_user["id"]),
     )
     cursor.execute(
         """
         INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES ({param}, {param}, {param}, {param}, {param})
         ON CONFLICT(user_id, movie_id) DO UPDATE SET
             rating = EXCLUDED.rating,
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url,
             added_at = CURRENT_TIMESTAMP
-        """,
+        """.format(param=SQL_PARAM),
         (
             current_user["id"],
             review_row["movie_id"],
@@ -5691,7 +5700,7 @@ def update_review(
     updated_reviews = fetch_serialized_reviews(
         cursor,
         current_user["id"],
-        "r.id = ?",
+        f"r.id = {SQL_PARAM}",
         (review_id,),
         1,
     )
@@ -5708,17 +5717,20 @@ def delete_review(review_id: int, current_user: dict = Depends(get_current_user)
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id FROM reviews WHERE id = ? AND user_id = ?",
+        f"SELECT id FROM reviews WHERE id = {SQL_PARAM} AND user_id = {SQL_PARAM}",
         (review_id, current_user["id"]),
     )
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Critique introuvable")
 
-    cursor.execute("DELETE FROM notifications WHERE review_id = ?", (review_id,))
-    cursor.execute("DELETE FROM comments WHERE review_id = ?", (review_id,))
-    cursor.execute("DELETE FROM review_likes WHERE review_id = ?", (review_id,))
-    cursor.execute("DELETE FROM reviews WHERE id = ? AND user_id = ?", (review_id, current_user["id"]))
+    cursor.execute(f"DELETE FROM notifications WHERE review_id = {SQL_PARAM}", (review_id,))
+    cursor.execute(f"DELETE FROM comments WHERE review_id = {SQL_PARAM}", (review_id,))
+    cursor.execute(f"DELETE FROM review_likes WHERE review_id = {SQL_PARAM}", (review_id,))
+    cursor.execute(
+        f"DELETE FROM reviews WHERE id = {SQL_PARAM} AND user_id = {SQL_PARAM}",
+        (review_id, current_user["id"]),
+    )
     conn.commit()
     conn.close()
     return {"status": "deleted"}
@@ -5728,7 +5740,7 @@ def delete_review(review_id: int, current_user: dict = Depends(get_current_user)
 def social_review_comments(review_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM reviews WHERE id = ?", (review_id,))
+    cursor.execute(f"SELECT 1 FROM reviews WHERE id = {SQL_PARAM}", (review_id,))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=404, detail="Critique introuvable")
@@ -5752,7 +5764,7 @@ def create_review_comment(
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, user_id FROM reviews WHERE id = ?",
+        f"SELECT id, user_id FROM reviews WHERE id = {SQL_PARAM}",
         (review_id,),
     )
     review_row = cursor.fetchone()
@@ -5763,7 +5775,7 @@ def create_review_comment(
     parent_user_id = None
     if payload.parent_id is not None:
         cursor.execute(
-            "SELECT id, user_id FROM comments WHERE id = ? AND review_id = ?",
+            f"SELECT id, user_id FROM comments WHERE id = {SQL_PARAM} AND review_id = {SQL_PARAM}",
             (payload.parent_id, review_id),
         )
         parent_row = cursor.fetchone()
@@ -5776,8 +5788,8 @@ def create_review_comment(
         cursor,
         """
         INSERT INTO comments (review_id, user_id, parent_id, content)
-        VALUES (?, ?, ?, ?)
-        """,
+        VALUES ({param}, {param}, {param}, {param})
+        """.format(param=SQL_PARAM),
         (review_id, current_user["id"], payload.parent_id, content),
     )
 
@@ -5840,8 +5852,8 @@ def create_review_comment(
         JOIN users u ON u.id = c.user_id
         LEFT JOIN comments parent_comment ON parent_comment.id = c.parent_id
         LEFT JOIN users parent_user ON parent_user.id = parent_comment.user_id
-        WHERE c.id = ?
-        """,
+        WHERE c.id = {param}
+        """.format(param=SQL_PARAM),
         (comment_id,),
     )
     created_comment = cursor.fetchone()
@@ -5857,7 +5869,7 @@ def create_review_comment(
 def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id, title FROM reviews WHERE id = ?", (review_id,))
+    cursor.execute(f"SELECT user_id, title FROM reviews WHERE id = {SQL_PARAM}", (review_id,))
     review_row = cursor.fetchone()
     if not review_row:
         conn.close()
@@ -5867,19 +5879,19 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
     ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
 
     cursor.execute(
-        "SELECT 1 FROM review_likes WHERE review_id = ? AND user_id = ?",
+        f"SELECT 1 FROM review_likes WHERE review_id = {SQL_PARAM} AND user_id = {SQL_PARAM}",
         (review_id, current_user["id"]),
     )
     already_liked = cursor.fetchone() is not None
 
     if already_liked:
         cursor.execute(
-            "DELETE FROM review_likes WHERE review_id = ? AND user_id = ?",
+            f"DELETE FROM review_likes WHERE review_id = {SQL_PARAM} AND user_id = {SQL_PARAM}",
             (review_id, current_user["id"]),
         )
     else:
         cursor.execute(
-            "INSERT INTO review_likes (review_id, user_id) VALUES (?, ?)",
+            f"INSERT INTO review_likes (review_id, user_id) VALUES ({SQL_PARAM}, {SQL_PARAM})",
             (review_id, current_user["id"]),
         )
         create_notification(cursor, review_owner_id, current_user["id"], "like", review_id=review_id)
@@ -5894,7 +5906,7 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
             extra_data={"type": "like", "reviewId": review_id},
         )
     cursor.execute(
-        "SELECT COUNT(*) FROM review_likes WHERE review_id = ?",
+        f"SELECT COUNT(*) FROM review_likes WHERE review_id = {SQL_PARAM}",
         (review_id,),
     )
     likes_count = cursor.fetchone()[0]
@@ -5917,7 +5929,7 @@ def social_notifications_read_all(current_user: dict = Depends(get_current_user)
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+        f"UPDATE notifications SET is_read = 1 WHERE user_id = {SQL_PARAM} AND is_read = 0",
         (current_user["id"],),
     )
     updated_count = cursor.rowcount
@@ -5931,7 +5943,7 @@ def social_notification_read(notification_id: int, current_user: dict = Depends(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ? AND is_read = 0",
+        f"UPDATE notifications SET is_read = 1 WHERE id = {SQL_PARAM} AND user_id = {SQL_PARAM} AND is_read = 0",
         (notification_id, current_user["id"]),
     )
     updated_count = cursor.rowcount
