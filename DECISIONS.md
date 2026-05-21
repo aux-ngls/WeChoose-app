@@ -138,3 +138,4 @@ Current implementation status:
 - the highest-traffic write paths are now being converted to native PostgreSQL SQL to reduce reliance on the temporary SQLite compatibility translator.
 - the migration strategy remains incremental: remove SQLite-only SQL patterns first, then tackle the remaining placeholder-level compatibility once the hot paths are stable.
 - the backend SQL migration is now considered functionally complete at the application-query level: remaining `?` characters in `backend/main.py` are no longer active SQL placeholders.
+- the temporary PostgreSQL SQL translator has now been removed from the runtime path; the backend executes native PostgreSQL queries directly and keeps only an explicit SQLite legacy branch plus backend-aware placeholder helpers.

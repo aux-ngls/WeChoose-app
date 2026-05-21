@@ -146,3 +146,4 @@ npx eas submit --platform ios
 - Backend now runs on PostgreSQL in production, with the busiest former SQLite-only upsert/conflict paths already converted to native PostgreSQL SQL.
 - The compatibility translator has been further reduced: no remaining `INSERT OR IGNORE`, `INSERT OR REPLACE`, or `rowid DESC` remain in `backend/main.py`.
 - Backend SQL placeholders are now fully migrated at the application-query level: no remaining raw SQL `?` placeholders are used in `backend/main.py`.
+- Backend PostgreSQL runtime now executes native SQL directly: the temporary SQL translation layer has been removed from the Postgres cursor path.

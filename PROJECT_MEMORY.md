@@ -171,15 +171,14 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/qulte
 
 PostgreSQL cleanup status:
 - production runs on PostgreSQL;
-- the temporary SQL compatibility translator still exists for legacy `?` placeholders;
 - the most sensitive SQLite-specific statements have already been replaced with native PostgreSQL-friendly SQL in the recommendation, ratings, playlists, follows/blocks, and direct-conversation paths.
 - `INSERT OR IGNORE`, `INSERT OR REPLACE`, and `rowid DESC` are now fully removed from `backend/main.py`;
-- the remaining compatibility debt is mainly the historical `?` placeholders plus the separate SQLite legacy bootstrap path.
 - the hottest recommendation and direct-message query paths are now also using backend-aware native placeholders instead of relying on the translator;
-- remaining raw `?` count in `backend/main.py`: 103;
 - auth/profile helpers, recommendation helpers, push/webpush helpers, notifications, and a large part of the social flows are now also converted off raw SQL `?` placeholders.
 - there are no remaining SQL queries in `backend/main.py` that still rely on raw `?` placeholders;
-- the only remaining `?` characters in the file are non-SQL ones: URLs, HTML text, route strings, the `SQL_PARAM` definition, and the compatibility translator itself.
+- the only remaining `?` characters in the file are non-SQL ones: URLs, HTML text, route strings, and the `SQL_PARAM` definition;
+- the PostgreSQL cursor wrapper now executes native SQL directly without any translation layer;
+- the remaining database compatibility surface is only the explicit SQLite legacy path plus backend-aware helpers like `SQL_PARAM`.
 
 ## How To Resume Work
 

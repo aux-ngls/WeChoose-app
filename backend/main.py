@@ -189,13 +189,6 @@ def sql_placeholders(count: int) -> str:
     return ",".join(SQL_PARAM for _ in range(max(0, count)))
 
 
-def translate_sql_for_postgres(query: str) -> str:
-    translated = query
-    translated = re.sub(r"%(?![%sbt])", "%%", translated)
-    translated = translated.replace("?", "%s")
-    return translated
-
-
 class PostgresCompatCursor:
     def __init__(self, cursor, *, row_factory_enabled: bool):
         self._cursor = cursor
@@ -203,11 +196,10 @@ class PostgresCompatCursor:
         self.lastrowid = None
 
     def execute(self, query, params=None):
-        translated_query = translate_sql_for_postgres(query)
         if params is None:
-            self._cursor.execute(translated_query)
+            self._cursor.execute(query)
         else:
-            self._cursor.execute(translated_query, params)
+            self._cursor.execute(query, params)
         return self
 
     def fetchone(self):
@@ -2135,11 +2127,11 @@ def get_test_ai_feedback_profile(cursor, user_id: int) -> dict[str, object]:
         FROM recommendation_impressions
         WHERE user_id = {param}
           AND responded_at IS NOT NULL
-          AND COALESCE(reaction_type, '') NOT LIKE 'undo%'
+          AND COALESCE(reaction_type, '') NOT LIKE {param}
         ORDER BY responded_at DESC
         LIMIT 160
         """.format(param=SQL_PARAM),
-        (int(user_id),),
+        (int(user_id), "undo%"),
     )
     feedback_rows = cursor.fetchall()
     genre_biases: dict[str, float] = defaultdict(float)
