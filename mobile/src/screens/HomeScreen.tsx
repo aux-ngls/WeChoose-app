@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -687,7 +688,12 @@ export default function HomeScreen() {
                 disabled={submitting}
               >
                 <Image source={{ uri: currentMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
-                <View style={styles.heroGradient} />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.02)', 'rgba(2,6,23,0.18)', 'rgba(2,6,23,0.52)', 'rgba(2,6,23,0.84)']}
+                  locations={[0, 0.36, 0.58, 0.8, 1]}
+                  style={styles.heroGradient}
+                />
                 <View style={styles.heroBody}>
                   <View style={styles.pillsRow}>
                     <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
@@ -805,8 +811,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '42%',
-    backgroundColor: 'rgba(2,6,23,0.76)',
+    height: '34%',
   },
   heroBody: {
     position: 'absolute',
