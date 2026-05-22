@@ -71,13 +71,17 @@ export default function PlaylistDetailsScreen({
 }: NativeStackScreenProps<RootStackParamList, 'PlaylistDetails'>) {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const supportsManualSort =
+    route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
   const initialMovies = playlistMoviesCache.get(route.params.playlistId) ?? [];
   const [movies, setMovies] = useState<SearchMovie[]>(() => initialMovies);
   const [loading, setLoading] = useState(() => initialMovies.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'manual');
+  const [sortMode, setSortMode] = useState<SortMode>(
+    route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : supportsManualSort ? 'manual' : 'recent',
+  );
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [onlyOwnedStreamingServices, setOnlyOwnedStreamingServices] = useState(false);
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
@@ -95,7 +99,11 @@ export default function PlaylistDetailsScreen({
   }, []);
 
   const canRemove = route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
-  const canReorder = canRemove && sortMode === 'manual' && !query.trim();
+  const canReorder = supportsManualSort && sortMode === 'manual' && !query.trim();
+  const availableSortOptions = useMemo(
+    () => (supportsManualSort ? SORT_OPTIONS : SORT_OPTIONS.filter((option) => option.key !== 'manual')),
+    [supportsManualSort],
+  );
 
   useEffect(() => {
     if (!canReorder && reorderingMovieId) {
@@ -326,7 +334,7 @@ export default function PlaylistDetailsScreen({
       </View>
       {isSortMenuOpen ? (
         <View style={[styles.sortMenu, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-          {SORT_OPTIONS.map((option) => {
+          {availableSortOptions.map((option) => {
             const isActive = sortMode === option.key;
             return (
               <Pressable
