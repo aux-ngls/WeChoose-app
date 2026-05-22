@@ -635,7 +635,7 @@ export default function ProfileScreen() {
             ) : null}
           </LinearGradient>
 
-          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <View style={styles.sectionShell}>
             {isEditingShowcase ? (
               <View style={[styles.editorPanel, { borderColor: theme.colors.accentSoft, backgroundColor: theme.rgba.cardStrong }]}>
                 <View style={styles.editorHeader}>
@@ -845,7 +845,7 @@ export default function ProfileScreen() {
             ) : null}
 
             {profile.profile_soundtrack ? (
-              <Pressable style={[styles.soundtrackCard, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => void openSoundtrack()}>
+              <Pressable style={[styles.soundtrackCard, { backgroundColor: theme.rgba.card }]} onPress={() => void openSoundtrack()}>
                 <Image
                   source={{ uri: profile.profile_soundtrack.artwork_url || FALLBACK_POSTER }}
                   style={styles.soundtrackArt}
@@ -864,7 +864,7 @@ export default function ProfileScreen() {
             ) : null}
           </View>
 
-          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <View style={styles.sectionShell}>
             <View style={styles.playlistsHeader}>
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Playlists</Text>
               <Pressable
@@ -885,7 +885,7 @@ export default function ProfileScreen() {
                   onChangeText={setNewPlaylistName}
                   placeholder="Nom de la playlist"
                   placeholderTextColor={theme.colors.textMuted}
-                  style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
+                  style={[styles.editorInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card, color: theme.colors.text }]}
                 />
                 <Pressable
                   style={[
@@ -905,7 +905,7 @@ export default function ProfileScreen() {
               {visiblePlaylists.map((playlist) => (
                 <Pressable
                   key={playlist.id}
-                  style={[styles.playlistCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
+                  style={[styles.playlistCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
                   onPress={() => navigation.navigate('PlaylistDetails', { playlistId: playlist.id, name: playlist.name })}
                 >
                   <View style={styles.playlistHeader}>
@@ -927,7 +927,7 @@ export default function ProfileScreen() {
             </View>
             {playlists.length > 2 ? (
               <Pressable
-                style={[styles.showMoreButton, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong }]}
+                style={[styles.showMoreButton, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.card }]}
                 onPress={() => setShowAllPlaylists((current) => !current)}
               >
                 <Text style={[styles.showMoreButtonLabel, { color: theme.colors.secondaryAccent }]}>
@@ -938,7 +938,7 @@ export default function ProfileScreen() {
             ) : null}
           </View>
 
-          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          <View style={styles.sectionShell}>
             <View style={styles.playlistsHeader}>
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Critiques</Text>
               <Pressable
@@ -954,7 +954,7 @@ export default function ProfileScreen() {
                 {visibleReviews.map((review) => (
                   <View
                     key={review.id}
-                    style={[styles.profileReviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
+                    style={[styles.profileReviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
                   >
                     <Pressable
                       onPress={(event) => {
@@ -1021,7 +1021,7 @@ export default function ProfileScreen() {
 
             {profileReviews.length > 2 ? (
               <Pressable
-                style={[styles.showMoreButton, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong }]}
+                style={[styles.showMoreButton, { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.card }]}
                 onPress={() => setShowAllReviews((current) => !current)}
               >
                 <Text style={[styles.showMoreButtonLabel, { color: theme.colors.secondaryAccent }]}>
@@ -1237,6 +1237,10 @@ const styles = StyleSheet.create({
   helperText: {
     color: '#94a3b8',
     fontSize: 13,
+  },
+  sectionShell: {
+    gap: 16,
+    paddingHorizontal: 2,
   },
   sectionCard: {
     gap: 16,
