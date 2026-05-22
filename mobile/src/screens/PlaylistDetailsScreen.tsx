@@ -40,7 +40,7 @@ import {
 import { matchesOwnedStreamingServices } from '../utils/streaming';
 
 const SORT_OPTIONS = [
-  { key: 'manual', label: 'Ordre' },
+  { key: 'manual', label: 'Ordre personnalisé' },
   { key: 'genre', label: 'Genre' },
   { key: 'recent', label: "Date d'ajout : le plus récent" },
   { key: 'oldest', label: "Date d'ajout : le plus ancien" },
