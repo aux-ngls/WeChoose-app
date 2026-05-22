@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { DeviceEventEmitter, Image, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
+import { DeviceEventEmitter, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
@@ -18,25 +17,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, type SocialUser } from '../types';
 import { CONVERSATION_MESSAGE_EVENT, INBOX_CONVERSATION_EVENT } from '../utils/events';
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function triggerMovieShareHaptic() {
-  try {
-    await Haptics.selectionAsync();
-    await wait(28);
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
-    await wait(42);
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await wait(52);
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
-  } catch {
-    Vibration.vibrate([0, 12, 30, 18, 42, 28]);
-    return;
-  }
-}
+import { playMovieSentHapticSignature } from '../utils/haptics';
 
 export default function ShareMovieScreen({
   navigation,
@@ -123,7 +104,7 @@ export default function ShareMovieScreen({
         movie_poster_url: movieToShare.poster_url,
         movie_rating: movieToShare.rating,
       });
-      await triggerMovieShareHaptic();
+      void playMovieSentHapticSignature();
       DeviceEventEmitter.emit(INBOX_CONVERSATION_EVENT, {
         type: 'messages.updated',
         conversation_id: conversationId,
