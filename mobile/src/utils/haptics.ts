@@ -1,5 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Platform, Vibration } from 'react-native';
+import QulteHaptics from 'qulte-haptics';
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,6 +39,14 @@ async function playIosMovieSentHaptic() {
 }
 
 export async function playMovieSentHapticSignature() {
+  const nativeHaptics = QulteHaptics;
+  if (Platform.OS === 'ios' && nativeHaptics?.playMovieSentAsync) {
+    const playedNativeSignature = await runSafely(() => nativeHaptics.playMovieSentAsync());
+    if (playedNativeSignature) {
+      return;
+    }
+  }
+
   const played = Platform.OS === 'android'
     ? await playAndroidMovieSentHaptic()
     : await playIosMovieSentHaptic();
