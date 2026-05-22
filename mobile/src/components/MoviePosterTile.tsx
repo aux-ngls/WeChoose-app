@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FALLBACK_POSTER, type SearchMovie } from '../types';
 import { useTheme } from '../theme/ThemeContext';
@@ -17,7 +18,13 @@ export default function MoviePosterTile({ movie, onPress }: MoviePosterTileProps
       style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
     >
       <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
-      <View style={[styles.overlay, { backgroundColor: theme.rgba.overlay }]}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}
+        locations={[0, 0.22, 0.48, 0.76, 1]}
+        style={styles.overlay}
+      />
+      <View style={styles.overlayContent}>
         <Text style={styles.title} numberOfLines={2}>
           {movie.title}
         </Text>
@@ -44,9 +51,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    height: '46%',
+  },
+  overlayContent: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     paddingHorizontal: 10,
     paddingVertical: 10,
-    backgroundColor: 'rgba(0,0,0,0.74)',
   },
   title: {
     color: '#ffffff',

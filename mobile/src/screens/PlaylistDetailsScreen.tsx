@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -41,8 +42,8 @@ import { matchesOwnedStreamingServices } from '../utils/streaming';
 const SORT_OPTIONS = [
   { key: 'manual', label: 'Ordre' },
   { key: 'genre', label: 'Genre' },
-  { key: 'recent', label: 'Récents' },
-  { key: 'oldest', label: 'Anciens' },
+  { key: 'recent', label: "Date d'ajout : le plus récent" },
+  { key: 'oldest', label: "Date d'ajout : le plus ancien" },
   { key: 'rating', label: 'Mieux notés' },
 ] as const;
 
@@ -77,6 +78,7 @@ export default function PlaylistDetailsScreen({
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'manual');
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [onlyOwnedStreamingServices, setOnlyOwnedStreamingServices] = useState(false);
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
   const [reorderingMovieId, setReorderingMovieId] = useState<number | null>(null);
@@ -271,23 +273,33 @@ export default function PlaylistDetailsScreen({
 
   const headerComponent = (
     <View style={styles.headerContent}>
-      <SearchField value={query} onChangeText={setQuery} placeholder="Filtrer les films" />
+      <SearchField value={query} onChangeText={setQuery} placeholder="Rechercher un film" />
       <View style={styles.filtersRow}>
-        {SORT_OPTIONS.map((option) => (
-          <Pressable
-            key={option.key}
-            onPress={() => setSortMode(option.key)}
+        <Pressable
+          onPress={() => setIsSortMenuOpen((current) => !current)}
+          style={[
+            styles.filterChip,
+            styles.sortTriggerChip,
+            { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+            isSortMenuOpen && { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.colors.accentSoft },
+          ]}
+        >
+          <Ionicons name="swap-vertical" size={14} color={isSortMenuOpen ? theme.colors.text : theme.colors.textSoft} />
+          <Text
             style={[
-              styles.filterChip,
-              { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
-              sortMode === option.key && { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.colors.accentSoft },
+              styles.filterChipLabel,
+              { color: theme.colors.textSoft },
+              isSortMenuOpen && { color: theme.colors.text },
             ]}
           >
-            <Text style={[styles.filterChipLabel, { color: theme.colors.textSoft }, sortMode === option.key && { color: theme.colors.text }]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
+            Trier
+          </Text>
+          <Ionicons
+            name={isSortMenuOpen ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={isSortMenuOpen ? theme.colors.text : theme.colors.textSoft}
+          />
+        </Pressable>
         {route.params.playlistId === WATCH_LATER_PLAYLIST_ID && ownedStreamingServices.length > 0 ? (
           <Pressable
             onPress={() => setOnlyOwnedStreamingServices((current) => !current)}
@@ -312,6 +324,32 @@ export default function PlaylistDetailsScreen({
           </Pressable>
         ) : null}
       </View>
+      {isSortMenuOpen ? (
+        <View style={[styles.sortMenu, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          {SORT_OPTIONS.map((option) => {
+            const isActive = sortMode === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => {
+                  setSortMode(option.key);
+                  setIsSortMenuOpen(false);
+                }}
+                style={[
+                  styles.sortOptionRow,
+                  { borderColor: theme.rgba.border },
+                  isActive && { backgroundColor: theme.colors.accentSoft },
+                ]}
+              >
+                <Text style={[styles.sortOptionLabel, { color: theme.colors.textSoft }, isActive && { color: theme.colors.text }]}>
+                  {option.label}
+                </Text>
+                {isActive ? <Ionicons name="checkmark" size={16} color={theme.colors.secondaryAccent} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       {loading && movies.length === 0 ? (
         <View style={styles.loadingState}>
           <ActivityIndicator color={theme.colors.text} />
@@ -393,7 +431,13 @@ export default function PlaylistDetailsScreen({
                   <Ionicons name="close" size={12} color="#ffffff" />
                 </Pressable>
               ) : null}
-              <View style={styles.overlay}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}
+                locations={[0, 0.22, 0.48, 0.76, 1]}
+                style={styles.overlay}
+              />
+              <View style={styles.overlayContent}>
                 <Text style={styles.movieTitle} numberOfLines={2}>{item.title}</Text>
                 <Text style={styles.movieMeta} numberOfLines={1}>
                   {sortMode === 'genre' ? item.primary_genre ?? 'Autres' : formatPlaylistRating(item.rating, route.params.playlistId)}
@@ -463,6 +507,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  sortTriggerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   filterChipActive: {
     borderColor: 'rgba(125,211,252,0.35)',
     backgroundColor: 'rgba(14,165,233,0.18)',
@@ -478,6 +527,27 @@ const styles = StyleSheet.create({
   loadingState: {
     paddingVertical: 12,
     alignItems: 'center',
+  },
+  sortMenu: {
+    gap: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 8,
+  },
+  sortOptionRow: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  sortOptionLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
   },
   listContent: {
     paddingBottom: 24,
@@ -504,7 +574,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.76)',
+    height: '46%',
+  },
+  overlayContent: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     padding: 8,
   },
   movieTitle: {
