@@ -690,8 +690,8 @@ export default function HomeScreen() {
                 <Image source={{ uri: currentMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.02)', 'rgba(2,6,23,0.18)', 'rgba(2,6,23,0.52)', 'rgba(2,6,23,0.84)']}
-                  locations={[0, 0.36, 0.58, 0.8, 1]}
+                  colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.03)', 'rgba(2,6,23,0.2)', 'rgba(2,6,23,0.62)', 'rgba(2,6,23,0.92)']}
+                  locations={[0, 0.34, 0.56, 0.78, 1]}
                   style={styles.heroGradient}
                 />
                 <View style={styles.heroBody}>
