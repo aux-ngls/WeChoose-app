@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     profile_movie_ids TEXT DEFAULT '[]',
     profile_soundtrack TEXT DEFAULT '{}',
     profile_description TEXT DEFAULT '',
+    owned_streaming_services TEXT DEFAULT '[]',
     tutorial_completed_at TIMESTAMP
 );
 

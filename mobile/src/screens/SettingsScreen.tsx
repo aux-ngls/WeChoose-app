@@ -7,14 +7,23 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { API_URL } from '../api/config';
-import { ApiError, deleteAccount, fetchBlockedUsers, resetTestUserData, unblockUser } from '../api/client';
+import {
+  ApiError,
+  deleteAccount,
+  fetchBlockedUsers,
+  fetchProfilePreferences,
+  resetTestUserData,
+  saveProfilePreferences,
+  unblockUser,
+} from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
 import type { RootStackParamList } from '../navigation/types';
 import { registerForPushNotifications } from '../notifications/push';
 import { useTheme, type ThemePreference } from '../theme/ThemeContext';
-import type { BlockedUser } from '../types';
+import type { BlockedUser, ProfilePreferencesPayload } from '../types';
+import { STREAMING_SERVICE_OPTIONS } from '../utils/streaming';
 
 const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { value: 'system', label: 'Automatique', detail: 'Suit le réglage de ton iPhone.', icon: 'phone-portrait-outline' },
@@ -44,6 +53,10 @@ export default function SettingsScreen() {
   const [savingThemePreference, setSavingThemePreference] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermissionState>('loading');
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
+  const [profilePreferences, setProfilePreferences] = useState<ProfilePreferencesPayload | null>(null);
+  const [loadingStreamingServices, setLoadingStreamingServices] = useState(false);
+  const [savingStreamingServices, setSavingStreamingServices] = useState(false);
+  const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
   const [clearingRecommendationCache, setClearingRecommendationCache] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
@@ -93,11 +106,38 @@ export default function SettingsScreen() {
     }
   }, [session, signOut]);
 
+  const loadProfilePreferences = useCallback(async () => {
+    if (!session) {
+      setProfilePreferences(null);
+      setOwnedStreamingServices([]);
+      return;
+    }
+
+    setLoadingStreamingServices(true);
+    try {
+      const payload = await fetchProfilePreferences(session.token);
+      setProfilePreferences(payload);
+      setOwnedStreamingServices(payload.owned_streaming_services ?? []);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: 'Impossible de charger tes plateformes streaming.',
+      });
+    } finally {
+      setLoadingStreamingServices(false);
+    }
+  }, [session, signOut]);
+
   useFocusEffect(
     useCallback(() => {
       void loadNotificationStatus();
       void loadBlockedUsers();
-    }, [loadBlockedUsers, loadNotificationStatus]),
+      void loadProfilePreferences();
+    }, [loadBlockedUsers, loadNotificationStatus, loadProfilePreferences]),
   );
 
   const handleThemePreferenceChange = async (preference: ThemePreference) => {
@@ -110,6 +150,48 @@ export default function SettingsScreen() {
       await setThemePreference(preference);
     } finally {
       setSavingThemePreference(false);
+    }
+  };
+
+  const handleToggleStreamingService = async (service: string) => {
+    if (!session || savingStreamingServices) {
+      return;
+    }
+
+    const nextOwnedServices = ownedStreamingServices.includes(service)
+      ? ownedStreamingServices.filter((item) => item !== service)
+      : [...ownedStreamingServices, service];
+
+    setSavingStreamingServices(true);
+    setOwnedStreamingServices(nextOwnedServices);
+
+    try {
+      const nextPreferences = await saveProfilePreferences(session.token, {
+        profile_description: profilePreferences?.profile_description ?? '',
+        profile_genres: profilePreferences?.profile_genres ?? [],
+        profile_people: profilePreferences?.profile_people ?? [],
+        profile_movie_ids: profilePreferences?.profile_movie_ids ?? [],
+        profile_soundtrack: profilePreferences?.profile_soundtrack ?? null,
+        owned_streaming_services: nextOwnedServices,
+      });
+      setProfilePreferences(nextPreferences);
+      setOwnedStreamingServices(nextPreferences.owned_streaming_services ?? []);
+      setFeedback({
+        tone: 'success',
+        message: 'Plateformes streaming mises à jour.',
+      });
+    } catch (error) {
+      setOwnedStreamingServices(profilePreferences?.owned_streaming_services ?? []);
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: 'Impossible de mettre à jour tes plateformes streaming.',
+      });
+    } finally {
+      setSavingStreamingServices(false);
     }
   };
 
@@ -444,6 +526,58 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
           )}
         </Pressable>
+      </View>
+
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="tv-outline" size={18} color={theme.colors.accent} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Streaming</Text>
+          </View>
+          <Text style={[styles.currentBadge, { color: theme.colors.accent }]}>
+            {ownedStreamingServices.length > 0 ? `${ownedStreamingServices.length}` : 'Aucune'}
+          </Text>
+        </View>
+
+        {loadingStreamingServices ? (
+          <View style={styles.inlineLoaderRow}>
+            <ActivityIndicator color={theme.colors.text} />
+            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de tes plateformes...</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.streamingChipsRow}>
+              {STREAMING_SERVICE_OPTIONS.map((service) => {
+                const isActive = ownedStreamingServices.includes(service);
+                return (
+                  <Pressable
+                    key={service}
+                    style={[
+                      styles.streamingChip,
+                      { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+                      isActive && { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
+                    ]}
+                    onPress={() => void handleToggleStreamingService(service)}
+                    disabled={savingStreamingServices}
+                  >
+                    <Text
+                      style={[
+                        styles.streamingChipLabel,
+                        { color: theme.colors.textSoft },
+                        isActive && { color: theme.colors.text },
+                      ]}
+                    >
+                      {service}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
+              Sert à filtrer la playlist À regarder plus tard selon les plateformes que tu as déjà.
+            </Text>
+          </>
+        )}
       </View>
 
       <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -817,6 +951,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '700',
+  },
+  streamingChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  streamingChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  streamingChipLabel: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   infoList: {
     gap: 10,

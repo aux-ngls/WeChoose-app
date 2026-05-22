@@ -13,6 +13,7 @@ export interface SearchMovie {
   added_at?: string;
   sort_index?: number;
   primary_genre?: string;
+  subscription_provider_names?: string[];
 }
 
 export interface AuthPayload {
@@ -371,6 +372,7 @@ export interface ProfilePreferencesPayload {
   profile_people: ProfileShowcasePerson[];
   profile_movie_ids: number[];
   profile_soundtrack: ProfileShowcaseSoundtrack | null;
+  owned_streaming_services?: string[];
 }
 
 export const FALLBACK_POSTER = 'https://via.placeholder.com/500x750?text=No+Image';

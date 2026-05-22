@@ -621,6 +621,9 @@ def init_postgres_db():
     cursor = conn.cursor()
     with open(POSTGRES_SCHEMA_PATH, "r", encoding="utf-8") as schema_file:
         cursor.execute(schema_file.read())
+    cursor.execute(
+        "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS owned_streaming_services TEXT DEFAULT '[]'"
+    )
     conn.commit()
     conn.close()
 
@@ -659,6 +662,7 @@ def init_sqlite_db():
     ensure_column("user_preferences", "profile_movie_ids", "TEXT DEFAULT '[]'")
     ensure_column("user_preferences", "profile_soundtrack", "TEXT DEFAULT '{}'")
     ensure_column("user_preferences", "profile_description", "TEXT DEFAULT ''")
+    ensure_column("user_preferences", "owned_streaming_services", "TEXT DEFAULT '[]'")
     ensure_column("user_preferences", "tutorial_completed_at", "TIMESTAMP")
     
     # Table USER_RATINGS (PK composite)
@@ -1007,6 +1011,7 @@ class ProfilePreferencesPayload(BaseModel):
     profile_people: list[dict] = []
     profile_movie_ids: list[int] = []
     profile_soundtrack: Optional[dict] = None
+    owned_streaming_services: Optional[list[str]] = None
 
 
 class ModerationReportPayload(BaseModel):
@@ -1062,6 +1067,35 @@ def local_avatar_path_from_url(avatar_url: Optional[str]) -> Optional[str]:
 
 def normalize_preference_label(value: str) -> str:
     return " ".join(value.strip().split())
+
+
+def normalize_streaming_service_label(value: str) -> str:
+    normalized = normalize_preference_label(value)
+    if not normalized:
+        return ""
+
+    aliases = {
+        "prime": "Prime Video",
+        "amazon prime": "Prime Video",
+        "amazon prime video": "Prime Video",
+        "prime video": "Prime Video",
+        "disney+": "Disney+",
+        "disney plus": "Disney+",
+        "netflix": "Netflix",
+        "canal+": "Canal+",
+        "canal plus": "Canal+",
+        "apple tv+": "Apple TV+",
+        "apple tv plus": "Apple TV+",
+        "paramount+": "Paramount+",
+        "paramount plus": "Paramount+",
+        "max": "Max",
+        "ocs": "OCS",
+        "mubi": "MUBI",
+        "arte": "ARTE",
+        "arte.tv": "ARTE",
+        "arte tv": "ARTE",
+    }
+    return aliases.get(normalized.lower(), normalized)
 
 
 def normalize_genre_token(value: str) -> str:
@@ -1412,6 +1446,7 @@ def get_user_preferences(cursor, user_id: int) -> dict:
             profile_movie_ids,
             profile_soundtrack,
             profile_description,
+            owned_streaming_services,
             tutorial_completed_at
         FROM user_preferences
         WHERE user_id = {param}
@@ -1431,6 +1466,7 @@ def get_user_preferences(cursor, user_id: int) -> dict:
             "profile_movie_ids": [],
             "profile_soundtrack": None,
             "profile_description": "",
+            "owned_streaming_services": [],
             "has_completed_onboarding": has_existing_taste_signals(cursor, user_id),
             "has_completed_tutorial": False,
         }
@@ -1456,6 +1492,13 @@ def get_user_preferences(cursor, user_id: int) -> dict:
     ]
     profile_soundtrack = normalize_profile_soundtrack_entry(load_json_dict(row[9]))
     profile_description = normalize_profile_description(row[10])
+    owned_streaming_services = dedupe_list(
+        [
+            normalize_streaming_service_label(value)
+            for value in load_json_list(row[11])
+            if isinstance(value, str) and normalize_streaming_service_label(value)
+        ]
+    )
 
     if not profile_people_data and profile_people:
         profile_people_data = dedupe_profile_people(profile_people)[:6]
@@ -1473,8 +1516,9 @@ def get_user_preferences(cursor, user_id: int) -> dict:
         "profile_movie_ids": profile_movie_ids,
         "profile_soundtrack": profile_soundtrack,
         "profile_description": profile_description,
+        "owned_streaming_services": owned_streaming_services,
         "has_completed_onboarding": bool(row[4]) or has_existing_taste_signals(cursor, user_id),
-        "has_completed_tutorial": bool(row[11]),
+        "has_completed_tutorial": bool(row[12]),
     }
 
 
@@ -1503,6 +1547,11 @@ def serialize_profile_preferences(preferences: dict) -> dict:
         "profile_description": normalize_profile_description(
             preferences.get("profile_description")
         ),
+        "owned_streaming_services": [
+            normalize_streaming_service_label(value)
+            for value in preferences.get("owned_streaming_services", [])
+            if isinstance(value, str) and normalize_streaming_service_label(value)
+        ],
     }
 
 def verify_password(plain_password, hashed_password):
@@ -1841,6 +1890,9 @@ def save_profile_preferences(
     payload: ProfilePreferencesPayload,
     current_user: dict = Depends(get_current_user),
 ):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    existing_preferences = get_user_preferences(cursor, current_user["id"])
     profile_genres = dedupe_list(
         [
             normalize_preference_label(value)
@@ -1855,9 +1907,16 @@ def save_profile_preferences(
     )[:6]
     profile_soundtrack = normalize_profile_soundtrack_entry(payload.profile_soundtrack)
     profile_description = normalize_profile_description(payload.profile_description)
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    if payload.owned_streaming_services is None:
+        owned_streaming_services = existing_preferences.get("owned_streaming_services", [])
+    else:
+        owned_streaming_services = dedupe_list(
+            [
+                normalize_streaming_service_label(value)
+                for value in payload.owned_streaming_services
+                if isinstance(value, str) and normalize_streaming_service_label(value)
+            ]
+        )[:12]
     cursor.execute(
         """
         INSERT INTO user_preferences (
@@ -1868,8 +1927,9 @@ def save_profile_preferences(
             profile_movie_ids,
             profile_soundtrack,
             profile_description,
+            owned_streaming_services,
             updated_at
-        ) VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, CURRENT_TIMESTAMP)
+        ) VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET
             profile_genres = excluded.profile_genres,
             profile_people = excluded.profile_people,
@@ -1877,6 +1937,7 @@ def save_profile_preferences(
             profile_movie_ids = excluded.profile_movie_ids,
             profile_soundtrack = excluded.profile_soundtrack,
             profile_description = excluded.profile_description,
+            owned_streaming_services = excluded.owned_streaming_services,
             updated_at = CURRENT_TIMESTAMP
         """.format(param=SQL_PARAM),
         (
@@ -1887,6 +1948,7 @@ def save_profile_preferences(
             dump_json_list(profile_movie_ids),
             dump_json_dict(profile_soundtrack or {}),
             profile_description,
+            dump_json_list(owned_streaming_services),
         ),
     )
     conn.commit()
@@ -3900,6 +3962,18 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
 
     for movie in movies:
         movie["primary_genre"] = get_movie_primary_genre(int(movie["id"]))
+        movie["subscription_provider_names"] = []
+
+    if playlist_id == WATCH_LATER_SYSTEM_ID:
+        for movie in movies:
+            watch_providers = get_tmdb_watch_providers(int(movie["id"]))
+            movie["subscription_provider_names"] = dedupe_list(
+                [
+                    normalize_streaming_service_label(provider.get("name", ""))
+                    for provider in watch_providers.get("subscription", [])
+                    if normalize_streaming_service_label(provider.get("name", ""))
+                ]
+            )
 
     if playlist_id == WATCH_LATER_SYSTEM_ID:
         movies.sort(

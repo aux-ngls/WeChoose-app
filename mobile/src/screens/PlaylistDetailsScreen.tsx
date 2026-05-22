@@ -21,6 +21,7 @@ import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
 import {
   ApiError,
+  fetchProfilePreferences,
   fetchPlaylistMovies,
   removeMovieFromPlaylist,
   reorderPlaylistMovies,
@@ -35,6 +36,7 @@ import {
   type SearchMovie,
   WATCH_LATER_PLAYLIST_ID,
 } from '../types';
+import { matchesOwnedStreamingServices } from '../utils/streaming';
 
 const SORT_OPTIONS = [
   { key: 'manual', label: 'Ordre' },
@@ -75,6 +77,8 @@ export default function PlaylistDetailsScreen({
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>(route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : 'manual');
+  const [onlyOwnedStreamingServices, setOnlyOwnedStreamingServices] = useState(false);
+  const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
   const [reorderingMovieId, setReorderingMovieId] = useState<number | null>(null);
   const moviesRef = useRef(movies);
 
@@ -122,10 +126,26 @@ export default function PlaylistDetailsScreen({
     }
   }, [route.params.playlistId, session, signOut]);
 
+  const loadOwnedStreamingServices = useCallback(async () => {
+    if (!session || route.params.playlistId !== WATCH_LATER_PLAYLIST_ID) {
+      return;
+    }
+
+    try {
+      const preferences = await fetchProfilePreferences(session.token);
+      setOwnedStreamingServices(preferences.owned_streaming_services ?? []);
+    } catch (fetchError) {
+      if (fetchError instanceof ApiError && fetchError.status === 401) {
+        await signOut();
+      }
+    }
+  }, [route.params.playlistId, session, signOut]);
+
   useFocusEffect(
     useCallback(() => {
       void loadPlaylist();
-    }, [loadPlaylist]),
+      void loadOwnedStreamingServices();
+    }, [loadOwnedStreamingServices, loadPlaylist]),
   );
 
   const refreshPlaylist = useCallback(async () => {
@@ -158,13 +178,20 @@ export default function PlaylistDetailsScreen({
       copy.sort((a, b) => String(b.added_at ?? '').localeCompare(String(a.added_at ?? '')));
     }
 
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      return copy;
+    let filtered = copy;
+    if (onlyOwnedStreamingServices && route.params.playlistId === WATCH_LATER_PLAYLIST_ID && ownedStreamingServices.length > 0) {
+      filtered = filtered.filter((movie) =>
+        matchesOwnedStreamingServices(movie.subscription_provider_names, ownedStreamingServices),
+      );
     }
 
-    return copy.filter((movie) => movie.title.toLowerCase().includes(trimmed));
-  }, [movies, query, sortMode]);
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) {
+      return filtered;
+    }
+
+    return filtered.filter((movie) => movie.title.toLowerCase().includes(trimmed));
+  }, [movies, onlyOwnedStreamingServices, ownedStreamingServices, query, route.params.playlistId, sortMode]);
 
   const handleRemove = async (movieId: number) => {
     if (!session || !canRemove) {
@@ -261,6 +288,29 @@ export default function PlaylistDetailsScreen({
             </Text>
           </Pressable>
         ))}
+        {route.params.playlistId === WATCH_LATER_PLAYLIST_ID && ownedStreamingServices.length > 0 ? (
+          <Pressable
+            onPress={() => setOnlyOwnedStreamingServices((current) => !current)}
+            style={[
+              styles.filterChip,
+              { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+              onlyOwnedStreamingServices && {
+                borderColor: theme.colors.secondaryAccent,
+                backgroundColor: theme.colors.accentSoft,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterChipLabel,
+                { color: theme.colors.textSoft },
+                onlyOwnedStreamingServices && { color: theme.colors.text },
+              ]}
+            >
+              Mes plateformes
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
       {loading && movies.length === 0 ? (
         <View style={styles.loadingState}>

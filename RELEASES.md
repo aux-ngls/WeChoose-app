@@ -151,3 +151,4 @@ npx eas submit --platform ios
 - A full production smoke test passed after the PostgreSQL migration across auth, recommendations, playlists, ratings, social flows, notifications, and direct messages.
 - Direct messaging realtime delivery is now active: WebSocket support is installed server-side, outgoing events use per-socket queues, mobile reconnects with heartbeat, and local latency validation received a message event in 58 ms.
 - Inbox refresh is now more reliable on mobile: conversation threads emit a shared update event so the messages list updates immediately when a message is received or sent from an open thread.
+- Mobile settings now include owned streaming platforms, and the watch-later playlist can filter to movies available on those subscription services.
