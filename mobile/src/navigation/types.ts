@@ -17,10 +17,13 @@ export type RootStackParamList = {
   PersonDetails: { personId: number; name?: string; photoUrl?: string | null };
   PlaylistDetails: { playlistId: number; name?: string };
   ShareMovie: {
-    movieId: number;
-    title: string;
-    posterUrl: string;
-    rating: number;
+    movieId?: number;
+    title?: string;
+    posterUrl?: string;
+    rating?: number;
+    conversationId?: number;
+    participantUsername?: string;
+    participantId?: number;
   };
   Notifications: undefined;
   Settings: undefined;

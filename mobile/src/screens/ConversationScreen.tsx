@@ -32,7 +32,11 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type DirectMessage } from '../types';
-import { INBOX_CONVERSATION_EVENT, NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
+import {
+  CONVERSATION_MESSAGE_EVENT,
+  INBOX_CONVERSATION_EVENT,
+  NOTIFICATIONS_REFRESH_EVENT,
+} from '../utils/events';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { connectRealtimeSocket } from '../utils/realtime';
 
@@ -57,6 +61,11 @@ interface InboxConversationEventPayload {
   sender_id: number;
   sender_username: string;
   preview: string;
+  message: DirectMessage;
+}
+
+interface ConversationMessageEventPayload {
+  conversation_id: number;
   message: DirectMessage;
 }
 
@@ -396,6 +405,37 @@ export default function ConversationScreen({
       },
     });
   }, [cacheKey, loadConversation, route.params.conversationId, session]);
+
+  useEffect(() => {
+    if (!session) {
+      return undefined;
+    }
+
+    const subscription = DeviceEventEmitter.addListener(
+      CONVERSATION_MESSAGE_EVENT,
+      (payload: ConversationMessageEventPayload) => {
+        if (payload.conversation_id !== route.params.conversationId) {
+          return;
+        }
+
+        const localMessage = normalizeRealtimeMessage(payload.message, session?.username ?? '');
+        const participantSnapshot = participantSnapshotRef.current;
+        shouldScrollToEndRef.current = true;
+        isNearBottomRef.current = true;
+        setMessages((current) => {
+          const nextMessages = mergeRealtimeMessage(current, localMessage);
+          conversationCache.set(cacheKey, {
+            participantId: participantSnapshot.participantId,
+            participantUsername: participantSnapshot.participantUsername,
+            messages: nextMessages,
+          });
+          return areMessageListsEquivalent(current, nextMessages) ? current : nextMessages;
+        });
+      },
+    );
+
+    return () => subscription.remove();
+  }, [cacheKey, route.params.conversationId, session]);
 
   useFocusEffect(
     useCallback(() => {
@@ -847,6 +887,18 @@ export default function ConversationScreen({
         ) : null}
 
         <View style={[styles.composerRow, { marginBottom: composerBottomGap }]}>
+          <Pressable
+            style={[styles.shareButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
+            onPress={() =>
+              navigation.navigate('ShareMovie', {
+                conversationId: route.params.conversationId,
+                participantUsername,
+                participantId: participantId ?? undefined,
+              })
+            }
+          >
+            <Ionicons name="film-outline" size={18} color={theme.colors.text} />
+          </Pressable>
           <TextInput
             value={draft}
             onChangeText={setDraft}
@@ -1090,6 +1142,14 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 18,
     backgroundColor: '#7dd3fc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
