@@ -19,18 +19,23 @@ import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, type SocialUser } from '../types';
 import { CONVERSATION_MESSAGE_EVENT, INBOX_CONVERSATION_EVENT } from '../utils/events';
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function triggerMovieShareHaptic() {
   try {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setTimeout(() => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 70);
+    await Haptics.selectionAsync();
+    await wait(28);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+    await wait(42);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await wait(52);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
   } catch {
-    Vibration.vibrate([0, 30, 45, 40]);
+    Vibration.vibrate([0, 12, 30, 18, 42, 28]);
     return;
   }
-
-  Vibration.vibrate(18);
 }
 
 export default function ShareMovieScreen({
