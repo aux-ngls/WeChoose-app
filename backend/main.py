@@ -4110,6 +4110,114 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
 
     return movies
 
+
+@app.get("/playlists/{playlist_id}/paged")
+def get_playlist_content_paged(
+    playlist_id: int,
+    limit: int = 60,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+):
+    safe_limit = max(1, min(limit, 120))
+    safe_offset = max(0, offset)
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+
+    if playlist_id == WATCH_LATER_SYSTEM_ID:
+        real_id = get_or_create_watch_later_id(cursor, current_user["id"])
+        conn.commit()
+        cursor.execute(
+            f"SELECT COUNT(*) AS count FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
+            (real_id,),
+        )
+        total_count = int(cursor.fetchone()["count"] or 0)
+        cursor.execute(
+            f"""
+            SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at
+            FROM playlist_items
+            WHERE playlist_id = {SQL_PARAM}
+            ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
+            LIMIT {safe_limit} OFFSET {safe_offset}
+            """,
+            (real_id,),
+        )
+    elif playlist_id == FAVORITES_SYSTEM_ID:
+        cursor.execute(
+            f"SELECT COUNT(*) AS count FROM user_ratings WHERE user_id = {SQL_PARAM} AND rating >= 4",
+            (current_user["id"],),
+        )
+        total_count = int(cursor.fetchone()["count"] or 0)
+        cursor.execute(
+            f"""
+            SELECT movie_id as id, title, poster_url, rating, added_at
+            FROM user_ratings
+            WHERE user_id = {SQL_PARAM} AND rating >= 4
+            ORDER BY added_at DESC
+            LIMIT {safe_limit} OFFSET {safe_offset}
+            """,
+            (current_user["id"],),
+        )
+    elif playlist_id == HISTORY_SYSTEM_ID:
+        cursor.execute(
+            f"SELECT COUNT(*) AS count FROM user_ratings WHERE user_id = {SQL_PARAM}",
+            (current_user["id"],),
+        )
+        total_count = int(cursor.fetchone()["count"] or 0)
+        cursor.execute(
+            f"""
+            SELECT movie_id as id, title, poster_url, rating, added_at
+            FROM user_ratings
+            WHERE user_id = {SQL_PARAM}
+            ORDER BY added_at DESC
+            LIMIT {safe_limit} OFFSET {safe_offset}
+            """,
+            (current_user["id"],),
+        )
+    else:
+        target_id = get_custom_playlist_id(cursor, playlist_id, current_user["id"])
+        cursor.execute(
+            f"SELECT COUNT(*) AS count FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
+            (target_id,),
+        )
+        total_count = int(cursor.fetchone()["count"] or 0)
+        cursor.execute(
+            f"""
+            SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index
+            FROM playlist_items
+            WHERE playlist_id = {SQL_PARAM}
+            ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
+            LIMIT {safe_limit} OFFSET {safe_offset}
+            """,
+            (target_id,),
+        )
+
+    movies = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    for movie in movies:
+        movie["primary_genre"] = get_movie_primary_genre(int(movie["id"]))
+        movie["subscription_provider_names"] = []
+
+    if playlist_id == WATCH_LATER_SYSTEM_ID:
+        for movie in movies:
+            watch_providers = get_tmdb_watch_providers(int(movie["id"]))
+            movie["subscription_provider_names"] = dedupe_list(
+                [
+                    normalize_streaming_service_label(provider.get("name", ""))
+                    for provider in watch_providers.get("subscription", [])
+                    if normalize_streaming_service_label(provider.get("name", ""))
+                ]
+            )
+
+    next_offset = safe_offset + len(movies)
+    return {
+        "items": movies,
+        "total_count": total_count,
+        "next_offset": next_offset,
+        "has_more": next_offset < total_count,
+    }
+
 @app.post("/playlists/{playlist_id}/add/{movie_id}")
 def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()

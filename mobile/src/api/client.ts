@@ -10,6 +10,7 @@ import type {
   PersonDetails,
   PlaylistSummary,
   PlaylistWithPreview,
+  PlaylistMoviesPage,
   ProfilePreferencesPayload,
   ProfileShowcasePerson,
   ProfileShowcaseSoundtrack,
@@ -529,6 +530,17 @@ export async function createPlaylist(token: string, name: string): Promise<Playl
 
 export async function fetchPlaylistMovies(token: string, playlistId: number): Promise<SearchMovie[]> {
   return request<SearchMovie[]>(`/playlists/${playlistId}`, undefined, token);
+}
+
+export async function fetchPlaylistMoviesPage(
+  token: string,
+  playlistId: number,
+  options?: { limit?: number; offset?: number },
+): Promise<PlaylistMoviesPage> {
+  const params = new URLSearchParams();
+  params.set('limit', String(options?.limit ?? 60));
+  params.set('offset', String(options?.offset ?? 0));
+  return request<PlaylistMoviesPage>(`/playlists/${playlistId}/paged?${params.toString()}`, undefined, token);
 }
 
 export async function removeMovieFromPlaylist(token: string, playlistId: number, movieId: number): Promise<void> {

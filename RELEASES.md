@@ -153,3 +153,4 @@ npx eas submit --platform ios
 - Inbox refresh is now more reliable on mobile: conversation threads emit a shared update event so the messages list updates immediately when a message is received or sent from an open thread.
 - Mobile settings now include owned streaming platforms, and the watch-later playlist can filter to movies available on those subscription services.
 - Profile loading now uses a lightweight playlist preview endpoint, fixing slow or blocked profile screens for accounts with very large playlists.
+- Playlist details now page large movie lists progressively instead of loading every movie up front, which fixes heavy watchlists like `@random`'s account.

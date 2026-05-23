@@ -164,6 +164,13 @@ export interface PlaylistWithPreview extends PlaylistSummary {
   preview_movies: SearchMovie[];
 }
 
+export interface PlaylistMoviesPage {
+  items: SearchMovie[];
+  total_count: number;
+  next_offset: number;
+  has_more: boolean;
+}
+
 export interface DirectConversationSummary {
   id: number;
   created_at: string;
