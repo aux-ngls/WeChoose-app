@@ -49,6 +49,8 @@ const SORT_OPTIONS = [
 
 type SortMode = (typeof SORT_OPTIONS)[number]['key'];
 const PLAYLIST_PAGE_SIZE = 60;
+const APPEND_BATCH_SIZE = 12;
+const APPEND_BATCH_DELAY_MS = 28;
 
 const playlistMoviesCache = new Map<
   number,
@@ -72,6 +74,10 @@ function compareManualOrder(a: SearchMovie, b: SearchMovie) {
 function formatPlaylistRating(rating: number, playlistId: number) {
   const scale = playlistId === FAVORITES_PLAYLIST_ID || playlistId === HISTORY_PLAYLIST_ID ? 5 : 10;
   return `${rating.toFixed(1)} / ${scale}`;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export default function PlaylistDetailsScreen({
@@ -107,6 +113,7 @@ export default function PlaylistDetailsScreen({
   });
   const isLoadingPageRef = useRef(false);
   const hiddenPrefetchRef = useRef(false);
+  const appendSequenceRef = useRef(0);
 
   useEffect(() => {
     moviesRef.current = movies;
@@ -164,21 +171,54 @@ export default function PlaylistDetailsScreen({
       setLoadingMore(true);
     }
     isLoadingPageRef.current = true;
+    const appendSequence = appendSequenceRef.current + 1;
+    appendSequenceRef.current = appendSequence;
 
     try {
       const payload = await fetchPlaylistMoviesPage(session.token, route.params.playlistId, {
         limit: PLAYLIST_PAGE_SIZE,
         offset: shouldReset ? 0 : paginationRef.current.nextOffset,
       });
-      const nextMovies = shouldReset ? payload.items : [...moviesRef.current, ...payload.items];
-      setMovies(nextMovies);
       setTotalCount(payload.total_count);
       setHasMore(payload.has_more);
       setNextOffset(payload.next_offset);
-      if (!payload.has_more || nextMovies.length >= Math.min(payload.total_count, PLAYLIST_PAGE_SIZE * 2)) {
+      const existingMovies = shouldReset ? [] : moviesRef.current;
+      const targetMovies = [...existingMovies, ...payload.items];
+
+      if (!payload.has_more || targetMovies.length >= Math.min(payload.total_count, PLAYLIST_PAGE_SIZE * 2)) {
         hiddenPrefetchRef.current = false;
       }
-      updatePlaylistCache(nextMovies, payload.total_count, payload.has_more, payload.next_offset);
+
+      if (payload.items.length === 0) {
+        setMovies(existingMovies);
+        updatePlaylistCache(existingMovies, payload.total_count, payload.has_more, payload.next_offset);
+        setError('');
+        return;
+      }
+
+      for (let start = 0; start < payload.items.length; start += APPEND_BATCH_SIZE) {
+        if (appendSequenceRef.current !== appendSequence) {
+          return;
+        }
+
+        const visibleCount = Math.min(start + APPEND_BATCH_SIZE, payload.items.length);
+        const nextMovies = [...existingMovies, ...payload.items.slice(0, visibleCount)];
+        setMovies(nextMovies);
+        updatePlaylistCache(nextMovies, payload.total_count, payload.has_more, payload.next_offset);
+
+        if (start === 0) {
+          setLoading(false);
+        }
+
+        if (visibleCount < payload.items.length) {
+          await delay(APPEND_BATCH_DELAY_MS);
+        }
+      }
+
+      if (appendSequenceRef.current === appendSequence) {
+        setMovies(targetMovies);
+        updatePlaylistCache(targetMovies, payload.total_count, payload.has_more, payload.next_offset);
+      }
       setError('');
     } catch (fetchError) {
       if (fetchError instanceof ApiError && fetchError.status === 401) {
