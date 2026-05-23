@@ -184,6 +184,7 @@ PostgreSQL cleanup status:
 - private messaging realtime is now validated through WebSocket: backend includes `websockets`, the manager uses per-connection send queues, mobile reconnects automatically with heartbeat, and a local end-to-end latency check received `messages.updated` in about 58 ms.
 - the mobile inbox now also listens to a shared conversation-update event from the conversation screen, so the conversation list refreshes immediately even when a message is received or sent while a thread is already open.
 - users can now save the streaming platforms they own in mobile settings, and the watch-later playlist can filter to movies available on those owned subscription services.
+- mobile profile loading now uses `/playlists/previews` instead of fetching every playlist in full; this keeps profiles responsive for accounts with very large watch-later playlists, such as `@random`.
 
 ## How To Resume Work
 

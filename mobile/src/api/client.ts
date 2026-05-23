@@ -9,6 +9,7 @@ import type {
   OnboardingPreferencesResponse,
   PersonDetails,
   PlaylistSummary,
+  PlaylistWithPreview,
   ProfilePreferencesPayload,
   ProfileShowcasePerson,
   ProfileShowcaseSoundtrack,
@@ -508,6 +509,10 @@ export async function fetchProfilePreferences(token: string): Promise<ProfilePre
 
 export async function fetchPlaylists(token: string): Promise<PlaylistSummary[]> {
   return request<PlaylistSummary[]>('/playlists', undefined, token);
+}
+
+export async function fetchPlaylistPreviews(token: string): Promise<PlaylistWithPreview[]> {
+  return request<PlaylistWithPreview[]>('/playlists/previews', undefined, token);
 }
 
 export async function createPlaylist(token: string, name: string): Promise<PlaylistSummary> {

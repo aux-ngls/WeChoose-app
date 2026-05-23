@@ -3901,6 +3901,131 @@ def get_all_playlists(current_user: dict = Depends(get_current_user)):
         },
     ] + custom
 
+
+@app.get("/playlists/previews")
+def get_playlist_previews(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    watch_later_id = get_or_create_watch_later_id(cursor, current_user["id"])
+    conn.commit()
+
+    cursor.execute(
+        f"SELECT id, name FROM playlists WHERE user_id = {SQL_PARAM} AND name != {SQL_PARAM} ORDER BY id DESC",
+        (current_user["id"], WATCH_LATER_NAME),
+    )
+    custom_playlists = [dict(row) for row in cursor.fetchall()]
+
+    playlist_sources = [
+        {
+            "id": WATCH_LATER_SYSTEM_ID,
+            "name": "⏰ À regarder plus tard",
+            "type": "system",
+            "system_key": "watch-later",
+            "readonly": False,
+            "real_id": watch_later_id,
+            "source": "playlist_items",
+        },
+        {
+            "id": FAVORITES_SYSTEM_ID,
+            "name": "⭐ Mes Tops (4-5★)",
+            "type": "system",
+            "system_key": "favorites",
+            "readonly": True,
+            "source": "favorites",
+        },
+        {
+            "id": HISTORY_SYSTEM_ID,
+            "name": "👁️ Historique",
+            "type": "system",
+            "system_key": "history",
+            "readonly": True,
+            "source": "history",
+        },
+    ] + [
+        {
+            "id": int(playlist["id"]),
+            "name": playlist["name"],
+            "type": "custom",
+            "system_key": None,
+            "readonly": False,
+            "real_id": int(playlist["id"]),
+            "source": "custom",
+        }
+        for playlist in custom_playlists
+    ]
+
+    previews = []
+    for playlist in playlist_sources:
+        source = playlist["source"]
+        if source in {"playlist_items", "custom"}:
+            cursor.execute(
+                f"SELECT COUNT(*) AS count FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
+                (playlist["real_id"],),
+            )
+            count = int(cursor.fetchone()["count"] or 0)
+            order_clause = (
+                "COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC"
+                if source == "playlist_items"
+                else "COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC"
+            )
+            cursor.execute(
+                f"""
+                SELECT movie_id AS id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') AS added_at
+                FROM playlist_items
+                WHERE playlist_id = {SQL_PARAM}
+                ORDER BY {order_clause}
+                LIMIT 3
+                """,
+                (playlist["real_id"],),
+            )
+        elif source == "favorites":
+            cursor.execute(
+                f"SELECT COUNT(*) AS count FROM user_ratings WHERE user_id = {SQL_PARAM} AND rating >= 4",
+                (current_user["id"],),
+            )
+            count = int(cursor.fetchone()["count"] or 0)
+            cursor.execute(
+                f"""
+                SELECT movie_id AS id, title, poster_url, rating, added_at
+                FROM user_ratings
+                WHERE user_id = {SQL_PARAM} AND rating >= 4
+                ORDER BY added_at DESC
+                LIMIT 3
+                """,
+                (current_user["id"],),
+            )
+        else:
+            cursor.execute(
+                f"SELECT COUNT(*) AS count FROM user_ratings WHERE user_id = {SQL_PARAM}",
+                (current_user["id"],),
+            )
+            count = int(cursor.fetchone()["count"] or 0)
+            cursor.execute(
+                f"""
+                SELECT movie_id AS id, title, poster_url, rating, added_at
+                FROM user_ratings
+                WHERE user_id = {SQL_PARAM}
+                ORDER BY added_at DESC
+                LIMIT 3
+                """,
+                (current_user["id"],),
+            )
+
+        preview_movies = [dict(row) for row in cursor.fetchall()]
+        previews.append({
+            "id": playlist["id"],
+            "name": playlist["name"],
+            "type": playlist["type"],
+            "system_key": playlist["system_key"],
+            "readonly": playlist["readonly"],
+            "count": count,
+            "preview_movies": preview_movies,
+        })
+
+    conn.close()
+    return previews
+
+
 @app.post("/playlists/create")
 def create_playlist(p: PlaylistCreate, current_user: dict = Depends(get_current_user)):
     playlist_name = p.name.strip()

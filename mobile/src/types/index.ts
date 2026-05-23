@@ -159,6 +159,11 @@ export interface PlaylistSummary {
   readonly: boolean;
 }
 
+export interface PlaylistWithPreview extends PlaylistSummary {
+  count: number;
+  preview_movies: SearchMovie[];
+}
+
 export interface DirectConversationSummary {
   id: number;
   created_at: string;

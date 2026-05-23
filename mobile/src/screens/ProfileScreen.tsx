@@ -15,8 +15,7 @@ import {
   ApiError,
   createPlaylist,
   deleteReview,
-  fetchPlaylistMovies,
-  fetchPlaylists,
+  fetchPlaylistPreviews,
   fetchSocialNotifications,
   fetchSocialProfile,
   saveProfilePreferences,
@@ -30,7 +29,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import {
   FALLBACK_POSTER,
-  type PlaylistSummary,
+  type PlaylistWithPreview,
   type ProfileShowcaseMovie,
   type ProfileShowcasePerson,
   type ProfileShowcaseSoundtrack,
@@ -39,11 +38,6 @@ import {
 } from '../types';
 import { formatDate } from '../utils/format';
 import { NOTIFICATIONS_REFRESH_EVENT, PROFILE_REFRESH_EVENT } from '../utils/events';
-
-interface PlaylistWithPreview extends PlaylistSummary {
-  count: number;
-  preview_movies: SearchMovie[];
-}
 
 const PROFILE_CACHE_TTL_MS = 45000;
 
@@ -164,21 +158,10 @@ export default function ProfileScreen() {
     }
 
     try {
-      const [profilePayload, playlistsPayload] = await Promise.all([
+      const [profilePayload, playlistsWithPreview] = await Promise.all([
         fetchSocialProfile(session.token, session.username),
-        fetchPlaylists(session.token),
+        fetchPlaylistPreviews(session.token),
       ]);
-
-      const playlistsWithPreview = await Promise.all(
-        playlistsPayload.map(async (playlist) => {
-          const movies = await fetchPlaylistMovies(session.token, playlist.id);
-          return {
-            ...playlist,
-            count: movies.length,
-            preview_movies: movies.slice(0, 3),
-          } satisfies PlaylistWithPreview;
-        }),
-      );
 
       profileCache = {
         username: session.username,
