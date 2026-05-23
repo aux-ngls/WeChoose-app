@@ -48,6 +48,7 @@ const SORT_OPTIONS = [
 ] as const;
 
 type SortMode = (typeof SORT_OPTIONS)[number]['key'];
+const INITIAL_PLAYLIST_PAGE_SIZE = 200;
 const PLAYLIST_PAGE_SIZE = 60;
 const APPEND_BATCH_SIZE = 12;
 const APPEND_BATCH_DELAY_MS = 28;
@@ -175,8 +176,9 @@ export default function PlaylistDetailsScreen({
     appendSequenceRef.current = appendSequence;
 
     try {
+      const requestLimit = shouldReset ? INITIAL_PLAYLIST_PAGE_SIZE : PLAYLIST_PAGE_SIZE;
       const payload = await fetchPlaylistMoviesPage(session.token, route.params.playlistId, {
-        limit: PLAYLIST_PAGE_SIZE,
+        limit: requestLimit,
         offset: shouldReset ? 0 : paginationRef.current.nextOffset,
       });
       setTotalCount(payload.total_count);
@@ -185,13 +187,20 @@ export default function PlaylistDetailsScreen({
       const existingMovies = shouldReset ? [] : moviesRef.current;
       const targetMovies = [...existingMovies, ...payload.items];
 
-      if (!payload.has_more || targetMovies.length >= Math.min(payload.total_count, PLAYLIST_PAGE_SIZE * 2)) {
+      if (!payload.has_more || targetMovies.length >= Math.min(payload.total_count, INITIAL_PLAYLIST_PAGE_SIZE)) {
         hiddenPrefetchRef.current = false;
       }
 
       if (payload.items.length === 0) {
         setMovies(existingMovies);
         updatePlaylistCache(existingMovies, payload.total_count, payload.has_more, payload.next_offset);
+        setError('');
+        return;
+      }
+
+      if (shouldReset || currentLoadedCount === 0) {
+        setMovies(targetMovies);
+        updatePlaylistCache(targetMovies, payload.total_count, payload.has_more, payload.next_offset);
         setError('');
         return;
       }
@@ -253,7 +262,7 @@ export default function PlaylistDetailsScreen({
       return;
     }
 
-    if (movies.length > 0 && movies.length < Math.min(totalCount, PLAYLIST_PAGE_SIZE * 2)) {
+    if (movies.length > 0 && movies.length < Math.min(totalCount, INITIAL_PLAYLIST_PAGE_SIZE)) {
       hiddenPrefetchRef.current = true;
       void loadPlaylistPage({ silent: true });
     }
