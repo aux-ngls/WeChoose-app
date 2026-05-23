@@ -106,6 +106,7 @@ export default function PlaylistDetailsScreen({
     nextOffset: initialCache?.nextOffset ?? 0,
   });
   const isLoadingPageRef = useRef(false);
+  const hiddenPrefetchRef = useRef(false);
 
   useEffect(() => {
     moviesRef.current = movies;
@@ -146,16 +147,20 @@ export default function PlaylistDetailsScreen({
     [route.params.playlistId],
   );
 
-  const loadPlaylistPage = useCallback(async (options?: { reset?: boolean }) => {
+  const loadPlaylistPage = useCallback(async (options?: { reset?: boolean; silent?: boolean }) => {
     if (!session || isLoadingPageRef.current) {
       return;
     }
 
     const shouldReset = Boolean(options?.reset);
+    const silent = Boolean(options?.silent);
+    if (shouldReset) {
+      hiddenPrefetchRef.current = false;
+    }
     const currentLoadedCount = shouldReset ? 0 : moviesRef.current.length;
     if (shouldReset || currentLoadedCount === 0) {
       setLoading(true);
-    } else {
+    } else if (!silent) {
       setLoadingMore(true);
     }
     isLoadingPageRef.current = true;
@@ -170,6 +175,9 @@ export default function PlaylistDetailsScreen({
       setTotalCount(payload.total_count);
       setHasMore(payload.has_more);
       setNextOffset(payload.next_offset);
+      if (!payload.has_more || nextMovies.length >= Math.min(payload.total_count, PLAYLIST_PAGE_SIZE * 2)) {
+        hiddenPrefetchRef.current = false;
+      }
       updatePlaylistCache(nextMovies, payload.total_count, payload.has_more, payload.next_offset);
       setError('');
     } catch (fetchError) {
@@ -199,6 +207,17 @@ export default function PlaylistDetailsScreen({
       }
     }
   }, [route.params.playlistId, session, signOut]);
+
+  useEffect(() => {
+    if (hiddenPrefetchRef.current || loading || loadingMore || !hasMore) {
+      return;
+    }
+
+    if (movies.length > 0 && movies.length < Math.min(totalCount, PLAYLIST_PAGE_SIZE * 2)) {
+      hiddenPrefetchRef.current = true;
+      void loadPlaylistPage({ silent: true });
+    }
+  }, [hasMore, loading, loadingMore, loadPlaylistPage, movies.length, totalCount]);
 
   useFocusEffect(
     useCallback(() => {
@@ -438,7 +457,7 @@ export default function PlaylistDetailsScreen({
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>{route.params.name ?? 'Playlist'}</Text>
           <Text style={[styles.headerMeta, { color: theme.colors.textMuted }]}>
-            {totalCount > 0 ? `${movies.length} / ${totalCount} film(s)` : `${movies.length} film(s)`}
+            {`${totalCount || movies.length} film(s)`}
           </Text>
         </View>
         <View style={styles.iconSpacer} />
@@ -457,10 +476,10 @@ export default function PlaylistDetailsScreen({
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={headerComponent}
         contentContainerStyle={styles.listContent}
-        onEndReachedThreshold={0.35}
+        onEndReachedThreshold={0.9}
         onEndReached={() => {
           if (!loading && !loadingMore && hasMore) {
-            void loadPlaylistPage();
+            void loadPlaylistPage({ silent: true });
           }
         }}
         refreshControl={
@@ -530,15 +549,7 @@ export default function PlaylistDetailsScreen({
             <EmptyStateCard title="Aucun film" />
           ) : null
         }
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={styles.footerLoader}>
-              <ActivityIndicator color={theme.colors.textMuted} />
-            </View>
-          ) : hasMore ? (
-            <View style={styles.footerSpacer} />
-          ) : null
-        }
+        ListFooterComponent={hasMore ? <View style={styles.footerSpacer} /> : null}
       />
     </AppScreen>
   );
