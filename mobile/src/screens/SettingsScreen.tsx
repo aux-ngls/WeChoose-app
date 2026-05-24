@@ -12,12 +12,15 @@ import {
   deleteAccount,
   fetchBlockedUsers,
   fetchProfilePreferences,
+  fetchRecoveryEmail,
   resetTestUserData,
+  saveRecoveryEmail,
   saveProfilePreferences,
   unblockUser,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import AppScreen from '../components/AppScreen';
+import FormField from '../components/FormField';
 import InlineBanner from '../components/InlineBanner';
 import type { RootStackParamList } from '../navigation/types';
 import { registerForPushNotifications } from '../notifications/push';
@@ -53,6 +56,9 @@ export default function SettingsScreen() {
   const [savingThemePreference, setSavingThemePreference] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermissionState>('loading');
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [loadingRecoveryEmail, setLoadingRecoveryEmail] = useState(false);
+  const [savingRecoveryEmail, setSavingRecoveryEmail] = useState(false);
   const [profilePreferences, setProfilePreferences] = useState<ProfilePreferencesPayload | null>(null);
   const [loadingStreamingServices, setLoadingStreamingServices] = useState(false);
   const [savingStreamingServices, setSavingStreamingServices] = useState(false);
@@ -132,12 +138,37 @@ export default function SettingsScreen() {
     }
   }, [session, signOut]);
 
+  const loadRecoveryEmail = useCallback(async () => {
+    if (!session) {
+      setRecoveryEmail('');
+      return;
+    }
+
+    setLoadingRecoveryEmail(true);
+    try {
+      const payload = await fetchRecoveryEmail(session.token);
+      setRecoveryEmail(payload.email ?? '');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: "Impossible de charger l'e-mail de récupération.",
+      });
+    } finally {
+      setLoadingRecoveryEmail(false);
+    }
+  }, [session, signOut]);
+
   useFocusEffect(
     useCallback(() => {
       void loadNotificationStatus();
       void loadBlockedUsers();
       void loadProfilePreferences();
-    }, [loadBlockedUsers, loadNotificationStatus, loadProfilePreferences]),
+      void loadRecoveryEmail();
+    }, [loadBlockedUsers, loadNotificationStatus, loadProfilePreferences, loadRecoveryEmail]),
   );
 
   const handleThemePreferenceChange = async (preference: ThemePreference) => {
@@ -288,6 +319,34 @@ export default function SettingsScreen() {
   const handleReplayTutorial = async () => {
     setFeedback(null);
     await reopenTutorial();
+  };
+
+  const handleSaveRecoveryEmail = async () => {
+    if (!session || savingRecoveryEmail) {
+      return;
+    }
+
+    setSavingRecoveryEmail(true);
+    setFeedback(null);
+    try {
+      const payload = await saveRecoveryEmail(session.token, recoveryEmail.trim());
+      setRecoveryEmail(payload.email ?? '');
+      setFeedback({
+        tone: 'success',
+        message: payload.email ? "E-mail de récupération mis à jour." : "E-mail de récupération supprimé.",
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: error instanceof ApiError ? error.message : "Impossible d'enregistrer l'e-mail de récupération.",
+      });
+    } finally {
+      setSavingRecoveryEmail(false);
+    }
   };
 
   const handleClearRecommendationCache = async () => {
@@ -494,6 +553,48 @@ export default function SettingsScreen() {
         <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
           Le choix est sauvegardé sur ce téléphone et s'applique aux écrans principaux de l'app.
         </Text>
+      </View>
+
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="mail-outline" size={18} color={theme.colors.secondaryAccent} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Compte</Text>
+          </View>
+        </View>
+
+        {loadingRecoveryEmail ? (
+          <View style={styles.inlineLoaderRow}>
+            <ActivityIndicator color={theme.colors.text} />
+            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de ton e-mail de récupération...</Text>
+          </View>
+        ) : (
+          <View style={styles.accountForm}>
+            <FormField
+              label="E-mail de récupération"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={recoveryEmail}
+              onChangeText={setRecoveryEmail}
+              placeholder="toi@exemple.com"
+            />
+            <Pressable
+              style={[styles.saveInlineButton, { backgroundColor: theme.colors.secondaryAccent }]}
+              onPress={() => void handleSaveRecoveryEmail()}
+              disabled={savingRecoveryEmail}
+            >
+              {savingRecoveryEmail ? (
+                <ActivityIndicator color={theme.colors.secondaryAccentText} />
+              ) : (
+                <Text style={[styles.saveInlineButtonLabel, { color: theme.colors.secondaryAccentText }]}>Enregistrer l'e-mail</Text>
+              )}
+            </Pressable>
+            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
+              Sert à recevoir un code si tu oublies ton mot de passe.
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -878,6 +979,9 @@ const styles = StyleSheet.create({
   optionsList: {
     gap: 10,
   },
+  accountForm: {
+    gap: 12,
+  },
   inlineLoaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -932,6 +1036,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '900',
+  },
+  saveInlineButton: {
+    alignItems: 'center',
+    borderRadius: 18,
+    paddingVertical: 13,
+  },
+  saveInlineButtonLabel: {
+    fontSize: 14,
+    fontWeight: '800',
   },
   unblockButton: {
     minWidth: 96,

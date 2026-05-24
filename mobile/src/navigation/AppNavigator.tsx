@@ -19,6 +19,7 @@ import TestAiDashboardScreen from '../screens/TestAiDashboardScreen';
 import TutorialScreen from '../screens/TutorialScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import MainTabs from './MainTabs';
+import { syncPushRegistration } from '../notifications/push';
 import { flushPendingNotificationNavigation, navigateFromNotificationData, navigationRef } from './rootNavigation';
 import type { RootStackParamList } from './types';
 import { useTheme } from '../theme/ThemeContext';
@@ -83,6 +84,19 @@ export default function AppNavigator() {
 
     return () => subscription.remove();
   }, []);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    void syncPushRegistration(session.token).catch(() => undefined);
+    const pushTokenSubscription = Notifications.addPushTokenListener(() => {
+      void syncPushRegistration(session.token).catch(() => undefined);
+    });
+
+    return () => pushTokenSubscription.remove();
+  }, [session]);
 
   if (isBootstrapping) {
     return <AppLoader label="Qulte" />;

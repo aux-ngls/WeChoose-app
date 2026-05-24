@@ -5,7 +5,7 @@ import FormField from '../components/FormField';
 import InlineBanner from '../components/InlineBanner';
 import QulteMark from '../components/QulteMark';
 import ScreenHeader from '../components/ScreenHeader';
-import { ApiError } from '../api/client';
+import { ApiError, confirmPasswordReset, requestPasswordReset } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -15,8 +15,16 @@ export default function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showResetFlow, setShowResetFlow] = useState(false);
+  const [resetStep, setResetStep] = useState<'request' | 'confirm'>('request');
+  const [resetIdentifier, setResetIdentifier] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetFeedback, setResetFeedback] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const accent = mode === 'login' ? theme.colors.secondaryAccent : theme.colors.accent;
   const accentText = mode === 'login' ? theme.colors.secondaryAccentText : theme.colors.accentText;
@@ -37,7 +45,7 @@ export default function AuthScreen() {
       if (mode === 'login') {
         await signIn(normalizedUsername, normalizedPassword);
       } else {
-        await signUp(normalizedUsername, normalizedPassword);
+        await signUp(normalizedUsername, normalizedPassword, email.trim());
       }
     } catch (submitError) {
       if (submitError instanceof ApiError) {
@@ -47,6 +55,63 @@ export default function AuthScreen() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRequestReset = async () => {
+    const normalizedIdentifier = resetIdentifier.trim();
+    if (!normalizedIdentifier) {
+      setError('Renseigne ton nom d’utilisateur ou ton e-mail.');
+      return;
+    }
+
+    setError('');
+    setResetFeedback('');
+    setResetLoading(true);
+    try {
+      await requestPasswordReset(normalizedIdentifier);
+      setResetStep('confirm');
+      setResetFeedback("Si un compte a un e-mail de récupération, un code vient d'être envoyé.");
+    } catch (submitError) {
+      if (submitError instanceof ApiError) {
+        setError(submitError.message);
+      } else {
+        setError("Impossible d'envoyer le code pour le moment.");
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    const normalizedIdentifier = resetIdentifier.trim();
+    const normalizedCode = resetCode.trim();
+    const normalizedPassword = resetPassword.trim();
+    if (!normalizedIdentifier || !normalizedCode || !normalizedPassword) {
+      setError('Merci de remplir tous les champs de réinitialisation.');
+      return;
+    }
+
+    setError('');
+    setResetFeedback('');
+    setResetLoading(true);
+    try {
+      await confirmPasswordReset(normalizedIdentifier, normalizedCode, normalizedPassword);
+      setShowResetFlow(false);
+      setResetStep('request');
+      setResetCode('');
+      setResetPassword('');
+      setPassword(normalizedPassword);
+      setResetFeedback('');
+      setError('');
+    } catch (submitError) {
+      if (submitError instanceof ApiError) {
+        setError(submitError.message);
+      } else {
+        setError("Impossible de mettre à jour le mot de passe.");
+      }
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -98,8 +163,20 @@ export default function AuthScreen() {
             onChangeText={setPassword}
             placeholder="••••••••"
           />
+          {mode === 'signup' ? (
+            <FormField
+              label="E-mail de récupération"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="toi@exemple.com"
+            />
+          ) : null}
 
           {error ? <InlineBanner message={error} tone="error" /> : null}
+          {resetFeedback ? <InlineBanner message={resetFeedback} tone="success" /> : null}
 
           <Pressable onPress={() => void handleSubmit()} style={[styles.submitButton, { backgroundColor: accent }]} disabled={loading}>
             {loading ? (
@@ -109,10 +186,73 @@ export default function AuthScreen() {
             )}
           </Pressable>
 
+          {mode === 'login' ? (
+            <View style={styles.resetSection}>
+              <Pressable
+                onPress={() => {
+                  setShowResetFlow((current) => !current);
+                  setResetStep('request');
+                  setResetFeedback('');
+                  setError('');
+                }}
+              >
+                <Text style={[styles.resetToggle, { color: theme.colors.secondaryAccent }]}>
+                  {showResetFlow ? 'Fermer la récupération' : 'Mot de passe oublié ?'}
+                </Text>
+              </Pressable>
+
+              {showResetFlow ? (
+                <View style={[styles.resetCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}>
+                  <FormField
+                    label="Nom d'utilisateur ou e-mail"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    value={resetIdentifier}
+                    onChangeText={setResetIdentifier}
+                    placeholder="@isa.belaaa ou toi@exemple.com"
+                  />
+                  {resetStep === 'confirm' ? (
+                    <>
+                      <FormField
+                        label="Code reçu"
+                        keyboardType="number-pad"
+                        value={resetCode}
+                        onChangeText={setResetCode}
+                        placeholder="123456"
+                      />
+                      <FormField
+                        label="Nouveau mot de passe"
+                        secureTextEntry
+                        value={resetPassword}
+                        onChangeText={setResetPassword}
+                        placeholder="••••••••"
+                      />
+                    </>
+                  ) : null}
+
+                  <Pressable
+                    onPress={() => void (resetStep === 'request' ? handleRequestReset() : handleConfirmReset())}
+                    style={[styles.secondaryButton, { backgroundColor: theme.colors.secondaryAccent }]}
+                    disabled={resetLoading}
+                  >
+                    {resetLoading ? (
+                      <ActivityIndicator color={theme.colors.secondaryAccentText} />
+                    ) : (
+                      <Text style={[styles.secondaryButtonLabel, { color: theme.colors.secondaryAccentText }]}>
+                        {resetStep === 'request' ? 'Recevoir un code' : 'Mettre à jour le mot de passe'}
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
             {mode === 'login'
               ? 'Recos, playlists, messages.'
-              : 'Crée ton univers ciné.'}
+              : 'Crée ton univers ciné et ajoute un e-mail de récupération.'}
           </Text>
         </View>
       </View>
@@ -182,5 +322,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  resetSection: {
+    gap: 12,
+  },
+  resetToggle: {
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resetCard: {
+    gap: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 14,
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    borderRadius: 18,
+    paddingVertical: 13,
+  },
+  secondaryButtonLabel: {
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

@@ -29,6 +29,10 @@ export interface SessionState {
   hasCompletedTutorial: boolean;
 }
 
+export interface RecoveryEmailPayload {
+  email: string;
+}
+
 export interface OnboardingPreferencesResponse {
   favorite_genres: string[];
   favorite_people: string[];

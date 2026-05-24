@@ -1,14 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { ApiError, completeTutorial as apiCompleteTutorial, getMe, login as apiLogin, signup as apiSignup } from '../api/client';
+import { ApiError, completeTutorial as apiCompleteTutorial, getMe, login as apiLogin, signupWithEmail as apiSignup, } from '../api/client';
 import { clearSession, loadSession, saveSession } from './storage';
-import { unregisterCurrentPushToken } from '../notifications/push';
+import { syncPushRegistration, unregisterCurrentPushToken } from '../notifications/push';
 import type { SessionState } from '../types';
 
 interface AuthContextValue {
   session: SessionState | null;
   isBootstrapping: boolean;
   signIn: (username: string, password: string) => Promise<void>;
-  signUp: (username: string, password: string) => Promise<void>;
+  signUp: (username: string, password: string, email?: string) => Promise<void>;
   signOut: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   completeTutorial: () => Promise<void>;
@@ -49,22 +49,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (username: string, password: string) => {
     const payload = await apiLogin(username, password);
-    await persistSession({
+    const nextSession = {
       token: payload.access_token,
       username,
       hasCompletedOnboarding: Boolean(payload.has_completed_onboarding),
       hasCompletedTutorial: Boolean(payload.has_completed_tutorial),
-    });
+    };
+    await persistSession(nextSession);
+    await syncPushRegistration(nextSession.token).catch(() => undefined);
   };
 
-  const signUp = async (username: string, password: string) => {
-    const payload = await apiSignup(username, password);
-    await persistSession({
+  const signUp = async (username: string, password: string, email?: string) => {
+    const payload = await apiSignup(username, password, email);
+    const nextSession = {
       token: payload.access_token,
       username,
       hasCompletedOnboarding: Boolean(payload.has_completed_onboarding),
       hasCompletedTutorial: Boolean(payload.has_completed_tutorial),
-    });
+    };
+    await persistSession(nextSession);
+    await syncPushRegistration(nextSession.token).catch(() => undefined);
   };
 
   const signOut = async () => {

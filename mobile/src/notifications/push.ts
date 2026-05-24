@@ -50,14 +50,16 @@ async function requestNotificationPermission(): Promise<boolean> {
   return finalStatus === 'granted';
 }
 
-export async function registerForPushNotifications(authToken: string): Promise<string | null> {
+async function syncExpoPushToken(authToken: string, requestPermission: boolean): Promise<string | null> {
   if (!Device.isDevice || !['ios', 'android'].includes(Platform.OS)) {
     return null;
   }
 
   await ensureAndroidChannel();
 
-  const hasPermission = await requestNotificationPermission();
+  const hasPermission = requestPermission
+    ? await requestNotificationPermission()
+    : (await Notifications.getPermissionsAsync()).status === 'granted';
   if (!hasPermission) {
     return null;
   }
@@ -78,6 +80,14 @@ export async function registerForPushNotifications(authToken: string): Promise<s
   await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, deviceToken);
 
   return deviceToken;
+}
+
+export async function registerForPushNotifications(authToken: string): Promise<string | null> {
+  return syncExpoPushToken(authToken, true);
+}
+
+export async function syncPushRegistration(authToken: string): Promise<string | null> {
+  return syncExpoPushToken(authToken, false);
 }
 
 export async function unregisterCurrentPushToken(authToken: string): Promise<void> {

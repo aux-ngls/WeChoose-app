@@ -12,6 +12,7 @@ import type {
   PlaylistWithPreview,
   PlaylistMoviesPage,
   ProfilePreferencesPayload,
+  RecoveryEmailPayload,
   ProfileShowcasePerson,
   ProfileShowcaseSoundtrack,
   SearchMovie,
@@ -103,6 +104,34 @@ export async function signup(username: string, password: string): Promise<AuthPa
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function signupWithEmail(username: string, password: string, email?: string): Promise<AuthPayload> {
+  return request<AuthPayload>('/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, email: email?.trim() || null }),
+  });
+}
+
+export async function requestPasswordReset(identifier: string): Promise<{ status: string }> {
+  return request<{ status: string }>('/auth/password-reset/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier }),
+  });
+}
+
+export async function confirmPasswordReset(
+  identifier: string,
+  code: string,
+  newPassword: string,
+): Promise<{ status: string }> {
+  return request<{ status: string }>('/auth/password-reset/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, code, new_password: newPassword }),
   });
 }
 
@@ -506,6 +535,22 @@ export async function fetchSocialProfile(token: string, username: string): Promi
 
 export async function fetchProfilePreferences(token: string): Promise<ProfilePreferencesPayload> {
   return request<ProfilePreferencesPayload>('/profile/preferences', undefined, token);
+}
+
+export async function fetchRecoveryEmail(token: string): Promise<RecoveryEmailPayload> {
+  return request<RecoveryEmailPayload>('/users/me/recovery-email', undefined, token);
+}
+
+export async function saveRecoveryEmail(token: string, email: string): Promise<RecoveryEmailPayload> {
+  return request<RecoveryEmailPayload>(
+    '/users/me/recovery-email',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    },
+    token,
+  );
 }
 
 export async function fetchPlaylists(token: string): Promise<PlaylistSummary[]> {

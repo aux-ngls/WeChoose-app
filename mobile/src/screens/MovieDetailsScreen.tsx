@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
@@ -69,6 +70,7 @@ export default function MovieDetailsScreen({
 }: NativeStackScreenProps<RootStackParamList, 'MovieDetails'>) {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [movie, setMovie] = useState<Awaited<ReturnType<typeof fetchMovieDetails>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -553,7 +555,7 @@ export default function MovieDetailsScreen({
 
       <Modal visible={showTrailer} animationType="slide" presentationStyle="fullScreen">
         <View style={styles.trailerModal}>
-          <View style={styles.trailerHeader}>
+          <View style={[styles.trailerHeader, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
             <Text style={styles.trailerTitle} numberOfLines={1}>{movie?.title ?? 'Bande-annonce'}</Text>
             <Pressable style={styles.iconButton} onPress={() => setShowTrailer(false)}>
               <Ionicons name="close" size={22} color="#ffffff" />
