@@ -57,6 +57,11 @@ try:
 except Exception:
     psycopg = None
 
+try:
+    from psycopg_pool import ConnectionPool
+except Exception:
+    ConnectionPool = None
+
 # --- CONFIGURATION SÉCURITÉ ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger("qulte-api")
@@ -66,10 +71,14 @@ DEFAULT_TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
 DATABASE_PATH = os.getenv("SQLITE_PATH", "wechoose.db").strip() or "wechoose.db"
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip() or os.getenv("POSTGRES_URL", "").strip()
 DATABASE_BACKEND = "postgres" if DATABASE_URL else "sqlite"
+POSTGRES_POOL_MIN_SIZE = int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1") or "1")
+POSTGRES_POOL_MAX_SIZE = int(os.getenv("POSTGRES_POOL_MAX_SIZE", "10") or "10")
+POSTGRES_POOL_TIMEOUT_SECONDS = float(os.getenv("POSTGRES_POOL_TIMEOUT_SECONDS", "5") or "5")
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
 SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY).strip() or DEFAULT_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 180 # 180 jours, adapté à une app mobile
+SLOW_REQUEST_LOG_SECONDS = float(os.getenv("SLOW_REQUEST_LOG_SECONDS", "1.5") or "1.5")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -155,6 +164,7 @@ STRICT_RATE_LIMITS = {
     "auth.login": (10, 60.0),
     "auth.password_reset.request": (6, 600.0),
     "auth.password_reset.confirm": (12, 600.0),
+    "mobile.devices.register": (12, 60.0),
     "messages.create": (45, 60.0),
     "reviews.create": (20, 60.0),
     "comments.create": (30, 60.0),
@@ -266,6 +276,25 @@ class PostgresCompatConnection:
         return cursor
 
 
+class PooledPostgresCompatConnection(PostgresCompatConnection):
+    def __init__(self, pool, conn, *, row_factory: bool):
+        super().__init__(conn, row_factory=row_factory)
+        self._pool = pool
+
+    def close(self):
+        if self._conn is None:
+            return None
+
+        conn = self._conn
+        self._conn = None
+        try:
+            if not conn.closed:
+                # A SELECT starts a transaction in psycopg; reset it before reuse.
+                conn.rollback()
+        finally:
+            return self._pool.putconn(conn)
+
+
 class RealtimeConnectionManager:
     def __init__(self):
         self.active_connections: dict[int, list[asyncio.Queue]] = {}
@@ -317,6 +346,7 @@ class RealtimeConnectionManager:
 realtime_manager = RealtimeConnectionManager()
 redis_client = None
 redis_listener_task: Optional[asyncio.Task] = None
+postgres_pool: Optional[Any] = None
 REDIS_REALTIME_CHANNEL = "qulte:realtime"
 
 
@@ -399,6 +429,8 @@ def get_rate_limit_scope(request: Request) -> Optional[str]:
         return "auth.password_reset.request"
     if path == "/auth/password-reset/confirm" and method == "POST":
         return "auth.password_reset.confirm"
+    if path == "/mobile/devices/register" and method == "POST":
+        return "mobile.devices.register"
     if path.startswith("/messages/conversations/") and path.endswith("/messages") and method == "POST":
         return "messages.create"
     if path == "/social/reviews" and method == "POST":
@@ -408,10 +440,19 @@ def get_rate_limit_scope(request: Request) -> Optional[str]:
     return None
 
 
+def get_rate_limit_client_id(request: Request) -> str:
+    client_host = request.client.host if request.client else "unknown"
+    if client_host in {"127.0.0.1", "::1", "localhost"}:
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        forwarded_host = forwarded_for.split(",", 1)[0].strip()
+        if forwarded_host:
+            return forwarded_host
+    return client_host
+
+
 def check_rate_limit(scope: str, request: Request) -> bool:
     max_requests, period_seconds = STRICT_RATE_LIMITS.get(scope, DEFAULT_RATE_LIMIT)
-    client_host = request.client.host if request.client else "unknown"
-    key = (scope, client_host)
+    key = (scope, get_rate_limit_client_id(request))
     now = time.time()
 
     with rate_limit_lock:
@@ -448,12 +489,42 @@ async def observability_and_rate_limit_middleware(request: Request, call_next):
     ).inc()
     REQUEST_LATENCY.labels(method=request.method, path=observed_path).observe(latency)
     response.headers["X-Response-Time"] = f"{latency:.4f}s"
+    if latency >= SLOW_REQUEST_LOG_SECONDS:
+        logger.warning(
+            "Requete lente %s %s status=%s duration=%.3fs",
+            request.method,
+            observed_path,
+            response.status_code,
+            latency,
+        )
     return response
 
 
 @app.on_event("startup")
 async def startup_runtime_services():
-    global redis_client, redis_listener_task
+    global redis_client, redis_listener_task, postgres_pool
+    if DATABASE_BACKEND == "postgres":
+        if ConnectionPool is None:
+            logger.warning("psycopg_pool indisponible. Connexions PostgreSQL directes sans pool.")
+        else:
+            try:
+                postgres_pool = ConnectionPool(
+                    DATABASE_URL,
+                    min_size=POSTGRES_POOL_MIN_SIZE,
+                    max_size=POSTGRES_POOL_MAX_SIZE,
+                    timeout=POSTGRES_POOL_TIMEOUT_SECONDS,
+                    open=True,
+                )
+                logger.info(
+                    "Pool PostgreSQL actif min=%s max=%s timeout=%.1fs.",
+                    POSTGRES_POOL_MIN_SIZE,
+                    POSTGRES_POOL_MAX_SIZE,
+                    POSTGRES_POOL_TIMEOUT_SECONDS,
+                )
+            except Exception:
+                postgres_pool = None
+                logger.exception("Impossible de demarrer le pool PostgreSQL. Connexions directes en fallback.")
+
     if REDIS_URL and redis_async is not None:
         try:
             redis_client = redis_async.from_url(REDIS_URL, decode_responses=True)
@@ -470,8 +541,11 @@ async def startup_runtime_services():
 
 @app.on_event("shutdown")
 async def shutdown_runtime_services():
-    global redis_client, redis_listener_task
+    global redis_client, redis_listener_task, postgres_pool
     notification_executor.shutdown(wait=False, cancel_futures=False)
+    if postgres_pool is not None:
+        postgres_pool.close()
+        postgres_pool = None
     if redis_listener_task is not None:
         redis_listener_task.cancel()
         try:
@@ -529,6 +603,13 @@ def execute_insert_and_get_id(cursor, query: str, params=()) -> int:
 
 def get_db_connection(*, row_factory: bool = False):
     if DATABASE_BACKEND == "postgres":
+        if postgres_pool is not None:
+            return PooledPostgresCompatConnection(
+                postgres_pool,
+                postgres_pool.getconn(),
+                row_factory=row_factory,
+            )
+
         conn = psycopg.connect(DATABASE_URL)
         return PostgresCompatConnection(conn, row_factory=row_factory)
 
