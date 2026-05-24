@@ -94,7 +94,7 @@ export default function GroupRecommendationsScreen({
         await signOut();
         return;
       }
-      setError('Impossible de trouver des films pour ce groupe.');
+      setError(fetchError instanceof ApiError ? fetchError.message : 'Impossible de trouver des films pour ce groupe.');
     } finally {
       setRecommendationLoading(false);
       setRefreshing(false);

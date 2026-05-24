@@ -6244,6 +6244,33 @@ def build_group_recommendation_reason(
     return f"Compatible avec {support_count}/{group_size} profils du groupe."
 
 
+def build_group_recommendation_fallback(limit: int = 12) -> list[dict]:
+    if movies_df.empty:
+        return []
+
+    fallback_rows = (
+        movies_df.sort_values(
+            ["quality_score", "audience_rating_score", "vote_count"],
+            ascending=False,
+        )
+        .head(limit)
+    )
+    selected_ids = [int(row["id"]) for _, row in fallback_rows.iterrows()]
+    poster_urls_by_movie_id = fetch_posters_from_tmdb(selected_ids)
+
+    return [
+        {
+            "id": int(row["id"]),
+            "title": str(row["title"]),
+            "poster_url": poster_urls_by_movie_id.get(int(row["id"])) or fetch_poster_from_tmdb(int(row["id"])),
+            "rating": float(row.get("vote_average") or 0.0),
+            "primary_genre": str(row.get("primary_genre") or "Autres"),
+            "recommendation_reason": "Suggestion de secours pour le groupe.",
+        }
+        for _, row in fallback_rows.iterrows()
+    ]
+
+
 def build_group_recommendations(
     *,
     current_user_id: int,
@@ -6539,11 +6566,24 @@ def social_group_recommendations(
     if not selected_user_ids:
         raise HTTPException(status_code=400, detail="Aucun profil selectionne")
 
-    return build_group_recommendations(
-        current_user_id=current_user["id"],
-        selected_user_ids=selected_user_ids,
-        limit=safe_limit,
-    )
+    try:
+        recommendations = build_group_recommendations(
+            current_user_id=current_user["id"],
+            selected_user_ids=selected_user_ids,
+            limit=safe_limit,
+        )
+    except Exception:
+        logger.exception(
+            "Group recommendations fallback triggered for user=%s selected=%s",
+            current_user["id"],
+            selected_user_ids,
+        )
+        recommendations = build_group_recommendation_fallback(safe_limit)
+
+    if recommendations:
+        return recommendations
+
+    return build_group_recommendation_fallback(safe_limit)
 
 
 @app.get("/social/profile/{username}")

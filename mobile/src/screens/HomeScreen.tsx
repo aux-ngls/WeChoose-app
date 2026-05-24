@@ -673,14 +673,17 @@ export default function HomeScreen() {
             <Text style={[styles.loadingText, { color: theme.colors.textSoft }]}>Chargement de tes recos...</Text>
           </View>
         ) : currentMovie ? (
-          <View style={[styles.cardFrame, { width: tinderCardWidth }]}>
-            <Pressable
-              style={[styles.groupModeButton, { backgroundColor: theme.rgba.card, borderColor: theme.rgba.border }]}
-              onPress={() => navigation.navigate('GroupRecommendations')}
-              hitSlop={10}
-            >
-              <Ionicons name="people-outline" size={16} color={theme.colors.text} />
-            </Pressable>
+          <View style={styles.stackContent}>
+            <View style={[styles.groupModeBar, { width: tinderCardWidth }]}>
+              <Pressable
+                style={[styles.groupModeButton, { backgroundColor: theme.rgba.card, borderColor: theme.rgba.border }]}
+                onPress={() => navigation.navigate('GroupRecommendations')}
+                hitSlop={10}
+              >
+                <Ionicons name="people-outline" size={16} color={theme.colors.text} />
+              </Pressable>
+            </View>
+            <View style={[styles.cardFrame, { width: tinderCardWidth }]}>
             {secondMovie ? (
               <View style={styles.backCard}>
                 <Image source={{ uri: secondMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
@@ -717,6 +720,7 @@ export default function HomeScreen() {
                 </View>
               </Pressable>
             </Animated.View>
+          </View>
           </View>
         ) : (
           <EmptyStateCard title="Recharge en cours" />
@@ -765,15 +769,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stackContent: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  groupModeBar: {
+    alignItems: 'flex-end',
+  },
   cardFrame: {
     aspectRatio: 2 / 3,
     justifyContent: 'center',
   },
   groupModeButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 3,
     width: 34,
     height: 34,
     borderRadius: 13,
