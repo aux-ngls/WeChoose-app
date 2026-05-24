@@ -2357,6 +2357,7 @@ def get_tmdb_watch_providers(movie_id: int) -> dict:
             "buy": [],
         }
 
+@lru_cache(maxsize=1024)
 def get_tmdb_details(movie_id):
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR&append_to_response=videos,credits"
