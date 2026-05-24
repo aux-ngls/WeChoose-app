@@ -14,6 +14,25 @@ export interface SearchMovie {
   sort_index?: number;
   primary_genre?: string;
   subscription_provider_names?: string[];
+  group_match_score?: number;
+  group_average_score?: number;
+  group_member_scores?: GroupMemberMovieScore[];
+  seen_by?: GroupSeenMovieEntry[];
+}
+
+export interface GroupMemberMovieScore {
+  user_id: number;
+  username: string;
+  probability: number;
+  percent: number;
+  has_seen: boolean;
+  rating: number | null;
+}
+
+export interface GroupSeenMovieEntry {
+  user_id: number;
+  username: string;
+  rating: number;
 }
 
 export interface AuthPayload {

@@ -374,10 +374,12 @@ export async function fetchSocialGroupRecommendations(
   token: string,
   userIds: number[],
   limit = 12,
+  includeSeen = false,
 ): Promise<SearchMovie[]> {
   const params = new URLSearchParams();
   params.set('user_ids', userIds.join(','));
   params.set('limit', String(limit));
+  params.set('include_seen', includeSeen ? 'true' : 'false');
   return request<SearchMovie[]>(`/social/group-recommendations?${params.toString()}`, undefined, token);
 }
 

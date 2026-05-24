@@ -39,6 +39,7 @@ export default function GroupRecommendationsScreen({
   const [searchLoading, setSearchLoading] = useState(false);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [includeSeen, setIncludeSeen] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -86,6 +87,7 @@ export default function GroupRecommendationsScreen({
         session.token,
         selectedUsers.map((user) => user.id),
         14,
+        includeSeen,
       );
       setRecommendations(payload);
       setError('');
@@ -99,7 +101,7 @@ export default function GroupRecommendationsScreen({
       setRecommendationLoading(false);
       setRefreshing(false);
     }
-  }, [selectedUsers, session, signOut]);
+  }, [includeSeen, selectedUsers, session, signOut]);
 
   const headerSummary = useMemo(() => {
     if (selectedUsers.length === 0) {
@@ -173,6 +175,22 @@ export default function GroupRecommendationsScreen({
                 ))}
               </View>
             ) : null}
+
+            <Pressable
+              style={[styles.optionRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+              onPress={() => {
+                setIncludeSeen((current) => !current);
+                setRecommendations([]);
+              }}
+            >
+              <View style={[styles.checkbox, { borderColor: includeSeen ? theme.colors.accent : theme.rgba.border, backgroundColor: includeSeen ? theme.colors.accent : 'transparent' }]}>
+                {includeSeen ? <Ionicons name="checkmark" size={14} color={theme.colors.accentText} /> : null}
+              </View>
+              <View style={styles.optionBody}>
+                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Afficher les films deja vus</Text>
+                <Text style={[styles.optionSubtitle, { color: theme.colors.textMuted }]}>Utile si ce n'est pas grave qu'une personne l'ait deja note.</Text>
+              </View>
+            </Pressable>
 
             <Pressable
               style={[
@@ -251,6 +269,13 @@ export default function GroupRecommendationsScreen({
                 {item.title}
               </Text>
               <View style={styles.metaRow}>
+                {typeof item.group_match_score === 'number' ? (
+                  <View style={[styles.matchPill, { backgroundColor: theme.colors.accentSoft }]}>
+                    <Text style={[styles.matchPillLabel, { color: theme.colors.accent }]}>
+                      {item.group_match_score}% minimum
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                   <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>
                     {item.rating.toFixed(1)} / 10
@@ -263,6 +288,17 @@ export default function GroupRecommendationsScreen({
               <Text style={[styles.reasonLabel, { color: theme.colors.textMuted }]} numberOfLines={3}>
                 {item.recommendation_reason ?? 'Film recommande pour le groupe.'}
               </Text>
+              {item.group_member_scores?.length ? (
+                <View style={styles.memberScores}>
+                  {item.group_member_scores.map((score) => (
+                    <View key={score.user_id} style={[styles.memberScorePill, { backgroundColor: theme.rgba.cardStrong }]}>
+                      <Text style={[styles.memberScoreLabel, { color: theme.colors.textSoft }]}>
+                        @{score.username} {score.percent}%{score.has_seen ? ' vu' : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
           </Pressable>
         )}
@@ -335,6 +371,34 @@ const styles = StyleSheet.create({
   selectionChipLabel: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionBody: {
+    flex: 1,
+    gap: 3,
+  },
+  optionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  optionSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   ctaButton: {
     minHeight: 52,
@@ -435,6 +499,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
+  matchPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  matchPillLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
   genreLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -442,5 +515,19 @@ const styles = StyleSheet.create({
   reasonLabel: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  memberScores: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  memberScorePill: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  memberScoreLabel: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

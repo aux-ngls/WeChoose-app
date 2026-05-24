@@ -6228,47 +6228,34 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
     }
 
 
+def clamp_probability(value: float) -> float:
+    return max(0.01, min(0.99, float(value)))
+
+
+def probability_from_rating(rating: float) -> float:
+    normalized_rating = max(0.5, min(5.0, float(rating)))
+    return clamp_probability(0.04 + ((normalized_rating / 5.0) ** 1.45) * 0.94)
+
+
 def build_group_recommendation_reason(
     *,
-    support_count: int,
-    group_size: int,
+    probabilities: list[float],
     primary_genre: str,
+    seen_count: int,
 ) -> str:
+    if not probabilities:
+        return "Suggestion equilibree pour le groupe."
+
+    lowest_probability = min(probabilities)
+    average_probability = sum(probabilities) / len(probabilities)
     normalized_genre = (primary_genre or "cinema").lower()
-    if group_size <= 1:
-        return "Selection affinee sur tes gouts."
-    if support_count >= group_size:
-        return f"Bon compromis pour tout le groupe, avec une piste tres {normalized_genre}."
-    if support_count >= max(2, group_size - 1):
-        return f"Peut plaire a presque tout le groupe, surtout cote {normalized_genre}."
-    return f"Compatible avec {support_count}/{group_size} profils du groupe."
+    seen_suffix = f" Deja vu par {seen_count} membre{'s' if seen_count > 1 else ''}." if seen_count else ""
 
-
-def build_group_recommendation_fallback(limit: int = 12) -> list[dict]:
-    if movies_df.empty:
-        return []
-
-    fallback_rows = (
-        movies_df.sort_values(
-            ["quality_score", "audience_rating_score", "vote_count"],
-            ascending=False,
-        )
-        .head(limit)
-    )
-    selected_ids = [int(row["id"]) for _, row in fallback_rows.iterrows()]
-    poster_urls_by_movie_id = fetch_posters_from_tmdb(selected_ids)
-
-    return [
-        {
-            "id": int(row["id"]),
-            "title": str(row["title"]),
-            "poster_url": poster_urls_by_movie_id.get(int(row["id"])) or fetch_poster_from_tmdb(int(row["id"])),
-            "rating": float(row.get("vote_average") or 0.0),
-            "primary_genre": str(row.get("primary_genre") or "Autres"),
-            "recommendation_reason": "Suggestion de secours pour le groupe.",
-        }
-        for _, row in fallback_rows.iterrows()
-    ]
+    if lowest_probability >= 0.72:
+        return f"Tres bon terrain commun, surtout cote {normalized_genre}.{seen_suffix}"
+    if lowest_probability >= 0.58:
+        return f"Bon compromis: tout le monde reste au-dessus de {round(lowest_probability * 100)}%.{seen_suffix}"
+    return f"Meilleur equilibre trouve: {round(average_probability * 100)}% en moyenne.{seen_suffix}"
 
 
 def build_group_recommendations(
@@ -6276,6 +6263,7 @@ def build_group_recommendations(
     current_user_id: int,
     selected_user_ids: list[int],
     limit: int = 12,
+    include_seen: bool = False,
 ) -> list[dict]:
     if movies_df.empty or vectors is None:
         return []
@@ -6318,7 +6306,7 @@ def build_group_recommendations(
         for row in cursor.fetchall()
     }
 
-    blocked_ids: set[int] = set()
+    rated_by_movie_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
     group_profiles: list[dict[str, Any]] = []
 
     for user_id in group_user_ids:
@@ -6329,16 +6317,21 @@ def build_group_recommendations(
             (user_id,),
         )
         rating_rows = [(int(row[0]), float(row[1])) for row in cursor.fetchall()]
-        rated_ids = {movie_id for movie_id, _rating in rating_rows}
+        rating_by_movie_id = {movie_id: rating for movie_id, rating in rating_rows}
+        for movie_id, rating in rating_rows:
+            rated_by_movie_id[movie_id].append(
+                {
+                    "user_id": int(user_id),
+                    "username": username_by_id.get(int(user_id)) or f"user-{user_id}",
+                    "rating": float(rating),
+                }
+            )
 
         cursor.execute(
             f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY added_at DESC LIMIT 18",
             (watch_later_id,),
         )
         watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
-
-        blocked_ids |= rated_ids
-        blocked_ids |= set(watch_later_ids)
 
         positive_signal_weights: dict[int, float] = {}
         for rank, (movie_id, rating) in enumerate(rating_rows[:24]):
@@ -6369,6 +6362,12 @@ def build_group_recommendations(
                 0.95,
             )
 
+        for movie_id in preferences["people_seed_movie_ids"][:10]:
+            positive_signal_weights[int(movie_id)] = max(
+                positive_signal_weights.get(int(movie_id), 0.0),
+                0.72,
+            )
+
         genre_tokens = {
             normalize_genre_token(value)
             for value in [*preferences["favorite_genres"], *preferences["profile_genres"]]
@@ -6384,6 +6383,17 @@ def build_group_recommendations(
             positive_indices.append(movie_index)
             positive_vector_weights.append(float(weight))
 
+        negative_indices: list[int] = []
+        negative_vector_weights: list[float] = []
+        for movie_id, rating in rating_rows[:80]:
+            if rating > 2.5:
+                continue
+            movie_index = movie_index_by_id.get(int(movie_id))
+            if movie_index is None:
+                continue
+            negative_indices.append(movie_index)
+            negative_vector_weights.append(max(0.20, 3.0 - float(rating)))
+
         similarity_scores = np.zeros(len(movies_df))
         if positive_indices:
             try:
@@ -6395,6 +6405,18 @@ def build_group_recommendations(
                 )
             except Exception:
                 similarity_scores = np.zeros(len(movies_df))
+
+        negative_similarity_scores = np.zeros(len(movies_df))
+        if negative_indices:
+            try:
+                negative_similarity_matrix = cosine_similarity(vectors, vectors[negative_indices])
+                negative_similarity_scores = np.average(
+                    negative_similarity_matrix,
+                    axis=1,
+                    weights=np.array(negative_vector_weights),
+                )
+            except Exception:
+                negative_similarity_scores = np.zeros(len(movies_df))
 
         genre_scores = np.zeros(len(movies_df))
         if genre_tokens:
@@ -6410,7 +6432,10 @@ def build_group_recommendations(
             {
                 "user_id": int(user_id),
                 "username": username_by_id.get(int(user_id)) or f"user-{user_id}",
+                "rating_by_movie_id": rating_by_movie_id,
+                "has_personal_signals": bool(positive_indices or genre_tokens),
                 "similarity_scores": similarity_scores,
+                "negative_similarity_scores": negative_similarity_scores,
                 "genre_scores": genre_scores,
             }
         )
@@ -6420,64 +6445,86 @@ def build_group_recommendations(
 
     audience_rating_scores = movies_df["audience_rating_score"].to_numpy()
     quality_scores = movies_df["quality_score"].to_numpy()
-    candidate_scores: list[tuple[int, float, int]] = []
-    group_size = len(group_profiles)
-    support_threshold = 0.14 if group_size <= 2 else 0.12 if group_size <= 4 else 0.10
+    candidate_scores: list[tuple[int, float, float, float, list[dict[str, Any]]]] = []
 
     for movie_id in movie_ids_array:
         normalized_movie_id = int(movie_id)
-        if normalized_movie_id in blocked_ids:
+        seen_entries = rated_by_movie_id.get(normalized_movie_id, [])
+        if seen_entries and not include_seen:
             continue
 
         movie_index = movie_index_by_id.get(normalized_movie_id)
         if movie_index is None:
             continue
 
-        member_scores: list[float] = []
-        support_count = 0
+        member_matches: list[dict[str, Any]] = []
+        probabilities: list[float] = []
         for profile in group_profiles:
-            member_score = (
-                (float(profile["similarity_scores"][movie_index]) * 0.68)
-                + (float(profile["genre_scores"][movie_index]) * 0.24)
-                + (float(audience_rating_scores[movie_index]) * 0.08)
+            rating = profile["rating_by_movie_id"].get(normalized_movie_id)
+            if rating is not None:
+                probability = probability_from_rating(float(rating))
+            else:
+                raw_probability = (
+                    (float(profile["similarity_scores"][movie_index]) * 0.58)
+                    + (float(profile["genre_scores"][movie_index]) * 0.18)
+                    + (float(quality_scores[movie_index]) * 0.15)
+                    + (float(audience_rating_scores[movie_index]) * 0.09)
+                    - (float(profile["negative_similarity_scores"][movie_index]) * 0.36)
+                )
+                if profile["has_personal_signals"]:
+                    probability = clamp_probability(0.42 + (raw_probability * 0.78))
+                else:
+                    probability = clamp_probability(0.50 + (raw_probability * 0.38))
+
+            probabilities.append(probability)
+            member_matches.append(
+                {
+                    "user_id": int(profile["user_id"]),
+                    "username": str(profile["username"]),
+                    "probability": round(probability, 3),
+                    "percent": int(round(probability * 100)),
+                    "has_seen": rating is not None,
+                    "rating": float(rating) if rating is not None else None,
+                }
             )
-            member_scores.append(member_score)
-            if member_score >= 0.21:
-                support_count += 1
 
-        if not member_scores:
+        if not probabilities:
             continue
 
-        average_score = float(sum(member_scores) / len(member_scores))
-        minimum_score = min(member_scores)
-        score_spread = float(np.std(member_scores))
-        support_ratio = support_count / max(len(group_profiles), 1)
-        if group_size > 1 and support_count == 0 and average_score < support_threshold:
-            continue
+        average_probability = float(sum(probabilities) / len(probabilities))
+        minimum_probability = min(probabilities)
+        score_spread = float(np.std(probabilities))
+        seen_ratio = len(seen_entries) / max(len(group_profiles), 1)
 
         group_score = (
-            (average_score * 0.52)
-            + (minimum_score * 0.28)
-            + (support_ratio * 0.22)
-            + (float(quality_scores[movie_index]) * 0.16)
-            + (float(audience_rating_scores[movie_index]) * 0.12)
-            - (score_spread * 0.12)
+            (minimum_probability * 0.56)
+            + (average_probability * 0.34)
+            + (float(quality_scores[movie_index]) * 0.08)
+            - (score_spread * 0.10)
+            - (seen_ratio * 0.05 if include_seen else 0.0)
         )
-        candidate_scores.append((normalized_movie_id, group_score, support_count))
+        candidate_scores.append((
+            normalized_movie_id,
+            group_score,
+            minimum_probability,
+            average_probability,
+            member_matches,
+        ))
 
-    candidate_scores.sort(key=lambda item: item[1], reverse=True)
-    ranked_ids = [movie_id for movie_id, _score, _support in candidate_scores]
-    support_by_movie_id = {movie_id: support for movie_id, _score, support in candidate_scores}
+    candidate_scores.sort(key=lambda item: (item[1], item[2], item[3]), reverse=True)
+    ranked_ids = [movie_id for movie_id, _score, _minimum, _average, _matches in candidate_scores]
+    group_match_by_movie_id = {
+        movie_id: {
+            "group_score": group_score,
+            "minimum_probability": minimum_probability,
+            "average_probability": average_probability,
+            "member_matches": member_matches,
+        }
+        for movie_id, group_score, minimum_probability, average_probability, member_matches in candidate_scores
+    }
     selected_ids = pick_diverse_movie_ids(ranked_ids, limit, per_genre_cap=2 if len(group_profiles) >= 3 else 3)
     if not selected_ids:
         selected_ids = ranked_ids[:limit]
-    if not selected_ids:
-        fallback_rows = (
-            movies_df[~movies_df["id"].isin(list(blocked_ids))]
-            .sort_values(["quality_score", "audience_rating_score"], ascending=False)
-            .head(limit)
-        )
-        selected_ids = [int(row["id"]) for _, row in fallback_rows.iterrows()]
     poster_urls_by_movie_id = fetch_posters_from_tmdb(selected_ids[:limit])
 
     selected_rows = movies_df[movies_df["id"].isin(selected_ids)].copy()
@@ -6493,10 +6540,17 @@ def build_group_recommendations(
             "poster_url": poster_urls_by_movie_id.get(int(row["id"])) or fetch_poster_from_tmdb(int(row["id"])),
             "rating": float(row["vote_average"]),
             "primary_genre": str(row.get("primary_genre") or "Autres"),
+            "group_match_score": int(round(group_match_by_movie_id[int(row["id"])]["minimum_probability"] * 100)),
+            "group_average_score": int(round(group_match_by_movie_id[int(row["id"])]["average_probability"] * 100)),
+            "group_member_scores": group_match_by_movie_id[int(row["id"])]["member_matches"],
+            "seen_by": rated_by_movie_id.get(int(row["id"]), []),
             "recommendation_reason": build_group_recommendation_reason(
-                support_count=int(support_by_movie_id.get(int(row["id"]), 1)),
-                group_size=len(group_profiles),
+                probabilities=[
+                    float(match["probability"])
+                    for match in group_match_by_movie_id[int(row["id"])]["member_matches"]
+                ],
                 primary_genre=str(row.get("primary_genre") or "Autres"),
+                seen_count=len(rated_by_movie_id.get(int(row["id"]), [])),
             ),
         }
         for _, row in selected_rows.head(limit).iterrows()
@@ -6559,6 +6613,7 @@ def social_users(
 def social_group_recommendations(
     user_ids: str = "",
     limit: int = 12,
+    include_seen: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
     selected_user_ids = list(parse_exclude_ids(user_ids))
@@ -6566,24 +6621,12 @@ def social_group_recommendations(
     if not selected_user_ids:
         raise HTTPException(status_code=400, detail="Aucun profil selectionne")
 
-    try:
-        recommendations = build_group_recommendations(
-            current_user_id=current_user["id"],
-            selected_user_ids=selected_user_ids,
-            limit=safe_limit,
-        )
-    except Exception:
-        logger.exception(
-            "Group recommendations fallback triggered for user=%s selected=%s",
-            current_user["id"],
-            selected_user_ids,
-        )
-        recommendations = build_group_recommendation_fallback(safe_limit)
-
-    if recommendations:
-        return recommendations
-
-    return build_group_recommendation_fallback(safe_limit)
+    return build_group_recommendations(
+        current_user_id=current_user["id"],
+        selected_user_ids=selected_user_ids,
+        limit=safe_limit,
+        include_seen=include_seen,
+    )
 
 
 @app.get("/social/profile/{username}")
