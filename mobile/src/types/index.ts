@@ -170,9 +170,10 @@ export interface PlaylistWithPreview extends PlaylistSummary {
 
 export interface PlaylistMoviesPage {
   items: SearchMovie[];
-  total_count: number;
+  playlist_total_count: number;
   next_offset: number;
   has_more: boolean;
+  resolved_sort: 'manual' | 'genre' | 'recent' | 'oldest' | 'rating';
 }
 
 export interface DirectConversationSummary {

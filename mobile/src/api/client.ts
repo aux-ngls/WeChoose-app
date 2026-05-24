@@ -580,11 +580,26 @@ export async function fetchPlaylistMovies(token: string, playlistId: number): Pr
 export async function fetchPlaylistMoviesPage(
   token: string,
   playlistId: number,
-  options?: { limit?: number; offset?: number },
+  options?: {
+    limit?: number;
+    offset?: number;
+    sort?: 'manual' | 'genre' | 'recent' | 'oldest' | 'rating';
+    query?: string;
+    onlyOwnedStreamingServices?: boolean;
+  },
 ): Promise<PlaylistMoviesPage> {
   const params = new URLSearchParams();
   params.set('limit', String(options?.limit ?? 60));
   params.set('offset', String(options?.offset ?? 0));
+  if (options?.sort) {
+    params.set('sort', options.sort);
+  }
+  if (options?.query?.trim()) {
+    params.set('query', options.query.trim());
+  }
+  if (options?.onlyOwnedStreamingServices) {
+    params.set('only_owned_streaming_services', 'true');
+  }
   return request<PlaylistMoviesPage>(`/playlists/${playlistId}/paged?${params.toString()}`, undefined, token);
 }
 
@@ -599,6 +614,26 @@ export async function reorderPlaylistMovies(token: string, playlistId: number, m
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ movie_ids: movieIds }),
+    },
+    token,
+  );
+}
+
+export async function movePlaylistMovie(
+  token: string,
+  playlistId: number,
+  sourceMovieId: number,
+  targetMovieId: number,
+): Promise<void> {
+  await request<null>(
+    `/playlists/${playlistId}/move`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_movie_id: sourceMovieId,
+        target_movie_id: targetMovieId,
+      }),
     },
     token,
   );

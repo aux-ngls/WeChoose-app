@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS playlist_items (
     rating DOUBLE PRECISION,
     added_at TIMESTAMP,
     sort_index INTEGER,
+    primary_genre TEXT,
+    subscription_provider_names TEXT DEFAULT '[]',
+    metadata_updated_at TIMESTAMP,
     UNIQUE (playlist_id, movie_id)
 );
 

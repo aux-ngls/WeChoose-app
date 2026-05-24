@@ -102,6 +102,7 @@ WATCH_LATER_SYSTEM_ID = -1
 FAVORITES_SYSTEM_ID = -2
 HISTORY_SYSTEM_ID = -3
 WATCH_LATER_NAME = "À regarder plus tard"
+PLAYLIST_SORT_OPTIONS = {"manual", "genre", "recent", "oldest", "rating"}
 NOW_PLAYING_CACHE_TTL_SECONDS = 300
 NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
@@ -731,6 +732,11 @@ def init_postgres_db():
     cursor.execute(
         "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS owned_streaming_services TEXT DEFAULT '[]'"
     )
+    cursor.execute("ALTER TABLE playlist_items ADD COLUMN IF NOT EXISTS primary_genre TEXT")
+    cursor.execute(
+        "ALTER TABLE playlist_items ADD COLUMN IF NOT EXISTS subscription_provider_names TEXT DEFAULT '[]'"
+    )
+    cursor.execute("ALTER TABLE playlist_items ADD COLUMN IF NOT EXISTS metadata_updated_at TIMESTAMP")
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS password_reset_codes (
@@ -826,6 +832,12 @@ def init_sqlite_db():
         cursor.execute("ALTER TABLE playlist_items ADD COLUMN added_at TIMESTAMP")
     if "sort_index" not in playlist_item_columns:
         cursor.execute("ALTER TABLE playlist_items ADD COLUMN sort_index INTEGER")
+    if "primary_genre" not in playlist_item_columns:
+        cursor.execute("ALTER TABLE playlist_items ADD COLUMN primary_genre TEXT")
+    if "subscription_provider_names" not in playlist_item_columns:
+        cursor.execute("ALTER TABLE playlist_items ADD COLUMN subscription_provider_names TEXT DEFAULT '[]'")
+    if "metadata_updated_at" not in playlist_item_columns:
+        cursor.execute("ALTER TABLE playlist_items ADD COLUMN metadata_updated_at TIMESTAMP")
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_sort ON playlist_items(playlist_id, sort_index)"
     )
@@ -2581,6 +2593,307 @@ def get_playlist_target_id(cursor, playlist_id: int, user_id: int) -> int:
     return get_custom_playlist_id(cursor, playlist_id, user_id)
 
 
+def normalize_playlist_sort(playlist_id: int, requested_sort: Optional[str]) -> str:
+    normalized_sort = (requested_sort or "").strip().lower()
+    if normalized_sort not in PLAYLIST_SORT_OPTIONS:
+        normalized_sort = ""
+
+    if playlist_id == WATCH_LATER_SYSTEM_ID:
+        return normalized_sort or "genre"
+    if playlist_id in (FAVORITES_SYSTEM_ID, HISTORY_SYSTEM_ID):
+        return normalized_sort if normalized_sort and normalized_sort != "manual" else "recent"
+    return normalized_sort or "manual"
+
+
+def get_user_owned_streaming_services(cursor, user_id: int) -> list[str]:
+    cursor.execute(
+        f"SELECT owned_streaming_services FROM user_preferences WHERE user_id = {SQL_PARAM}",
+        (int(user_id),),
+    )
+    row = cursor.fetchone()
+    raw_services = row_get_value(row, "owned_streaming_services", 0) if row else "[]"
+    return dedupe_list(
+        [
+            normalized
+            for normalized in (
+                normalize_streaming_service_label(str(value))
+                for value in load_json_list(raw_services)
+            )
+            if normalized
+        ]
+    )
+
+
+def build_movie_subscription_provider_names(movie_id: int) -> list[str]:
+    watch_providers = get_tmdb_watch_providers(int(movie_id))
+    return dedupe_list(
+        [
+            normalized
+            for normalized in (
+                normalize_streaming_service_label(provider.get("name", ""))
+                for provider in watch_providers.get("subscription", [])
+            )
+            if normalized
+        ]
+    )
+
+
+def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[list[dict], bool, Optional[int]]:
+    if playlist_id == WATCH_LATER_SYSTEM_ID:
+        target_id = get_or_create_watch_later_id(cursor, user_id)
+        cursor.execute(
+            f"""
+            SELECT
+                movie_id AS id,
+                title,
+                poster_url,
+                rating,
+                COALESCE(added_at, '1970-01-01 00:00:00') AS added_at,
+                COALESCE(sort_index, 2147483647) AS sort_index,
+                COALESCE(primary_genre, '') AS primary_genre,
+                COALESCE(subscription_provider_names, '[]') AS subscription_provider_names
+            FROM playlist_items
+            WHERE playlist_id = {SQL_PARAM}
+            ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
+            """,
+            (target_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()], True, target_id
+
+    if playlist_id == FAVORITES_SYSTEM_ID:
+        cursor.execute(
+            f"""
+            SELECT
+                movie_id AS id,
+                title,
+                poster_url,
+                rating,
+                COALESCE(added_at, '1970-01-01 00:00:00') AS added_at,
+                2147483647 AS sort_index
+            FROM user_ratings
+            WHERE user_id = {SQL_PARAM} AND rating >= 4
+            ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
+            """,
+            (user_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()], False, None
+
+    if playlist_id == HISTORY_SYSTEM_ID:
+        cursor.execute(
+            f"""
+            SELECT
+                movie_id AS id,
+                title,
+                poster_url,
+                rating,
+                COALESCE(added_at, '1970-01-01 00:00:00') AS added_at,
+                2147483647 AS sort_index
+            FROM user_ratings
+            WHERE user_id = {SQL_PARAM}
+            ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
+            """,
+            (user_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()], False, None
+
+    target_id = get_custom_playlist_id(cursor, playlist_id, user_id)
+    cursor.execute(
+        f"""
+        SELECT
+            movie_id AS id,
+            title,
+            poster_url,
+            rating,
+            COALESCE(added_at, '1970-01-01 00:00:00') AS added_at,
+            COALESCE(sort_index, 2147483647) AS sort_index,
+            COALESCE(primary_genre, '') AS primary_genre,
+            COALESCE(subscription_provider_names, '[]') AS subscription_provider_names
+        FROM playlist_items
+        WHERE playlist_id = {SQL_PARAM}
+        ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
+        """,
+        (target_id,),
+    )
+    return [dict(row) for row in cursor.fetchall()], False, target_id
+
+
+def hydrate_playlist_row_metadata(
+    cursor,
+    playlist_db_id: Optional[int],
+    row: dict,
+    *,
+    include_watch_providers: bool,
+) -> dict:
+    movie_id = int(row.get("id") or 0)
+    next_primary_genre = decode_db_text(row.get("primary_genre")) or get_movie_primary_genre(movie_id)
+    raw_provider_names = row.get("subscription_provider_names")
+    if isinstance(raw_provider_names, list):
+        parsed_provider_names = raw_provider_names
+    else:
+        parsed_provider_names = load_json_list(raw_provider_names)
+    next_provider_names = dedupe_list(
+        [
+            normalized
+            for normalized in (
+                normalize_streaming_service_label(str(value))
+                for value in parsed_provider_names
+            )
+            if normalized
+        ]
+    )
+
+    should_persist = False
+    if decode_db_text(row.get("primary_genre")) != next_primary_genre:
+        should_persist = True
+
+    if include_watch_providers and not next_provider_names:
+        next_provider_names = build_movie_subscription_provider_names(movie_id)
+        should_persist = True
+
+    row["primary_genre"] = next_primary_genre or "Autres"
+    row["subscription_provider_names"] = next_provider_names
+
+    if playlist_db_id is not None and should_persist:
+        cursor.execute(
+            f"""
+            UPDATE playlist_items
+            SET primary_genre = {SQL_PARAM},
+                subscription_provider_names = {SQL_PARAM},
+                metadata_updated_at = CURRENT_TIMESTAMP
+            WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}
+            """,
+            (
+                row["primary_genre"],
+                dump_json_list(next_provider_names),
+                int(playlist_db_id),
+                movie_id,
+            ),
+        )
+
+    return row
+
+
+def sort_playlist_rows(rows: list[dict], sort_mode: str) -> list[dict]:
+    ordered_rows = list(rows)
+    if sort_mode == "manual":
+        ordered_rows.sort(
+            key=lambda row: (
+                str(row.get("added_at") or ""),
+                int(row.get("id") or 0),
+            ),
+            reverse=True,
+        )
+        ordered_rows.sort(key=lambda row: int(row.get("sort_index") or 2147483647))
+    elif sort_mode == "genre":
+        ordered_rows.sort(
+            key=lambda row: (
+                str(row.get("primary_genre") or "Autres").lower(),
+                str(row.get("title") or "").lower(),
+                int(row.get("id") or 0),
+            )
+        )
+    elif sort_mode == "oldest":
+        ordered_rows.sort(
+            key=lambda row: (
+                str(row.get("added_at") or ""),
+                int(row.get("id") or 0),
+            )
+        )
+    elif sort_mode == "rating":
+        ordered_rows.sort(
+            key=lambda row: (
+                -float(row.get("rating") or 0.0),
+                str(row.get("title") or "").lower(),
+                int(row.get("id") or 0),
+            )
+        )
+    else:
+        ordered_rows.sort(
+            key=lambda row: (
+                str(row.get("added_at") or ""),
+                int(row.get("id") or 0),
+            ),
+            reverse=True,
+        )
+    return ordered_rows
+
+
+def browse_playlist_rows(
+    cursor,
+    playlist_id: int,
+    user_id: int,
+    *,
+    offset: int,
+    limit: int,
+    sort_mode: str,
+    query: str,
+    only_owned_streaming_services: bool,
+) -> dict:
+    base_rows, is_watch_later, playlist_db_id = fetch_playlist_base_rows(cursor, playlist_id, user_id)
+    playlist_total_count = len(base_rows)
+    trimmed_query = query.strip().lower()
+
+    hydrated_rows = [
+        hydrate_playlist_row_metadata(
+            cursor,
+            playlist_db_id,
+            row,
+            include_watch_providers=False,
+        )
+        for row in base_rows
+    ]
+
+    if trimmed_query:
+        hydrated_rows = [
+            row for row in hydrated_rows if trimmed_query in str(row.get("title") or "").lower()
+        ]
+
+    ordered_rows = sort_playlist_rows(hydrated_rows, sort_mode)
+
+    if is_watch_later and only_owned_streaming_services:
+        owned_services = set(get_user_owned_streaming_services(cursor, user_id))
+        if owned_services:
+            page_rows: list[dict] = []
+            matched_count = 0
+            for row in ordered_rows:
+                hydrated_row = hydrate_playlist_row_metadata(
+                    cursor,
+                    playlist_db_id,
+                    row,
+                    include_watch_providers=True,
+                )
+                if not owned_services.intersection(hydrated_row.get("subscription_provider_names") or []):
+                    continue
+                if matched_count < offset:
+                    matched_count += 1
+                    continue
+                if len(page_rows) < limit:
+                    page_rows.append(hydrated_row)
+                    matched_count += 1
+                    continue
+                return {
+                    "items": page_rows,
+                    "playlist_total_count": playlist_total_count,
+                    "next_offset": offset + len(page_rows),
+                    "has_more": True,
+                }
+
+            return {
+                "items": page_rows,
+                "playlist_total_count": playlist_total_count,
+                "next_offset": offset + len(page_rows),
+                "has_more": False,
+            }
+
+    page_rows = ordered_rows[offset : offset + limit]
+    return {
+        "items": page_rows,
+        "playlist_total_count": playlist_total_count,
+        "next_offset": offset + len(page_rows),
+        "has_more": offset + len(page_rows) < len(ordered_rows),
+    }
+
+
 def parse_exclude_ids(raw_exclude_ids: Optional[str]) -> set[int]:
     if not raw_exclude_ids:
         return set()
@@ -4214,6 +4527,11 @@ class PlaylistCreate(BaseModel):
     name: str
 
 
+class PlaylistMovePayload(BaseModel):
+    source_movie_id: int
+    target_movie_id: int
+
+
 class ReviewCreate(BaseModel):
     movie_id: int
     title: str
@@ -4520,107 +4838,34 @@ def get_playlist_content_paged(
     playlist_id: int,
     limit: int = 60,
     offset: int = 0,
+    sort: Optional[str] = None,
+    query: str = "",
+    only_owned_streaming_services: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
-    safe_limit = max(1, min(limit, 120))
+    safe_limit = max(1, min(limit, 240))
     safe_offset = max(0, offset)
+    resolved_sort = normalize_playlist_sort(playlist_id, sort)
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-
     if playlist_id == WATCH_LATER_SYSTEM_ID:
-        real_id = get_or_create_watch_later_id(cursor, current_user["id"])
         conn.commit()
-        cursor.execute(
-            f"SELECT COUNT(*) AS count FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
-            (real_id,),
-        )
-        total_count = int(cursor.fetchone()["count"] or 0)
-        cursor.execute(
-            f"""
-            SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at
-            FROM playlist_items
-            WHERE playlist_id = {SQL_PARAM}
-            ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
-            LIMIT {safe_limit} OFFSET {safe_offset}
-            """,
-            (real_id,),
-        )
-    elif playlist_id == FAVORITES_SYSTEM_ID:
-        cursor.execute(
-            f"SELECT COUNT(*) AS count FROM user_ratings WHERE user_id = {SQL_PARAM} AND rating >= 4",
-            (current_user["id"],),
-        )
-        total_count = int(cursor.fetchone()["count"] or 0)
-        cursor.execute(
-            f"""
-            SELECT movie_id as id, title, poster_url, rating, added_at
-            FROM user_ratings
-            WHERE user_id = {SQL_PARAM} AND rating >= 4
-            ORDER BY added_at DESC
-            LIMIT {safe_limit} OFFSET {safe_offset}
-            """,
-            (current_user["id"],),
-        )
-    elif playlist_id == HISTORY_SYSTEM_ID:
-        cursor.execute(
-            f"SELECT COUNT(*) AS count FROM user_ratings WHERE user_id = {SQL_PARAM}",
-            (current_user["id"],),
-        )
-        total_count = int(cursor.fetchone()["count"] or 0)
-        cursor.execute(
-            f"""
-            SELECT movie_id as id, title, poster_url, rating, added_at
-            FROM user_ratings
-            WHERE user_id = {SQL_PARAM}
-            ORDER BY added_at DESC
-            LIMIT {safe_limit} OFFSET {safe_offset}
-            """,
-            (current_user["id"],),
-        )
-    else:
-        target_id = get_custom_playlist_id(cursor, playlist_id, current_user["id"])
-        cursor.execute(
-            f"SELECT COUNT(*) AS count FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
-            (target_id,),
-        )
-        total_count = int(cursor.fetchone()["count"] or 0)
-        cursor.execute(
-            f"""
-            SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index
-            FROM playlist_items
-            WHERE playlist_id = {SQL_PARAM}
-            ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
-            LIMIT {safe_limit} OFFSET {safe_offset}
-            """,
-            (target_id,),
-        )
 
-    movies = [dict(row) for row in cursor.fetchall()]
+    payload = browse_playlist_rows(
+        cursor,
+        playlist_id,
+        current_user["id"],
+        offset=safe_offset,
+        limit=safe_limit,
+        sort_mode=resolved_sort,
+        query=query,
+        only_owned_streaming_services=only_owned_streaming_services,
+    )
+    conn.commit()
     conn.close()
-
-    for movie in movies:
-        movie["primary_genre"] = get_movie_primary_genre(int(movie["id"]))
-        movie["subscription_provider_names"] = []
-
-    if playlist_id == WATCH_LATER_SYSTEM_ID:
-        for movie in movies:
-            watch_providers = get_tmdb_watch_providers(int(movie["id"]))
-            movie["subscription_provider_names"] = dedupe_list(
-                [
-                    normalize_streaming_service_label(provider.get("name", ""))
-                    for provider in watch_providers.get("subscription", [])
-                    if normalize_streaming_service_label(provider.get("name", ""))
-                ]
-            )
-
-    next_offset = safe_offset + len(movies)
-    return {
-        "items": movies,
-        "total_count": total_count,
-        "next_offset": next_offset,
-        "has_more": next_offset < total_count,
-    }
+    payload["resolved_sort"] = resolved_sort
+    return payload
 
 @app.post("/playlists/{playlist_id}/add/{movie_id}")
 def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict = Depends(get_current_user)):
@@ -4631,14 +4876,53 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
     info = get_tmdb_details(movie_id)
     if info:
         try:
+            primary_genre = get_movie_primary_genre(movie_id)
+            subscription_provider_names = (
+                build_movie_subscription_provider_names(movie_id)
+                if playlist_id == WATCH_LATER_SYSTEM_ID
+                else []
+            )
             cursor.execute(
                 f"SELECT COALESCE(MAX(sort_index), 0) + 1 FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
                 (target_id,),
             )
             next_sort_index = int(cursor.fetchone()[0] or 1)
             cursor.execute(
-                f"INSERT INTO playlist_items (playlist_id, movie_id, title, poster_url, rating, added_at, sort_index) VALUES ({SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, CURRENT_TIMESTAMP, {SQL_PARAM})",
-                (target_id, info["id"], info["title"], info["poster_url"], info["rating"], next_sort_index),
+                f"""
+                INSERT INTO playlist_items (
+                    playlist_id,
+                    movie_id,
+                    title,
+                    poster_url,
+                    rating,
+                    added_at,
+                    sort_index,
+                    primary_genre,
+                    subscription_provider_names,
+                    metadata_updated_at
+                ) VALUES (
+                    {SQL_PARAM},
+                    {SQL_PARAM},
+                    {SQL_PARAM},
+                    {SQL_PARAM},
+                    {SQL_PARAM},
+                    CURRENT_TIMESTAMP,
+                    {SQL_PARAM},
+                    {SQL_PARAM},
+                    {SQL_PARAM},
+                    CURRENT_TIMESTAMP
+                )
+                """,
+                (
+                    target_id,
+                    info["id"],
+                    info["title"],
+                    info["poster_url"],
+                    info["rating"],
+                    next_sort_index,
+                    primary_genre,
+                    dump_json_list(subscription_provider_names),
+                ),
             )
             reaction_type = "watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "playlist_add"
             mark_recommendation_reaction(
@@ -4707,6 +4991,49 @@ def reorder_playlist(
     conn.commit()
     conn.close()
     return {"status": "reordered"}
+
+@app.post("/playlists/{playlist_id}/move")
+def move_playlist_movie(
+    playlist_id: int,
+    payload: PlaylistMovePayload,
+    current_user: dict = Depends(get_current_user),
+):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
+
+    cursor.execute(
+        f"""
+        SELECT movie_id
+        FROM playlist_items
+        WHERE playlist_id = {SQL_PARAM}
+        ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
+        """,
+        (target_id,),
+    )
+    ordered_movie_ids = [int(row[0]) for row in cursor.fetchall()]
+    if payload.source_movie_id not in ordered_movie_ids or payload.target_movie_id not in ordered_movie_ids:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Film introuvable dans cette playlist")
+
+    source_index = ordered_movie_ids.index(payload.source_movie_id)
+    target_index = ordered_movie_ids.index(payload.target_movie_id)
+    if source_index == target_index:
+        conn.close()
+        return {"status": "unchanged"}
+
+    moved_movie_id = ordered_movie_ids.pop(source_index)
+    ordered_movie_ids.insert(target_index, moved_movie_id)
+
+    for index, movie_id in enumerate(ordered_movie_ids, start=1):
+        cursor.execute(
+            f"UPDATE playlist_items SET sort_index = {SQL_PARAM} WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+            (index, target_id, movie_id),
+        )
+
+    conn.commit()
+    conn.close()
+    return {"status": "moved"}
 
 @app.post("/movies/rate/{movie_id}/{rating}")
 def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_current_user)):

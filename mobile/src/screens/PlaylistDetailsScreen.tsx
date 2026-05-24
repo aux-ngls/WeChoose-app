@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -24,8 +24,8 @@ import {
   ApiError,
   fetchProfilePreferences,
   fetchPlaylistMoviesPage,
+  movePlaylistMovie,
   removeMovieFromPlaylist,
-  reorderPlaylistMovies,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
@@ -37,7 +37,6 @@ import {
   type SearchMovie,
   WATCH_LATER_PLAYLIST_ID,
 } from '../types';
-import { matchesOwnedStreamingServices } from '../utils/streaming';
 
 const SORT_OPTIONS = [
   { key: 'manual', label: 'Ordre personnalisé' },
@@ -48,37 +47,51 @@ const SORT_OPTIONS = [
 ] as const;
 
 type SortMode = (typeof SORT_OPTIONS)[number]['key'];
-const INITIAL_PLAYLIST_PAGE_SIZE = 200;
-const PLAYLIST_PAGE_SIZE = 60;
-const APPEND_BATCH_SIZE = 12;
-const APPEND_BATCH_DELAY_MS = 28;
+type BufferedPage = {
+  items: SearchMovie[];
+  nextOffset: number;
+  hasMore: boolean;
+};
 
-const playlistMoviesCache = new Map<
-  number,
-  {
-    movies: SearchMovie[];
-    totalCount: number;
-    hasMore: boolean;
-    nextOffset: number;
-  }
->();
+type PlaylistCacheEntry = {
+  movies: SearchMovie[];
+  totalCount: number;
+  hasMore: boolean;
+  nextOffset: number;
+  bufferedPage: BufferedPage | null;
+};
 
-function compareManualOrder(a: SearchMovie, b: SearchMovie) {
-  const orderA = a.sort_index ?? Number.MAX_SAFE_INTEGER;
-  const orderB = b.sort_index ?? Number.MAX_SAFE_INTEGER;
-  if (orderA !== orderB) {
-    return orderA - orderB;
+const INITIAL_PLAYLIST_PAGE_SIZE = 120;
+const PLAYLIST_PAGE_SIZE = 72;
+const SEARCH_DEBOUNCE_MS = 220;
+
+const playlistMoviesCache = new Map<string, PlaylistCacheEntry>();
+
+function buildPlaylistCacheKey(
+  playlistId: number,
+  sortMode: SortMode,
+  query: string,
+  onlyOwnedStreamingServices: boolean,
+) {
+  return [playlistId, sortMode, query.trim().toLowerCase(), onlyOwnedStreamingServices ? 'owned' : 'all'].join(':');
+}
+
+function mergeUniqueMovies(currentMovies: SearchMovie[], nextMovies: SearchMovie[]) {
+  const mergedMovies = [...currentMovies];
+  const knownMovieIds = new Set(currentMovies.map((movie) => movie.id));
+  for (const movie of nextMovies) {
+    if (knownMovieIds.has(movie.id)) {
+      continue;
+    }
+    knownMovieIds.add(movie.id);
+    mergedMovies.push(movie);
   }
-  return a.title.localeCompare(b.title);
+  return mergedMovies;
 }
 
 function formatPlaylistRating(rating: number, playlistId: number) {
   const scale = playlistId === FAVORITES_PLAYLIST_ID || playlistId === HISTORY_PLAYLIST_ID ? 5 : 10;
   return `${rating.toFixed(1)} / ${scale}`;
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export default function PlaylistDetailsScreen({
@@ -89,16 +102,18 @@ export default function PlaylistDetailsScreen({
   const { theme } = useTheme();
   const supportsManualSort =
     route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
-  const initialCache = playlistMoviesCache.get(route.params.playlistId);
+  const initialSortMode: SortMode =
+    route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : supportsManualSort ? 'manual' : 'recent';
+  const initialCacheKey = buildPlaylistCacheKey(route.params.playlistId, initialSortMode, '', false);
+  const initialCache = playlistMoviesCache.get(initialCacheKey);
   const [movies, setMovies] = useState<SearchMovie[]>(() => initialCache?.movies ?? []);
   const [loading, setLoading] = useState(() => !initialCache || initialCache.movies.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>(
-    route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : supportsManualSort ? 'manual' : 'recent',
-  );
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [onlyOwnedStreamingServices, setOnlyOwnedStreamingServices] = useState(false);
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
@@ -106,23 +121,45 @@ export default function PlaylistDetailsScreen({
   const [totalCount, setTotalCount] = useState(() => initialCache?.totalCount ?? 0);
   const [hasMore, setHasMore] = useState(() => initialCache?.hasMore ?? false);
   const [nextOffset, setNextOffset] = useState(() => initialCache?.nextOffset ?? 0);
+  const [bufferedPage, setBufferedPage] = useState<BufferedPage | null>(() => initialCache?.bufferedPage ?? null);
+  const [dataCacheKey, setDataCacheKey] = useState(initialCacheKey);
+  const listRef = useRef<FlatList<SearchMovie> | null>(null);
   const moviesRef = useRef(movies);
-  const paginationRef = useRef({
-    totalCount: initialCache?.totalCount ?? 0,
-    hasMore: initialCache?.hasMore ?? false,
-    nextOffset: initialCache?.nextOffset ?? 0,
-  });
-  const isLoadingPageRef = useRef(false);
-  const hiddenPrefetchRef = useRef(false);
-  const appendSequenceRef = useRef(0);
+  const totalCountRef = useRef(totalCount);
+  const hasMoreRef = useRef(hasMore);
+  const nextOffsetRef = useRef(nextOffset);
+  const bufferedPageRef = useRef(bufferedPage);
+  const generationRef = useRef(0);
+  const prefetchInFlightRef = useRef(false);
+  const cacheKey = useMemo(
+    () => buildPlaylistCacheKey(route.params.playlistId, sortMode, debouncedQuery, onlyOwnedStreamingServices),
+    [debouncedQuery, onlyOwnedStreamingServices, route.params.playlistId, sortMode],
+  );
 
   useEffect(() => {
     moviesRef.current = movies;
   }, [movies]);
 
   useEffect(() => {
-    paginationRef.current = { totalCount, hasMore, nextOffset };
-  }, [hasMore, nextOffset, totalCount]);
+    totalCountRef.current = totalCount;
+  }, [totalCount]);
+
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+
+  useEffect(() => {
+    nextOffsetRef.current = nextOffset;
+  }, [nextOffset]);
+
+  useEffect(() => {
+    bufferedPageRef.current = bufferedPage;
+  }, [bufferedPage]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+  }, [query]);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -131,11 +168,21 @@ export default function PlaylistDetailsScreen({
   }, []);
 
   const canRemove = route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
-  const canReorder = supportsManualSort && sortMode === 'manual' && !query.trim();
+  const canReorder = supportsManualSort && sortMode === 'manual' && !debouncedQuery && !onlyOwnedStreamingServices;
   const availableSortOptions = useMemo(
     () => (supportsManualSort ? SORT_OPTIONS : SORT_OPTIONS.filter((option) => option.key !== 'manual')),
     [supportsManualSort],
   );
+
+  useEffect(() => {
+    playlistMoviesCache.set(dataCacheKey, {
+      movies,
+      totalCount,
+      hasMore,
+      nextOffset,
+      bufferedPage,
+    });
+  }, [bufferedPage, dataCacheKey, hasMore, movies, nextOffset, totalCount]);
 
   useEffect(() => {
     if (!canReorder && reorderingMovieId) {
@@ -143,104 +190,113 @@ export default function PlaylistDetailsScreen({
     }
   }, [canReorder, reorderingMovieId]);
 
-  const updatePlaylistCache = useCallback(
-    (nextMovies: SearchMovie[], nextTotalCount: number, nextHasMore: boolean, nextNextOffset: number) => {
-      playlistMoviesCache.set(route.params.playlistId, {
-        movies: nextMovies,
-        totalCount: nextTotalCount,
-        hasMore: nextHasMore,
-        nextOffset: nextNextOffset,
+  const fetchPage = useCallback(
+    async (offset: number, limit: number, generation: number) => {
+      if (!session) {
+        return null;
+      }
+
+      const payload = await fetchPlaylistMoviesPage(session.token, route.params.playlistId, {
+        limit,
+        offset,
+        sort: sortMode,
+        query: debouncedQuery,
+        onlyOwnedStreamingServices,
       });
+
+      if (generation !== generationRef.current) {
+        return null;
+      }
+
+      return payload;
     },
-    [route.params.playlistId],
+    [debouncedQuery, onlyOwnedStreamingServices, route.params.playlistId, session, sortMode],
   );
 
-  const loadPlaylistPage = useCallback(async (options?: { reset?: boolean; silent?: boolean }) => {
-    if (!session || isLoadingPageRef.current) {
-      return;
-    }
-
-    const shouldReset = Boolean(options?.reset);
-    const silent = Boolean(options?.silent);
-    if (shouldReset) {
-      hiddenPrefetchRef.current = false;
-    }
-    const currentLoadedCount = shouldReset ? 0 : moviesRef.current.length;
-    if (shouldReset || currentLoadedCount === 0) {
-      setLoading(true);
-    } else if (!silent) {
-      setLoadingMore(true);
-    }
-    isLoadingPageRef.current = true;
-    const appendSequence = appendSequenceRef.current + 1;
-    appendSequenceRef.current = appendSequence;
-
-    try {
-      const requestLimit = shouldReset ? INITIAL_PLAYLIST_PAGE_SIZE : PLAYLIST_PAGE_SIZE;
-      const payload = await fetchPlaylistMoviesPage(session.token, route.params.playlistId, {
-        limit: requestLimit,
-        offset: shouldReset ? 0 : paginationRef.current.nextOffset,
-      });
-      setTotalCount(payload.total_count);
+  const applyVisiblePage = useCallback(
+    (
+      requestCacheKey: string,
+      payload: Awaited<ReturnType<typeof fetchPlaylistMoviesPage>>,
+      options?: { append?: boolean },
+    ) => {
+      const nextMovies = options?.append ? mergeUniqueMovies(moviesRef.current, payload.items) : payload.items;
+      startTransition(() => setMovies(nextMovies));
+      setTotalCount(payload.playlist_total_count);
       setHasMore(payload.has_more);
       setNextOffset(payload.next_offset);
-      const existingMovies = shouldReset ? [] : moviesRef.current;
-      const targetMovies = [...existingMovies, ...payload.items];
+      setDataCacheKey(requestCacheKey);
+      setError('');
+    },
+    [],
+  );
 
-      if (!payload.has_more || targetMovies.length >= Math.min(payload.total_count, INITIAL_PLAYLIST_PAGE_SIZE)) {
-        hiddenPrefetchRef.current = false;
-      }
-
-      if (payload.items.length === 0) {
-        setMovies(existingMovies);
-        updatePlaylistCache(existingMovies, payload.total_count, payload.has_more, payload.next_offset);
-        setError('');
+  const startBackgroundPrefetch = useCallback(
+    async (generation: number, requestCacheKey: string, offset: number, shouldPrefetch: boolean) => {
+      if (!shouldPrefetch || prefetchInFlightRef.current) {
         return;
       }
 
-      if (shouldReset || currentLoadedCount === 0) {
-        setMovies(targetMovies);
-        updatePlaylistCache(targetMovies, payload.total_count, payload.has_more, payload.next_offset);
-        setError('');
-        return;
+      prefetchInFlightRef.current = true;
+      try {
+        const payload = await fetchPage(offset, PLAYLIST_PAGE_SIZE, generation);
+        if (!payload) {
+          return;
+        }
+        setBufferedPage({
+          items: payload.items,
+          nextOffset: payload.next_offset,
+          hasMore: payload.has_more,
+        });
+        setDataCacheKey(requestCacheKey);
+      } catch (fetchError) {
+        if (fetchError instanceof ApiError && fetchError.status === 401) {
+          await signOut();
+        }
+      } finally {
+        prefetchInFlightRef.current = false;
       }
+    },
+    [fetchPage, signOut],
+  );
 
-      for (let start = 0; start < payload.items.length; start += APPEND_BATCH_SIZE) {
-        if (appendSequenceRef.current !== appendSequence) {
+  const loadInitialPage = useCallback(
+    async (generation: number, requestCacheKey: string, options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setLoading(true);
+      }
+      setLoadingMore(false);
+      setBufferedPage(null);
+      prefetchInFlightRef.current = false;
+
+      try {
+        const payload = await fetchPage(0, INITIAL_PLAYLIST_PAGE_SIZE, generation);
+        if (!payload) {
           return;
         }
 
-        const visibleCount = Math.min(start + APPEND_BATCH_SIZE, payload.items.length);
-        const nextMovies = [...existingMovies, ...payload.items.slice(0, visibleCount)];
-        setMovies(nextMovies);
-        updatePlaylistCache(nextMovies, payload.total_count, payload.has_more, payload.next_offset);
-
-        if (start === 0) {
+        applyVisiblePage(requestCacheKey, payload);
+        if (payload.resolved_sort !== sortMode) {
+          setSortMode(payload.resolved_sort);
+        }
+        if (payload.has_more) {
+          void startBackgroundPrefetch(generation, requestCacheKey, payload.next_offset, payload.has_more);
+        }
+      } catch (fetchError) {
+        if (fetchError instanceof ApiError && fetchError.status === 401) {
+          await signOut();
+          return;
+        }
+        if (generation === generationRef.current) {
+          setError('Impossible de charger cette playlist.');
+        }
+      } finally {
+        if (generation === generationRef.current) {
           setLoading(false);
         }
-
-        if (visibleCount < payload.items.length) {
-          await delay(APPEND_BATCH_DELAY_MS);
-        }
       }
-
-      if (appendSequenceRef.current === appendSequence) {
-        setMovies(targetMovies);
-        updatePlaylistCache(targetMovies, payload.total_count, payload.has_more, payload.next_offset);
-      }
-      setError('');
-    } catch (fetchError) {
-      if (fetchError instanceof ApiError && fetchError.status === 401) {
-        await signOut();
-        return;
-      }
-      setError('Impossible de charger cette playlist.');
-    } finally {
-      isLoadingPageRef.current = false;
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [route.params.playlistId, session, signOut, updatePlaylistCache]);
+    },
+    [applyVisiblePage, fetchPage, signOut, sortMode, startBackgroundPrefetch],
+  );
 
   const loadOwnedStreamingServices = useCallback(async () => {
     if (!session || route.params.playlistId !== WATCH_LATER_PLAYLIST_ID) {
@@ -258,69 +314,61 @@ export default function PlaylistDetailsScreen({
   }, [route.params.playlistId, session, signOut]);
 
   useEffect(() => {
-    if (hiddenPrefetchRef.current || loading || loadingMore || !hasMore) {
+    if (!session) {
       return;
     }
 
-    if (movies.length > 0 && movies.length < Math.min(totalCount, INITIAL_PLAYLIST_PAGE_SIZE)) {
-      hiddenPrefetchRef.current = true;
-      void loadPlaylistPage({ silent: true });
+    generationRef.current += 1;
+    const generation = generationRef.current;
+    const cachedPage = playlistMoviesCache.get(cacheKey);
+    setIsSortMenuOpen(false);
+    setError('');
+
+    if (cachedPage) {
+      startTransition(() => setMovies(cachedPage.movies));
+      setTotalCount(cachedPage.totalCount);
+      setHasMore(cachedPage.hasMore);
+      setNextOffset(cachedPage.nextOffset);
+      setBufferedPage(cachedPage.bufferedPage);
+      setDataCacheKey(cacheKey);
+      setLoading(false);
+      setLoadingMore(false);
+      if (!cachedPage.bufferedPage && cachedPage.hasMore) {
+        void startBackgroundPrefetch(generation, cacheKey, cachedPage.nextOffset, cachedPage.hasMore);
+      }
+      return;
     }
-  }, [hasMore, loading, loadingMore, loadPlaylistPage, movies.length, totalCount]);
+
+    startTransition(() => setMovies([]));
+    setTotalCount(0);
+    setHasMore(false);
+    setNextOffset(0);
+    setBufferedPage(null);
+    setDataCacheKey(cacheKey);
+    void loadInitialPage(generation, cacheKey);
+  }, [cacheKey, loadInitialPage, session, startBackgroundPrefetch]);
 
   useFocusEffect(
     useCallback(() => {
-      if (moviesRef.current.length === 0) {
-        void loadPlaylistPage({ reset: true });
-      }
       void loadOwnedStreamingServices();
-    }, [loadOwnedStreamingServices, loadPlaylistPage]),
+      if (session && moviesRef.current.length === 0) {
+        generationRef.current += 1;
+        void loadInitialPage(generationRef.current, cacheKey);
+      } else if (session && !bufferedPageRef.current && hasMoreRef.current) {
+        void startBackgroundPrefetch(generationRef.current, cacheKey, nextOffsetRef.current, hasMoreRef.current);
+      }
+    }, [cacheKey, loadInitialPage, loadOwnedStreamingServices, session, startBackgroundPrefetch]),
   );
 
   const refreshPlaylist = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadPlaylistPage({ reset: true });
+      generationRef.current += 1;
+      await loadInitialPage(generationRef.current, cacheKey, { silent: moviesRef.current.length > 0 });
     } finally {
       setRefreshing(false);
     }
-  }, [loadPlaylistPage]);
-
-  const sortedMovies = useMemo(() => {
-    const copy = [...movies];
-    if (sortMode === 'manual') {
-      copy.sort(compareManualOrder);
-    } else if (sortMode === 'genre') {
-      copy.sort((a, b) => {
-        const genreA = (a.primary_genre ?? 'Autres').toLowerCase();
-        const genreB = (b.primary_genre ?? 'Autres').toLowerCase();
-        if (genreA !== genreB) {
-          return genreA.localeCompare(genreB);
-        }
-        return a.title.localeCompare(b.title);
-      });
-    } else if (sortMode === 'oldest') {
-      copy.sort((a, b) => String(a.added_at ?? '').localeCompare(String(b.added_at ?? '')));
-    } else if (sortMode === 'rating') {
-      copy.sort((a, b) => b.rating - a.rating);
-    } else {
-      copy.sort((a, b) => String(b.added_at ?? '').localeCompare(String(a.added_at ?? '')));
-    }
-
-    let filtered = copy;
-    if (onlyOwnedStreamingServices && route.params.playlistId === WATCH_LATER_PLAYLIST_ID && ownedStreamingServices.length > 0) {
-      filtered = filtered.filter((movie) =>
-        matchesOwnedStreamingServices(movie.subscription_provider_names, ownedStreamingServices),
-      );
-    }
-
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      return filtered;
-    }
-
-    return filtered.filter((movie) => movie.title.toLowerCase().includes(trimmed));
-  }, [movies, onlyOwnedStreamingServices, ownedStreamingServices, query, route.params.playlistId, sortMode]);
+  }, [cacheKey, loadInitialPage]);
 
   const handleRemove = useCallback(async (movieId: number) => {
     if (!session || !canRemove) {
@@ -331,16 +379,13 @@ export default function PlaylistDetailsScreen({
       await removeMovieFromPlaylist(session.token, route.params.playlistId, movieId);
       setMovies((current) => {
         const nextMovies = current.filter((movie) => movie.id !== movieId);
-        const nextTotalCount = Math.max(0, paginationRef.current.totalCount - 1);
+        const nextTotalCount = Math.max(0, totalCountRef.current - 1);
         setTotalCount(nextTotalCount);
-        updatePlaylistCache(
-          nextMovies,
-          nextTotalCount,
-          paginationRef.current.hasMore,
-          paginationRef.current.nextOffset,
-        );
+        setNextOffset((currentOffset) => Math.max(nextMovies.length, currentOffset - 1));
+        setBufferedPage(null);
         return nextMovies;
       });
+      setError('');
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 401) {
         await signOut();
@@ -348,29 +393,28 @@ export default function PlaylistDetailsScreen({
       }
       setError('Impossible de retirer ce film.');
     }
-  }, [canRemove, route.params.playlistId, session, signOut, updatePlaylistCache]);
+  }, [canRemove, route.params.playlistId, session, signOut]);
 
-  const persistManualOrder = useCallback(
-    async (orderedMovies: SearchMovie[]) => {
+  const persistManualMove = useCallback(
+    async (sourceMovieId: number, targetMovieId: number, orderedMovies: SearchMovie[]) => {
       if (!session) {
         return;
       }
 
       const indexedMovies = orderedMovies.map((movie, index) => ({ ...movie, sort_index: index + 1 }));
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setMovies(indexedMovies);
-      updatePlaylistCache(
-        indexedMovies,
-        paginationRef.current.totalCount,
-        paginationRef.current.hasMore,
-        paginationRef.current.nextOffset,
-      );
+      startTransition(() => setMovies(indexedMovies));
+      setBufferedPage(null);
 
       try {
-        await reorderPlaylistMovies(session.token, route.params.playlistId, indexedMovies.map((movie) => movie.id));
+        await movePlaylistMovie(session.token, route.params.playlistId, sourceMovieId, targetMovieId);
         setError('');
+        if (hasMoreRef.current) {
+          void startBackgroundPrefetch(generationRef.current, cacheKey, nextOffsetRef.current, hasMoreRef.current);
+        }
       } catch (actionError) {
-        void loadPlaylistPage({ reset: true });
+        generationRef.current += 1;
+        void loadInitialPage(generationRef.current, cacheKey, { silent: true });
         if (actionError instanceof ApiError && actionError.status === 401) {
           await signOut();
           return;
@@ -378,7 +422,7 @@ export default function PlaylistDetailsScreen({
         setError('Impossible de réordonner cette playlist.');
       }
     },
-    [loadPlaylistPage, route.params.playlistId, session, signOut, updatePlaylistCache],
+    [cacheKey, loadInitialPage, route.params.playlistId, session, signOut, startBackgroundPrefetch],
   );
 
   const handleReorderPress = useCallback(
@@ -393,7 +437,7 @@ export default function PlaylistDetailsScreen({
         return true;
       }
 
-      const orderedMovies = [...sortedMovies];
+      const orderedMovies = [...moviesRef.current];
       const sourceIndex = orderedMovies.findIndex((movie) => movie.id === reorderingMovieId);
       const targetIndex = orderedMovies.findIndex((movie) => movie.id === targetMovieId);
       if (sourceIndex < 0 || targetIndex < 0) {
@@ -404,11 +448,60 @@ export default function PlaylistDetailsScreen({
       const [movedMovie] = orderedMovies.splice(sourceIndex, 1);
       orderedMovies.splice(targetIndex, 0, movedMovie);
       setReorderingMovieId(null);
-      void persistManualOrder(orderedMovies);
+      void persistManualMove(reorderingMovieId, targetMovieId, orderedMovies);
       return true;
     },
-    [canReorder, persistManualOrder, reorderingMovieId, sortedMovies],
+    [cacheKey, canReorder, persistManualMove, reorderingMovieId],
   );
+
+  const handleEndReached = useCallback(async () => {
+    if (!session || loading || loadingMore || !hasMoreRef.current) {
+      return;
+    }
+
+    const generation = generationRef.current;
+    const currentBufferedPage = bufferedPageRef.current;
+    if (currentBufferedPage?.items.length) {
+      applyVisiblePage(
+        cacheKey,
+        {
+          items: currentBufferedPage.items,
+          playlist_total_count: totalCountRef.current,
+          next_offset: currentBufferedPage.nextOffset,
+          has_more: currentBufferedPage.hasMore,
+          resolved_sort: sortMode,
+        },
+        { append: true },
+      );
+      setBufferedPage(null);
+      if (currentBufferedPage.hasMore) {
+        void startBackgroundPrefetch(generation, cacheKey, currentBufferedPage.nextOffset, currentBufferedPage.hasMore);
+      }
+      return;
+    }
+
+    setLoadingMore(true);
+    try {
+      const payload = await fetchPage(nextOffsetRef.current, PLAYLIST_PAGE_SIZE, generation);
+      if (!payload) {
+        return;
+      }
+      applyVisiblePage(cacheKey, payload, { append: true });
+      if (payload.has_more) {
+        void startBackgroundPrefetch(generation, cacheKey, payload.next_offset, payload.has_more);
+      }
+    } catch (fetchError) {
+      if (fetchError instanceof ApiError && fetchError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de charger la suite de cette playlist.');
+    } finally {
+      if (generation === generationRef.current) {
+        setLoadingMore(false);
+      }
+    }
+  }, [applyVisiblePage, cacheKey, fetchPage, loading, loadingMore, session, signOut, sortMode, startBackgroundPrefetch]);
 
   const headerComponent = (
     <View style={styles.headerContent}>
@@ -421,9 +514,9 @@ export default function PlaylistDetailsScreen({
             styles.sortTriggerChip,
             { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
             isSortMenuOpen && { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.colors.accentSoft },
-          ]}
-        >
-          <Ionicons name="swap-vertical" size={14} color={isSortMenuOpen ? theme.colors.text : theme.colors.textSoft} />
+            ]}
+          >
+            <Ionicons name="swap-vertical" size={14} color={isSortMenuOpen ? theme.colors.text : theme.colors.textSoft} />
           <Text
             style={[
               styles.filterChipLabel,
@@ -515,22 +608,24 @@ export default function PlaylistDetailsScreen({
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
       <FlatList
-        data={sortedMovies}
-        key={`playlist-${sortMode}-grid`}
+        ref={listRef}
+        data={movies}
+        key={`playlist-${cacheKey}-grid`}
         numColumns={3}
         columnWrapperStyle={styles.columns}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={18}
+        maxToRenderPerBatch={12}
+        updateCellsBatchingPeriod={16}
+        windowSize={9}
+        removeClippedSubviews={Platform.OS !== 'web'}
         ListHeaderComponent={headerComponent}
         contentContainerStyle={styles.listContent}
-        onEndReachedThreshold={0.9}
-        onEndReached={() => {
-          if (!loading && !loadingMore && hasMore) {
-            void loadPlaylistPage({ silent: true });
-          }
-        }}
+        onEndReachedThreshold={0.65}
+        onEndReached={() => void handleEndReached()}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -598,7 +693,15 @@ export default function PlaylistDetailsScreen({
             <EmptyStateCard title="Aucun film" />
           ) : null
         }
-        ListFooterComponent={hasMore ? <View style={styles.footerSpacer} /> : null}
+        ListFooterComponent={
+          loadingMore && !bufferedPage ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator color={theme.colors.textMuted} />
+            </View>
+          ) : hasMore ? (
+            <View style={styles.footerSpacer} />
+          ) : null
+        }
       />
     </AppScreen>
   );
