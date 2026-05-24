@@ -6227,6 +6227,244 @@ def movie_news_highlights(current_user: dict = Depends(get_current_user)):
         for key, value in payload.items()
     }
 
+
+def build_group_recommendation_reason(
+    *,
+    support_count: int,
+    group_size: int,
+    primary_genre: str,
+) -> str:
+    normalized_genre = (primary_genre or "cinema").lower()
+    if group_size <= 1:
+        return "Selection affinee sur tes gouts."
+    if support_count >= group_size:
+        return f"Bon compromis pour tout le groupe, avec une piste tres {normalized_genre}."
+    if support_count >= max(2, group_size - 1):
+        return f"Peut plaire a presque tout le groupe, surtout cote {normalized_genre}."
+    return f"Compatible avec {support_count}/{group_size} profils du groupe."
+
+
+def build_group_recommendations(
+    *,
+    current_user_id: int,
+    selected_user_ids: list[int],
+    limit: int = 12,
+) -> list[dict]:
+    if movies_df.empty or vectors is None:
+        return []
+
+    deduped_selected_user_ids: list[int] = []
+    for user_id in selected_user_ids:
+        normalized_user_id = int(user_id)
+        if normalized_user_id == current_user_id or normalized_user_id in deduped_selected_user_ids:
+            continue
+        deduped_selected_user_ids.append(normalized_user_id)
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
+
+    valid_selected_user_ids: list[int] = []
+    if deduped_selected_user_ids:
+        placeholders = sql_placeholders(len(deduped_selected_user_ids))
+        cursor.execute(
+            f"SELECT id FROM users WHERE id IN ({placeholders})",
+            tuple(deduped_selected_user_ids),
+        )
+        existing_user_ids = {int(row[0]) for row in cursor.fetchall()}
+        for user_id in deduped_selected_user_ids:
+            if user_id in existing_user_ids and user_id not in hidden_user_ids:
+                valid_selected_user_ids.append(user_id)
+
+    if not valid_selected_user_ids:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Selection de profils invalide")
+
+    group_user_ids = [int(current_user_id), *valid_selected_user_ids[:5]]
+    placeholders = sql_placeholders(len(group_user_ids))
+    cursor.execute(
+        f"SELECT id, username FROM users WHERE id IN ({placeholders})",
+        tuple(group_user_ids),
+    )
+    username_by_id = {
+        int(row_get_value(row, "id", 0)): decode_db_text(row_get_value(row, "username", 1))
+        for row in cursor.fetchall()
+    }
+
+    blocked_ids: set[int] = set()
+    group_profiles: list[dict[str, Any]] = []
+
+    for user_id in group_user_ids:
+        preferences = get_user_preferences(cursor, user_id)
+        watch_later_id = get_or_create_watch_later_id(cursor, user_id)
+        cursor.execute(
+            f"SELECT movie_id, rating FROM user_ratings WHERE user_id = {SQL_PARAM} ORDER BY added_at DESC",
+            (user_id,),
+        )
+        rating_rows = [(int(row[0]), float(row[1])) for row in cursor.fetchall()]
+        rated_ids = {movie_id for movie_id, _rating in rating_rows}
+
+        cursor.execute(
+            f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY added_at DESC LIMIT 18",
+            (watch_later_id,),
+        )
+        watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
+
+        blocked_ids |= rated_ids
+        blocked_ids |= set(watch_later_ids)
+
+        positive_signal_weights: dict[int, float] = {}
+        for rank, (movie_id, rating) in enumerate(rating_rows[:24]):
+            if rating < 3.5:
+                continue
+            signal_weight = max(0.35, float(rating) - 2.6) * max(0.45, 1.30 - (rank * 0.05))
+            positive_signal_weights[movie_id] = max(
+                positive_signal_weights.get(movie_id, 0.0),
+                signal_weight,
+            )
+
+        for rank, movie_id in enumerate(watch_later_ids[:12]):
+            watch_weight = max(0.25, 0.80 - (rank * 0.05))
+            positive_signal_weights[movie_id] = max(
+                positive_signal_weights.get(movie_id, 0.0),
+                watch_weight,
+            )
+
+        for movie_id in preferences["favorite_movie_ids"][:12]:
+            positive_signal_weights[int(movie_id)] = max(
+                positive_signal_weights.get(int(movie_id), 0.0),
+                1.25,
+            )
+
+        for movie_id in preferences["profile_movie_ids"][:10]:
+            positive_signal_weights[int(movie_id)] = max(
+                positive_signal_weights.get(int(movie_id), 0.0),
+                0.95,
+            )
+
+        genre_tokens = {
+            normalize_genre_token(value)
+            for value in [*preferences["favorite_genres"], *preferences["profile_genres"]]
+            if normalize_genre_token(value)
+        }
+
+        positive_indices: list[int] = []
+        positive_vector_weights: list[float] = []
+        for movie_id, weight in positive_signal_weights.items():
+            movie_index = movie_index_by_id.get(int(movie_id))
+            if movie_index is None:
+                continue
+            positive_indices.append(movie_index)
+            positive_vector_weights.append(float(weight))
+
+        similarity_scores = np.zeros(len(movies_df))
+        if positive_indices:
+            try:
+                similarity_matrix = cosine_similarity(vectors, vectors[positive_indices])
+                similarity_scores = np.average(
+                    similarity_matrix,
+                    axis=1,
+                    weights=np.array(positive_vector_weights),
+                )
+            except Exception:
+                similarity_scores = np.zeros(len(movies_df))
+
+        genre_scores = np.zeros(len(movies_df))
+        if genre_tokens:
+            genre_scores = np.array(
+                [
+                    len(set(tokens) & genre_tokens) / max(len(genre_tokens), 1)
+                    if tokens else 0.0
+                    for tokens in movies_df["genre_tokens"]
+                ]
+            )
+
+        group_profiles.append(
+            {
+                "user_id": int(user_id),
+                "username": username_by_id.get(int(user_id)) or f"user-{user_id}",
+                "similarity_scores": similarity_scores,
+                "genre_scores": genre_scores,
+            }
+        )
+
+    conn.commit()
+    conn.close()
+
+    audience_rating_scores = movies_df["audience_rating_score"].to_numpy()
+    quality_scores = movies_df["quality_score"].to_numpy()
+    candidate_scores: list[tuple[int, float, int]] = []
+
+    for movie_id in movie_ids_array:
+        normalized_movie_id = int(movie_id)
+        if normalized_movie_id in blocked_ids:
+            continue
+
+        movie_index = movie_index_by_id.get(normalized_movie_id)
+        if movie_index is None:
+            continue
+
+        member_scores: list[float] = []
+        support_count = 0
+        for profile in group_profiles:
+            member_score = (
+                (float(profile["similarity_scores"][movie_index]) * 0.68)
+                + (float(profile["genre_scores"][movie_index]) * 0.24)
+                + (float(audience_rating_scores[movie_index]) * 0.08)
+            )
+            member_scores.append(member_score)
+            if member_score >= 0.21:
+                support_count += 1
+
+        if not member_scores:
+            continue
+
+        average_score = float(sum(member_scores) / len(member_scores))
+        minimum_score = min(member_scores)
+        score_spread = float(np.std(member_scores))
+        support_ratio = support_count / max(len(group_profiles), 1)
+        if len(group_profiles) > 1 and support_count <= 1 and minimum_score < 0.08:
+            continue
+
+        group_score = (
+            (average_score * 0.42)
+            + (minimum_score * 0.62)
+            + (support_ratio * 0.34)
+            + (float(quality_scores[movie_index]) * 0.16)
+            + (float(audience_rating_scores[movie_index]) * 0.12)
+            - (score_spread * 0.18)
+        )
+        candidate_scores.append((normalized_movie_id, group_score, support_count))
+
+    candidate_scores.sort(key=lambda item: item[1], reverse=True)
+    ranked_ids = [movie_id for movie_id, _score, _support in candidate_scores]
+    support_by_movie_id = {movie_id: support for movie_id, _score, support in candidate_scores}
+    selected_ids = pick_diverse_movie_ids(ranked_ids, limit, per_genre_cap=2 if len(group_profiles) >= 3 else 3)
+    poster_urls_by_movie_id = fetch_posters_from_tmdb(selected_ids[:limit])
+
+    selected_rows = movies_df[movies_df["id"].isin(selected_ids)].copy()
+    selected_rows["selection_rank"] = selected_rows["id"].apply(
+        lambda movie_id: selected_ids.index(int(movie_id))
+    )
+    selected_rows = selected_rows.sort_values("selection_rank")
+
+    return [
+        {
+            "id": int(row["id"]),
+            "title": str(row["title"]),
+            "poster_url": poster_urls_by_movie_id.get(int(row["id"])) or fetch_poster_from_tmdb(int(row["id"])),
+            "rating": float(row["vote_average"]),
+            "primary_genre": str(row.get("primary_genre") or "Autres"),
+            "recommendation_reason": build_group_recommendation_reason(
+                support_count=int(support_by_movie_id.get(int(row["id"]), 1)),
+                group_size=len(group_profiles),
+                primary_genre=str(row.get("primary_genre") or "Autres"),
+            ),
+        }
+        for _, row in selected_rows.head(limit).iterrows()
+    ]
+
+
 # --- 8. ROUTES SOCIALES ---
 @app.get("/social/users")
 def social_users(
@@ -6277,6 +6515,24 @@ def social_users(
     users = [serialize_user_row(row) for row in cursor.fetchall()]
     conn.close()
     return users
+
+
+@app.get("/social/group-recommendations")
+def social_group_recommendations(
+    user_ids: str = "",
+    limit: int = 12,
+    current_user: dict = Depends(get_current_user),
+):
+    selected_user_ids = list(parse_exclude_ids(user_ids))
+    safe_limit = max(4, min(limit, 24))
+    if not selected_user_ids:
+        raise HTTPException(status_code=400, detail="Aucun profil selectionne")
+
+    return build_group_recommendations(
+        current_user_id=current_user["id"],
+        selected_user_ids=selected_user_ids,
+        limit=safe_limit,
+    )
 
 
 @app.get("/social/profile/{username}")

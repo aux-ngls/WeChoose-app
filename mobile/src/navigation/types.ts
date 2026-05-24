@@ -28,6 +28,7 @@ export type RootStackParamList = {
   Notifications: undefined;
   Settings: undefined;
   TestAiDashboard: undefined;
+  GroupRecommendations: undefined;
   UserProfile: {
     username: string;
   };

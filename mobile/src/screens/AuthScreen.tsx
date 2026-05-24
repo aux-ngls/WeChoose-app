@@ -154,7 +154,7 @@ export default function AuthScreen() {
             autoCorrect={false}
             value={username}
             onChangeText={setUsername}
-            placeholder="Isa.belaaa"
+            placeholder="tonpseudo"
           />
           <FormField
             label="Mot de passe"
@@ -210,7 +210,7 @@ export default function AuthScreen() {
                     keyboardType="email-address"
                     value={resetIdentifier}
                     onChangeText={setResetIdentifier}
-                    placeholder="@isa.belaaa ou toi@exemple.com"
+                    placeholder="@tonpseudo ou toi@exemple.com"
                   />
                   {resetStep === 'confirm' ? (
                     <>

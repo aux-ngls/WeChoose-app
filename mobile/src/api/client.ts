@@ -370,6 +370,17 @@ export async function searchSocialUsers(token: string, query: string): Promise<S
   return request<SocialUser[]>(`/social/users?query=${encodeURIComponent(query)}&limit=10`, undefined, token);
 }
 
+export async function fetchSocialGroupRecommendations(
+  token: string,
+  userIds: number[],
+  limit = 12,
+): Promise<SearchMovie[]> {
+  const params = new URLSearchParams();
+  params.set('user_ids', userIds.join(','));
+  params.set('limit', String(limit));
+  return request<SearchMovie[]>(`/social/group-recommendations?${params.toString()}`, undefined, token);
+}
+
 export async function followUser(token: string, targetUserId: number): Promise<void> {
   await request<null>(`/social/follow/${targetUserId}`, { method: 'POST' }, token);
 }

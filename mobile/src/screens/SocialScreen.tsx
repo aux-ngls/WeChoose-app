@@ -182,16 +182,34 @@ export default function SocialScreen() {
       {error ? <InlineBanner message={error} tone="error" /> : null}
       {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
 
-      <Pressable style={[styles.composeButton, { backgroundColor: theme.colors.accent }]} onPress={() => navigation.navigate('CreateReview')}>
-        <View style={styles.composeButtonIcon}>
-          <Ionicons name="create-outline" size={18} color={theme.colors.accentText} />
-        </View>
-        <View style={styles.composeButtonBody}>
-          <Text style={[styles.composeButtonTitle, { color: theme.colors.accentText }]}>Nouvelle critique</Text>
-          <Text style={[styles.composeButtonSubtitle, { color: theme.colors.accentText }]}>Ton avis, ton cercle.</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={theme.colors.accentText} />
-      </Pressable>
+      <View style={styles.actionRow}>
+        <Pressable
+          style={[styles.composeButton, styles.actionCard, { backgroundColor: theme.colors.accent }]}
+          onPress={() => navigation.navigate('CreateReview')}
+        >
+          <View style={styles.composeButtonIcon}>
+            <Ionicons name="create-outline" size={18} color={theme.colors.accentText} />
+          </View>
+          <View style={styles.composeButtonBody}>
+            <Text style={[styles.composeButtonTitle, { color: theme.colors.accentText }]}>Nouvelle critique</Text>
+            <Text style={[styles.composeButtonSubtitle, { color: theme.colors.accentText }]}>Ton avis, ton cercle.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.accentText} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.groupButton, styles.actionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+          onPress={() => navigation.navigate('GroupRecommendations')}
+        >
+          <View style={[styles.groupButtonIcon, { backgroundColor: theme.colors.accentSoft }]}>
+            <Ionicons name="people-outline" size={18} color={theme.colors.accent} />
+          </View>
+          <View style={styles.groupButtonBody}>
+            <Text style={[styles.groupButtonTitle, { color: theme.colors.text }]}>Soiree groupe</Text>
+            <Text style={[styles.groupButtonSubtitle, { color: theme.colors.textMuted }]}>Trouver un film pour tout le monde.</Text>
+          </View>
+        </Pressable>
+      </View>
 
       {loading && reviews.length === 0 ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text> : null}
 
@@ -272,6 +290,14 @@ export default function SocialScreen() {
 }
 
 const styles = StyleSheet.create({
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+  },
+  actionCard: {
+    flex: 1,
+  },
   composeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -300,6 +326,32 @@ const styles = StyleSheet.create({
   },
   composeButtonSubtitle: {
     color: 'rgba(25,7,19,0.70)',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  groupButton: {
+    gap: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  groupButtonIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupButtonBody: {
+    gap: 4,
+  },
+  groupButtonTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  groupButtonSubtitle: {
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '700',
