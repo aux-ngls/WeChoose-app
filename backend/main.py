@@ -6394,6 +6394,8 @@ def build_group_recommendations(
     audience_rating_scores = movies_df["audience_rating_score"].to_numpy()
     quality_scores = movies_df["quality_score"].to_numpy()
     candidate_scores: list[tuple[int, float, int]] = []
+    group_size = len(group_profiles)
+    support_threshold = 0.14 if group_size <= 2 else 0.12 if group_size <= 4 else 0.10
 
     for movie_id in movie_ids_array:
         normalized_movie_id = int(movie_id)
@@ -6423,16 +6425,16 @@ def build_group_recommendations(
         minimum_score = min(member_scores)
         score_spread = float(np.std(member_scores))
         support_ratio = support_count / max(len(group_profiles), 1)
-        if len(group_profiles) > 1 and support_count <= 1 and minimum_score < 0.08:
+        if group_size > 1 and support_count == 0 and average_score < support_threshold:
             continue
 
         group_score = (
-            (average_score * 0.42)
-            + (minimum_score * 0.62)
-            + (support_ratio * 0.34)
+            (average_score * 0.52)
+            + (minimum_score * 0.28)
+            + (support_ratio * 0.22)
             + (float(quality_scores[movie_index]) * 0.16)
             + (float(audience_rating_scores[movie_index]) * 0.12)
-            - (score_spread * 0.18)
+            - (score_spread * 0.12)
         )
         candidate_scores.append((normalized_movie_id, group_score, support_count))
 
@@ -6440,6 +6442,15 @@ def build_group_recommendations(
     ranked_ids = [movie_id for movie_id, _score, _support in candidate_scores]
     support_by_movie_id = {movie_id: support for movie_id, _score, support in candidate_scores}
     selected_ids = pick_diverse_movie_ids(ranked_ids, limit, per_genre_cap=2 if len(group_profiles) >= 3 else 3)
+    if not selected_ids:
+        selected_ids = ranked_ids[:limit]
+    if not selected_ids:
+        fallback_rows = (
+            movies_df[~movies_df["id"].isin(list(blocked_ids))]
+            .sort_values(["quality_score", "audience_rating_score"], ascending=False)
+            .head(limit)
+        )
+        selected_ids = [int(row["id"]) for _, row in fallback_rows.iterrows()]
     poster_urls_by_movie_id = fetch_posters_from_tmdb(selected_ids[:limit])
 
     selected_rows = movies_df[movies_df["id"].isin(selected_ids)].copy()
