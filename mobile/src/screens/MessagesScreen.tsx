@@ -20,7 +20,11 @@ import { useTheme } from '../theme/ThemeContext';
 import type { DirectConversationSummary, SocialUser } from '../types';
 import { formatDate } from '../utils/format';
 import { INBOX_CONVERSATION_EVENT, NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
+import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 import { connectRealtimeSocket } from '../utils/realtime';
+
+const PERSISTED_MESSAGES_SCOPE = 'messages-screen';
+const MAX_PERSISTED_CONVERSATIONS = 40;
 
 let conversationsCache: {
   username: string;
@@ -116,6 +120,10 @@ export default function MessagesScreen() {
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const initialCache = conversationsCache?.username === session?.username ? conversationsCache : null;
+  const persistentCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_MESSAGES_SCOPE, session?.username),
+    [session?.username],
+  );
   const [conversations, setConversations] = useState<DirectConversationSummary[]>(() => initialCache?.conversations ?? []);
   const [userQuery, setUserQuery] = useState('');
   const [isNewMessageOpen, setIsNewMessageOpen] = useState(false);
@@ -130,6 +138,51 @@ export default function MessagesScreen() {
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      const cachedConversations = await readPersistentCache<DirectConversationSummary[]>(persistentCacheKey);
+      if (!active || !cachedConversations || cachedConversations.length === 0) {
+        return;
+      }
+
+      conversationsCache = {
+        username: session.username,
+        conversations: cachedConversations,
+      };
+      setConversations((current) => {
+        if (current.length > 0) {
+          return current;
+        }
+        conversationsCache = {
+          username: session.username,
+          conversations: cachedConversations,
+        };
+        return cachedConversations;
+      });
+      setLoading((current) => (conversationsRef.current.length > 0 ? current : false));
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [persistentCacheKey, session]);
+
+  useEffect(() => {
+    if (!session || conversations.length === 0) {
+      return;
+    }
+
+    void writePersistentCache(
+      persistentCacheKey,
+      conversations.slice(0, MAX_PERSISTED_CONVERSATIONS),
+    );
+  }, [conversations, persistentCacheKey, session]);
 
   const updateConversations = useCallback(
     (
@@ -165,7 +218,9 @@ export default function MessagesScreen() {
         await signOut();
         return;
       }
-      setError('Impossible de charger les conversations.');
+      if (conversationsRef.current.length === 0) {
+        setError('Impossible de charger les conversations.');
+      }
     } finally {
       setLoading(false);
     }

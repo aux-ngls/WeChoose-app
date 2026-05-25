@@ -39,6 +39,7 @@ import {
 } from '../utils/events';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { connectRealtimeSocket } from '../utils/realtime';
+import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 type ConversationItem =
   | { type: 'day'; id: string; label: string }
@@ -70,6 +71,8 @@ interface ConversationMessageEventPayload {
 }
 
 const conversationCache = new Map<string, ConversationCacheEntry>();
+const PERSISTED_CONVERSATION_SCOPE = 'conversation-screen';
+const MAX_PERSISTED_MESSAGES = 60;
 
 function getConversationCacheKey(username: string | undefined, conversationId: number): string {
   return `${username ?? 'anonymous'}:${conversationId}`;
@@ -235,6 +238,10 @@ export default function ConversationScreen({
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const cacheKey = getConversationCacheKey(session?.username, route.params.conversationId);
+  const persistentCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_CONVERSATION_SCOPE, session?.username, String(route.params.conversationId)),
+    [route.params.conversationId, session?.username],
+  );
   const initialCache = conversationCache.get(cacheKey);
   const [messages, setMessages] = useState<LocalDirectMessage[]>(() => initialCache?.messages ?? []);
   const [participantUsername, setParticipantUsername] = useState(initialCache?.participantUsername ?? route.params.participantUsername ?? 'Conversation');
@@ -264,6 +271,51 @@ export default function ConversationScreen({
   useEffect(() => {
     participantSnapshotRef.current = { participantId, participantUsername };
   }, [participantId, participantUsername]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      const cachedConversation = await readPersistentCache<ConversationCacheEntry>(persistentCacheKey);
+      if (!active || !cachedConversation || cachedConversation.messages.length === 0) {
+        return;
+      }
+
+      conversationCache.set(cacheKey, cachedConversation);
+      setMessages((current) => (current.length > 0 ? current : cachedConversation.messages));
+      setParticipantUsername((current) => (
+        current !== 'Conversation' ? current : cachedConversation.participantUsername
+      ));
+      setParticipantId((current) => current ?? cachedConversation.participantId);
+      hasInitialConversationLoadedRef.current = true;
+      messageCountRef.current = cachedConversation.messages.length;
+      setLoading(false);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [cacheKey, persistentCacheKey, session]);
+
+  useEffect(() => {
+    if (!session || messages.length === 0) {
+      return;
+    }
+
+    const persistedMessages = messages.filter((message) => message.id > 0).slice(-MAX_PERSISTED_MESSAGES);
+    if (persistedMessages.length === 0) {
+      return;
+    }
+
+    void writePersistentCache(persistentCacheKey, {
+      participantId,
+      participantUsername,
+      messages: persistedMessages,
+    });
+  }, [messages, participantId, participantUsername, persistentCacheKey, session]);
 
   const scrollToLatestMessage = useCallback((animated = false) => {
     requestAnimationFrame(() => {
@@ -308,7 +360,9 @@ export default function ConversationScreen({
         await signOut();
         return;
       }
-      setError('Impossible de charger cette conversation.');
+      if (messageCountRef.current === 0) {
+        setError('Impossible de charger cette conversation.');
+      }
     } finally {
       loadingConversationRef.current = false;
       setLoading(false);

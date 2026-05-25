@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
@@ -20,6 +20,7 @@ import { FALLBACK_POSTER, type SocialReview } from '../types';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { formatDate } from '../utils/format';
 import { SOCIAL_REFRESH_EVENT } from '../utils/events';
+import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 interface SocialCache {
   username: string;
@@ -27,12 +28,18 @@ interface SocialCache {
 }
 
 let socialCache: SocialCache | null = null;
+const PERSISTED_SOCIAL_SCOPE = 'social-screen';
+const MAX_PERSISTED_REVIEWS = 30;
 
 export default function SocialScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const initialCache = socialCache?.username === session?.username ? socialCache : null;
+  const persistentCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_SOCIAL_SCOPE, session?.username),
+    [session?.username],
+  );
   const [reviews, setReviews] = useState<SocialReview[]>(() => initialCache?.reviews ?? []);
   const [loading, setLoading] = useState(() => !initialCache);
   const [likingReviewIds, setLikingReviewIds] = useState<number[]>([]);
@@ -44,6 +51,42 @@ export default function SocialScreen() {
   useEffect(() => {
     reviewsRef.current = reviews;
   }, [reviews]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      const cachedReviews = await readPersistentCache<SocialReview[]>(persistentCacheKey);
+      if (!active || !cachedReviews || cachedReviews.length === 0) {
+        return;
+      }
+
+      socialCache = {
+        username: session.username,
+        reviews: cachedReviews,
+      };
+      setReviews((current) => (current.length > 0 ? current : cachedReviews));
+      setLoading((current) => (reviewsRef.current.length > 0 ? current : false));
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [persistentCacheKey, session]);
+
+  useEffect(() => {
+    if (!session || reviews.length === 0) {
+      return;
+    }
+
+    void writePersistentCache(
+      persistentCacheKey,
+      reviews.slice(0, MAX_PERSISTED_REVIEWS),
+    );
+  }, [persistentCacheKey, reviews, session]);
 
   useEffect(() => {
     if (!feedback) {
@@ -83,7 +126,9 @@ export default function SocialScreen() {
         await signOut();
         return;
       }
-      setError('Impossible de charger le feed social.');
+      if (reviewsRef.current.length === 0) {
+        setError('Impossible de charger le feed social.');
+      }
     } finally {
       setLoading(false);
     }

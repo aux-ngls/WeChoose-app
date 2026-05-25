@@ -41,8 +41,8 @@ import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../t
 const TARGET_STACK_SIZE = 14;
 const REFILL_THRESHOLD = 8;
 const FEED_BATCH_SIZE = 24;
-const CACHE_MAX_SIZE = 32;
-const CACHE_VERSION = 3;
+const CACHE_MAX_SIZE = 48;
+const CACHE_VERSION = 4;
 const SWIPE_THRESHOLD = 110;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
 const OFFSCREEN_DISTANCE = 420;
@@ -94,7 +94,7 @@ function parseCachedMovies(rawValue: string | null, username: string): SearchMov
 }
 
 function prefetchMoviePosters(movies: SearchMovie[]) {
-  movies.slice(0, 12).forEach((movie) => {
+  movies.slice(0, 16).forEach((movie) => {
     if (movie.poster_url) {
       void Image.prefetch(movie.poster_url);
     }

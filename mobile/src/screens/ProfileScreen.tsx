@@ -3,7 +3,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Audio, type AVPlaybackStatus, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
@@ -38,14 +38,17 @@ import {
 } from '../types';
 import { formatDate } from '../utils/format';
 import { NOTIFICATIONS_REFRESH_EVENT, PROFILE_REFRESH_EVENT } from '../utils/events';
+import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 const PROFILE_CACHE_TTL_MS = 45000;
+const PERSISTED_PROFILE_SCOPE = 'profile-screen';
 
 let profileCache: {
   username: string;
   profile: SocialProfile;
   playlists: PlaylistWithPreview[];
   fetchedAt: number;
+  unreadNotifications: number;
 } | null = null;
 
 function resolveMediaUrl(url: string | null | undefined): string | null {
@@ -77,6 +80,10 @@ export default function ProfileScreen() {
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const initialCache = profileCache?.username === session?.username ? profileCache : null;
+  const persistentCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_PROFILE_SCOPE, session?.username),
+    [session?.username],
+  );
   const [profile, setProfile] = useState<SocialProfile | null>(() => initialCache?.profile ?? null);
   const [playlists, setPlaylists] = useState<PlaylistWithPreview[]>(() => initialCache?.playlists ?? []);
   const [loading, setLoading] = useState(() => !initialCache);
@@ -104,13 +111,18 @@ export default function ProfileScreen() {
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [showAllPlaylists, setShowAllPlaylists] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(() => initialCache?.unreadNotifications ?? 0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const profileRef = useRef(profile);
+  const playlistsRef = useRef(playlists);
 
   useEffect(() => {
     profileRef.current = profile;
   }, [profile]);
+
+  useEffect(() => {
+    playlistsRef.current = playlists;
+  }, [playlists]);
 
   useEffect(() => {
     void Audio.setAudioModeAsync({
@@ -138,6 +150,54 @@ export default function ProfileScreen() {
     const timeout = setTimeout(() => setPlayerMessage(''), 2200);
     return () => clearTimeout(timeout);
   }, [playerMessage]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      const cachedProfile = await readPersistentCache<{
+        profile: SocialProfile;
+        playlists: PlaylistWithPreview[];
+        fetchedAt: number;
+        unreadNotifications: number;
+      }>(persistentCacheKey);
+      if (!active || !cachedProfile) {
+        return;
+      }
+
+      profileCache = {
+        username: session.username,
+        profile: cachedProfile.profile,
+        playlists: cachedProfile.playlists,
+        fetchedAt: cachedProfile.fetchedAt,
+        unreadNotifications: cachedProfile.unreadNotifications ?? 0,
+      };
+      setProfile((current) => current ?? cachedProfile.profile);
+      setPlaylists((current) => (current.length > 0 ? current : cachedProfile.playlists));
+      setUnreadNotifications((current) => (current > 0 ? current : (cachedProfile.unreadNotifications ?? 0)));
+      setLoading((current) => ((profileRef.current || playlistsRef.current.length > 0) ? current : false));
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [persistentCacheKey, session]);
+
+  useEffect(() => {
+    if (!session || !profile) {
+      return;
+    }
+
+    void writePersistentCache(persistentCacheKey, {
+      profile,
+      playlists,
+      fetchedAt: profileCache?.username === session.username ? profileCache.fetchedAt : Date.now(),
+      unreadNotifications,
+    });
+  }, [persistentCacheKey, playlists, profile, session, unreadNotifications]);
 
   const loadProfile = useCallback(async (options?: { force?: boolean }) => {
     if (!session) {
@@ -168,6 +228,7 @@ export default function ProfileScreen() {
         profile: profilePayload,
         playlists: playlistsWithPreview,
         fetchedAt: Date.now(),
+        unreadNotifications,
       };
       setProfile(profilePayload);
       setPlaylists(playlistsWithPreview);
@@ -177,11 +238,13 @@ export default function ProfileScreen() {
         await signOut();
         return;
       }
-      setError('Impossible de charger ton profil mobile.');
+      if (!profileRef.current) {
+        setError('Impossible de charger ton profil mobile.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [session, signOut]);
+  }, [session, signOut, unreadNotifications]);
 
   const loadNotificationBadge = useCallback(async () => {
     if (!session) {
