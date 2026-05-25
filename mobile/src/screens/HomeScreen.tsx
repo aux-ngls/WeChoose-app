@@ -133,8 +133,12 @@ export default function HomeScreen() {
   const tinderCardWidth = useMemo(() => {
     const contentWidth = Math.min(width, isWideLayout ? 760 : width);
     const availableWidth = contentWidth - (isWideLayout ? 80 : 28);
-    const availableHeight = height - (isWideLayout ? 230 : 220);
-    return Math.max(250, Math.min(isWideLayout ? 440 : 390, availableWidth, availableHeight * (2 / 3)));
+    const reservedVerticalSpace = isWideLayout ? 320 : 365;
+    const maxCardHeight = Math.max(isWideLayout ? 420 : 300, height - reservedVerticalSpace);
+    const maxCardWidthFromHeight = maxCardHeight * (2 / 3);
+    const maxCardWidth = Math.min(isWideLayout ? 440 : 390, availableWidth, maxCardWidthFromHeight);
+    const minCardWidth = Math.min(isWideLayout ? 320 : 210, availableWidth, maxCardWidthFromHeight);
+    return Math.max(minCardWidth, maxCardWidth);
   }, [height, isWideLayout, width]);
 
   useEffect(() => {
@@ -731,16 +735,18 @@ export default function HomeScreen() {
       </View>
 
       <View style={[styles.bottomArea, { width: tinderCardWidth }]}>
-        {lastUndoableAction ? (
-          <Pressable
-            style={[styles.undoButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-            onPress={() => void handleUndo()}
-            disabled={submitting}
-          >
-            <Ionicons name="arrow-undo" size={16} color={theme.colors.text} />
-            <Text style={[styles.undoLabel, { color: theme.colors.text }]}>Annuler</Text>
-          </Pressable>
-        ) : <View style={styles.undoSpacer} />}
+        <View style={styles.undoSlot}>
+          {lastUndoableAction ? (
+            <Pressable
+              style={[styles.undoButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+              onPress={() => void handleUndo()}
+              disabled={submitting}
+            >
+              <Ionicons name="arrow-undo" size={16} color={theme.colors.text} />
+              <Text style={[styles.undoLabel, { color: theme.colors.text }]}>Annuler</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         <View style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <StarRatingInput
@@ -771,15 +777,16 @@ const styles = StyleSheet.create({
     minHeight: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'ios' ? 28 : 8,
+    paddingTop: Platform.OS === 'ios' ? 34 : 12,
   },
   stackContent: {
     alignItems: 'center',
-    gap: 10,
+    gap: 0,
   },
   groupModeBar: {
     alignItems: 'flex-end',
-    marginBottom: Platform.OS === 'ios' ? -18 : -10,
+    minHeight: 42,
+    marginBottom: 16,
   },
   cardFrame: {
     aspectRatio: 2 / 3,
@@ -797,7 +804,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
-    transform: [{ translateY: 16 }],
   },
   loadingCard: {
     alignItems: 'center',
@@ -906,8 +912,13 @@ const styles = StyleSheet.create({
   },
   bottomArea: {
     alignSelf: 'center',
-    marginTop: 40,
+    marginTop: 18,
     gap: 10,
+  },
+  undoSlot: {
+    height: 74,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   undoButton: {
     alignSelf: 'center',
@@ -920,10 +931,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.05)',
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginTop: 24,
-  },
-  undoSpacer: {
-    height: 62,
   },
   undoLabel: {
     color: '#ffffff',
