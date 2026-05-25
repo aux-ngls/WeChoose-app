@@ -771,7 +771,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'ios' ? 28 : 8,
+    paddingTop: Platform.OS === 'ios' ? 38 : 8,
   },
   stackContent: {
     alignItems: 'center',
@@ -779,7 +779,7 @@ const styles = StyleSheet.create({
   },
   groupModeBar: {
     alignItems: 'flex-end',
-    marginTop: Platform.OS === 'ios' ? 8 : 0,
+    marginTop: Platform.OS === 'ios' ? 14 : 0,
   },
   cardFrame: {
     aspectRatio: 2 / 3,
@@ -905,7 +905,7 @@ const styles = StyleSheet.create({
   },
   bottomArea: {
     alignSelf: 'center',
-    marginTop: 52,
+    marginTop: 68,
     gap: 10,
   },
   undoButton: {
