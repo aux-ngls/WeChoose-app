@@ -13,19 +13,19 @@ const PRINCIPLES: Array<{
   text: string;
 }> = [
   {
-    icon: 'star-half-outline',
-    title: 'Tu donnes ton avis',
-    text: 'Notes, swipes et ajouts en playlist aident Qulte à comprendre ce que tu aimes vraiment.',
+    icon: 'sparkles-outline',
+    title: 'Qulte apprend de tes choix',
+    text: 'Chaque note, swipe et ajout en playlist affine tes prochaines recommandations.',
   },
   {
-    icon: 'sparkles-outline',
-    title: 'Qulte apprend',
-    text: 'Les recommandations évoluent avec tes choix, sans se limiter à un seul genre.',
+    icon: 'bookmark-outline',
+    title: 'Tu gardes les films qui comptent',
+    text: 'Tu peux mettre un film de côté pour plus tard, l’ajouter à une playlist ou le partager.',
   },
   {
     icon: 'people-outline',
     title: 'Le cinéma devient social',
-    text: 'Critiques, profils et messages te permettent de découvrir aussi par les autres.',
+    text: 'Critiques, profils et messages t’aident à découvrir des films aussi par les autres.',
   },
 ];
 
@@ -37,27 +37,32 @@ const STEPS: Array<{
   {
     icon: 'home-outline',
     title: 'Accueil',
-    text: 'Le cœur de Qulte : un film arrive, tu le notes, tu le passes ou tu le gardes pour plus tard.',
+    text: 'Un film s’affiche. Tu peux le noter, le passer, ou l’ajouter à regarder plus tard.',
   },
   {
     icon: 'film-outline',
     title: 'Fiche film',
-    text: 'Bande-annonce, casting, plateformes, playlists et partage : tout part de la même fiche.',
+    text: 'Tu retrouves la bande-annonce, le casting, les plateformes, les playlists et le partage au même endroit.',
   },
   {
-    icon: 'people-outline',
-    title: 'Social',
-    text: 'Publie des critiques, commente les avis et suis les profils qui ont des goûts proches ou surprenants.',
+    icon: 'bookmark-outline',
+    title: 'Playlists',
+    text: 'Classe tes envies, retrouve tes films favoris et filtre facilement ce que tu veux regarder.',
   },
   {
     icon: 'chatbubble-ellipses-outline',
     title: 'Messages',
-    text: 'Discute en privé et partage directement un film quand tu veux convaincre quelqu’un de le voir.',
+    text: 'Discute en privé et partage un film directement dans une conversation.',
+  },
+  {
+    icon: 'people-outline',
+    title: 'Social',
+    text: 'Publie des critiques, commente, et suis les profils dont les goûts t’inspirent.',
   },
   {
     icon: 'person-circle-outline',
     title: 'Profil',
-    text: 'Retrouve tes playlists, tes critiques et les films ou artistes qui définissent ton univers cinéma.',
+    text: 'Retrouve tes playlists, tes critiques et tout ce qui construit ton univers cinéma.',
   },
 ];
 
@@ -88,16 +93,16 @@ export default function TutorialScreen() {
         <QulteMark size={52} />
         <Text style={[styles.title, { color: theme.colors.text }]}>Bienvenue sur Qulte</Text>
         <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Qulte t’aide à trouver quoi regarder, à garder tes envies et à parler cinéma avec les bonnes personnes.
+          Qulte t’aide à trouver quoi regarder, à garder tes films de côté, et à partager le cinéma avec les bonnes personnes.
         </Text>
       </View>
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
       <View style={[styles.principleCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
-        <Text style={[styles.principleTitle, { color: theme.colors.text }]}>Le principe</Text>
+        <Text style={[styles.principleTitle, { color: theme.colors.text }]}>En 20 secondes</Text>
         <Text style={[styles.principleIntro, { color: theme.colors.textSoft }]}>
-          Plus tu utilises Qulte, plus l’app comprend les films, les thèmes, les acteurs et les ambiances qui comptent pour toi.
+          Le plus simple à retenir : tu réagis aux films, Qulte comprend mieux tes goûts, puis l’app te recommande de mieux en mieux.
         </Text>
         <View style={styles.principles}>
           {PRINCIPLES.map((item) => (
@@ -133,7 +138,7 @@ export default function TutorialScreen() {
           <ActivityIndicator color={theme.colors.accentText} />
         ) : (
           <>
-            <Text style={[styles.startButtonLabel, { color: theme.colors.accentText }]}>Commencer</Text>
+            <Text style={[styles.startButtonLabel, { color: theme.colors.accentText }]}>J&apos;ai compris</Text>
             <Ionicons name="arrow-forward" size={18} color={theme.colors.accentText} />
           </>
         )}
