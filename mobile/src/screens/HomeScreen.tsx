@@ -661,6 +661,62 @@ export default function HomeScreen() {
     }),
     [pan.x, pan.y],
   );
+  const dislikeHintOpacity = useMemo(
+    () =>
+      pan.x.interpolate({
+        inputRange: [-170, -70, 0],
+        outputRange: [1, 0.22, 0],
+        extrapolate: 'clamp',
+      }),
+    [pan.x],
+  );
+  const watchLaterHintOpacity = useMemo(
+    () =>
+      pan.x.interpolate({
+        inputRange: [0, 70, 170],
+        outputRange: [0, 0.22, 1],
+        extrapolate: 'clamp',
+      }),
+    [pan.x],
+  );
+  const dislikeHintTransform = useMemo(
+    () => [
+      {
+        translateX: pan.x.interpolate({
+          inputRange: [-170, 0],
+          outputRange: [0, -10],
+          extrapolate: 'clamp',
+        }),
+      },
+      {
+        scale: pan.x.interpolate({
+          inputRange: [-170, -60, 0],
+          outputRange: [1, 0.98, 0.94],
+          extrapolate: 'clamp',
+        }),
+      },
+    ],
+    [pan.x],
+  );
+  const watchLaterHintTransform = useMemo(
+    () => [
+      {
+        translateX: pan.x.interpolate({
+          inputRange: [0, 170],
+          outputRange: [10, 0],
+          extrapolate: 'clamp',
+        }),
+      },
+      {
+        scale: pan.x.interpolate({
+          inputRange: [0, 60, 170],
+          outputRange: [0.94, 0.98, 1],
+          extrapolate: 'clamp',
+        }),
+      },
+    ],
+    [pan.x],
+  );
 
   return (
     <AppScreen scroll={false} contentStyle={[styles.screen, isWideLayout && styles.tabletScreen]}>
@@ -698,6 +754,38 @@ export default function HomeScreen() {
                 disabled={submitting}
               >
                 <Image source={{ uri: currentMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.swipeHint,
+                    styles.swipeHintLeft,
+                    {
+                      opacity: dislikeHintOpacity,
+                      transform: dislikeHintTransform,
+                      borderColor: 'rgba(248,113,113,0.35)',
+                      backgroundColor: 'rgba(127,29,29,0.22)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="close" size={14} color="#fecaca" />
+                  <Text style={styles.swipeHintLabel}>{"J'aime pas"}</Text>
+                </Animated.View>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.swipeHint,
+                    styles.swipeHintRight,
+                    {
+                      opacity: watchLaterHintOpacity,
+                      transform: watchLaterHintTransform,
+                      borderColor: 'rgba(125,211,252,0.34)',
+                      backgroundColor: 'rgba(8,47,73,0.22)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="bookmark-outline" size={14} color="#bae6fd" />
+                  <Text style={styles.swipeHintLabel}>À regarder plus tard</Text>
+                </Animated.View>
                 <LinearGradient
                   pointerEvents="none"
                   colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}
@@ -836,6 +924,32 @@ const styles = StyleSheet.create({
   heroPoster: {
     width: '100%',
     height: '100%',
+  },
+  swipeHint: {
+    position: 'absolute',
+    top: 18,
+    zIndex: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: 132,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  swipeHintLeft: {
+    left: 18,
+  },
+  swipeHintRight: {
+    right: 18,
+  },
+  swipeHintLabel: {
+    flexShrink: 1,
+    color: '#f8fafc',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.1,
   },
   heroGradient: {
     position: 'absolute',

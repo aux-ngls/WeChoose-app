@@ -13,6 +13,7 @@ import {
   fetchBlockedUsers,
   fetchProfilePreferences,
   fetchRecoveryEmail,
+  resetRecommendationProfile,
   resetTestUserData,
   saveRecoveryEmail,
   saveProfilePreferences,
@@ -42,7 +43,16 @@ function getAppVersionLabel() {
 
 async function clearRecommendationCaches(username: string) {
   const keys = await AsyncStorage.getAllKeys();
-  const cacheKeys = keys.filter((key) => key.startsWith(`qulte:tinder-stack:${username}:`));
+  const cacheKeys = keys.filter((key) => {
+    if (key.startsWith(`qulte:tinder-stack:${username}:`)) {
+      return true;
+    }
+    if (!key.startsWith('qulte:persistent-cache:v1:')) {
+      return false;
+    }
+    const segments = key.split(':');
+    return segments[4] === username;
+  });
   if (cacheKeys.length > 0) {
     await AsyncStorage.multiRemove(cacheKeys);
   }
@@ -64,6 +74,7 @@ export default function SettingsScreen() {
   const [savingStreamingServices, setSavingStreamingServices] = useState(false);
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
   const [clearingRecommendationCache, setClearingRecommendationCache] = useState(false);
+  const [resettingRecommendationProfile, setResettingRecommendationProfile] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
   const [updatingBlockedUserIds, setUpdatingBlockedUserIds] = useState<number[]>([]);
@@ -371,6 +382,58 @@ export default function SettingsScreen() {
     } finally {
       setClearingRecommendationCache(false);
     }
+  };
+
+  const executeRecommendationReset = async () => {
+    if (!session || resettingRecommendationProfile) {
+      return;
+    }
+
+    setResettingRecommendationProfile(true);
+    setFeedback(null);
+
+    try {
+      await resetRecommendationProfile(session.token);
+      await clearRecommendationCaches(session.username);
+      Alert.alert(
+        'IA des recos réinitialisée',
+        "Tes signaux de recommandation ont été effacés. Tu vas repasser par l'onboarding pour recalibrer les recos.",
+        [
+          {
+            text: 'Continuer',
+            onPress: () => {
+              void refreshOnboardingState();
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: "Impossible de réinitialiser l'IA des recommandations.",
+      });
+    } finally {
+      setResettingRecommendationProfile(false);
+    }
+  };
+
+  const confirmRecommendationReset = () => {
+    Alert.alert(
+      "Réinitialiser l'IA des recos ?",
+      "Cela efface tes goûts d'onboarding, tes passes tinder, tes notes et ta liste À regarder plus tard pour repartir de zéro. Tes critiques, messages et le reste du compte restent intacts.",
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Réinitialiser',
+          style: 'destructive',
+          onPress: () => void executeRecommendationReset(),
+        },
+      ],
+    );
   };
 
   const openSupportPage = async () => {
@@ -718,6 +781,27 @@ export default function SettingsScreen() {
             </View>
             {clearingRecommendationCache ? (
               <ActivityIndicator color={theme.colors.accent} />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+            )}
+          </Pressable>
+
+          <Pressable
+            style={[styles.optionCard, { borderColor: theme.colors.danger, backgroundColor: theme.rgba.card }]}
+            onPress={confirmRecommendationReset}
+            disabled={resettingRecommendationProfile}
+          >
+            <View style={[styles.optionIcon, { borderColor: theme.colors.danger }]}>
+              <Ionicons name="sparkles-outline" size={18} color={theme.colors.danger} />
+            </View>
+            <View style={styles.optionBody}>
+              <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Réinitialiser l'IA des recos</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>
+                Repars de zéro pour les recommandations en vidant les signaux utilisés par l'algorithme.
+              </Text>
+            </View>
+            {resettingRecommendationProfile ? (
+              <ActivityIndicator color={theme.colors.danger} />
             ) : (
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
             )}

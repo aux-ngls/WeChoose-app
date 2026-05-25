@@ -2194,6 +2194,24 @@ def reset_test_user_data(current_user: dict = Depends(get_current_user)):
     }
 
 
+@app.post("/users/me/reset-recommendation-profile")
+def reset_recommendation_profile_route(current_user: dict = Depends(get_current_user)):
+    user_id = int(current_user["id"])
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    reset_counts = reset_recommendation_profile(cursor, user_id)
+    conn.commit()
+    preferences = get_user_preferences(cursor, user_id)
+    conn.close()
+
+    return {
+        "status": "reset",
+        "counts": reset_counts,
+        "has_completed_onboarding": preferences["has_completed_onboarding"],
+        "has_completed_tutorial": preferences["has_completed_tutorial"],
+    }
+
+
 @app.delete("/users/me")
 def delete_current_user_account(current_user: dict = Depends(get_current_user)):
     user_id = int(current_user["id"])
@@ -4521,6 +4539,43 @@ def purge_user_data(cursor, user_id: int, *, delete_account: bool) -> tuple[dict
         get_or_create_watch_later_id(cursor, user_id)
 
     return reset_counts, previous_avatar_url
+
+
+def reset_recommendation_profile(cursor, user_id: int) -> dict[str, int]:
+    reset_counts: dict[str, int] = {}
+    watch_later_id = get_or_create_watch_later_id(cursor, user_id)
+
+    cursor.execute(f"DELETE FROM user_ratings WHERE user_id = {SQL_PARAM}", (user_id,))
+    reset_counts["ratings"] = max(cursor.rowcount, 0)
+
+    cursor.execute(f"DELETE FROM recommendation_impressions WHERE user_id = {SQL_PARAM}", (user_id,))
+    reset_counts["recommendation_impressions"] = max(cursor.rowcount, 0)
+
+    cursor.execute(f"DELETE FROM playlist_items WHERE playlist_id = {SQL_PARAM}", (watch_later_id,))
+    reset_counts["watch_later_items"] = max(cursor.rowcount, 0)
+
+    cursor.execute(
+        """
+        UPDATE user_preferences
+        SET favorite_genres = {param},
+            favorite_people = {param},
+            favorite_movie_ids = {param},
+            people_seed_movie_ids = {param},
+            onboarding_completed_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = {param}
+        """.format(param=SQL_PARAM),
+        (
+            dump_json_list([]),
+            dump_json_list([]),
+            dump_json_list([]),
+            dump_json_list([]),
+            user_id,
+        ),
+    )
+    reset_counts["onboarding_preferences"] = max(cursor.rowcount, 0)
+
+    return reset_counts
 
 # --- 6. ROUTES PLAYLISTS & RATINGS ---
 class PlaylistCreate(BaseModel):

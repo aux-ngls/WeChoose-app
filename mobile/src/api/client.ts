@@ -161,6 +161,20 @@ export async function resetTestUserData(token: string): Promise<{
   }>('/users/me/reset-test-data', { method: 'POST' }, token);
 }
 
+export async function resetRecommendationProfile(token: string): Promise<{
+  status: string;
+  counts: Record<string, number>;
+  has_completed_onboarding: boolean;
+  has_completed_tutorial: boolean;
+}> {
+  return request<{
+    status: string;
+    counts: Record<string, number>;
+    has_completed_onboarding: boolean;
+    has_completed_tutorial: boolean;
+  }>('/users/me/reset-recommendation-profile', { method: 'POST' }, token);
+}
+
 export async function fetchTestAiMetrics(token: string): Promise<TestAiMetricsPayload> {
   return request<TestAiMetricsPayload>('/ai/test/metrics', undefined, token);
 }
