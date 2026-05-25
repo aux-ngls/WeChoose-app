@@ -176,40 +176,44 @@ export default function GroupRecommendationsScreen({
               </View>
             ) : null}
 
-            <Pressable
-              style={[styles.optionRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-              onPress={() => {
-                setIncludeSeen((current) => !current);
-                setRecommendations([]);
-              }}
-            >
-              <View style={[styles.checkbox, { borderColor: includeSeen ? theme.colors.accent : theme.rgba.border, backgroundColor: includeSeen ? theme.colors.accent : 'transparent' }]}>
-                {includeSeen ? <Ionicons name="checkmark" size={14} color={theme.colors.accentText} /> : null}
-              </View>
-              <View style={styles.optionBody}>
-                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Afficher les films deja vus</Text>
-                <Text style={[styles.optionSubtitle, { color: theme.colors.textMuted }]}>Utile si ce n'est pas grave qu'une personne l'ait deja note.</Text>
-              </View>
-            </Pressable>
+            <View style={styles.actionsRow}>
+              <Pressable
+                style={[
+                  styles.ctaButton,
+                  styles.primaryAction,
+                  { backgroundColor: theme.colors.accent },
+                  selectedUsers.length === 0 && { opacity: 0.45 },
+                ]}
+                onPress={() => void loadRecommendations()}
+                disabled={selectedUsers.length === 0 || recommendationLoading}
+              >
+                {recommendationLoading ? (
+                  <ActivityIndicator color={theme.colors.accentText} />
+                ) : (
+                  <>
+                    <Ionicons name="sparkles-outline" size={18} color={theme.colors.accentText} />
+                    <Text style={[styles.ctaButtonLabel, { color: theme.colors.accentText }]} numberOfLines={1}>
+                      Trouver des films pour nous
+                    </Text>
+                  </>
+                )}
+              </Pressable>
 
-            <Pressable
-              style={[
-                styles.ctaButton,
-                { backgroundColor: theme.colors.accent },
-                selectedUsers.length === 0 && { opacity: 0.45 },
-              ]}
-              onPress={() => void loadRecommendations()}
-              disabled={selectedUsers.length === 0 || recommendationLoading}
-            >
-              {recommendationLoading ? (
-                <ActivityIndicator color={theme.colors.accentText} />
-              ) : (
-                <>
-                  <Ionicons name="sparkles-outline" size={18} color={theme.colors.accentText} />
-                  <Text style={[styles.ctaButtonLabel, { color: theme.colors.accentText }]}>Trouver des films pour nous</Text>
-                </>
-              )}
-            </Pressable>
+              <Pressable
+                style={[styles.optionRow, styles.secondaryAction, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                onPress={() => {
+                  setIncludeSeen((current) => !current);
+                  setRecommendations([]);
+                }}
+              >
+                <View style={[styles.checkbox, { borderColor: includeSeen ? theme.colors.accent : theme.rgba.border, backgroundColor: includeSeen ? theme.colors.accent : 'transparent' }]}>
+                  {includeSeen ? <Ionicons name="checkmark" size={14} color={theme.colors.accentText} /> : null}
+                </View>
+                <Text style={[styles.optionTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                  Afficher les films deja vus
+                </Text>
+              </Pressable>
+            </View>
 
             {error ? <InlineBanner message={error} tone="error" /> : null}
 
@@ -372,13 +376,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    gap: 10,
     borderWidth: 1,
     borderRadius: 18,
-    padding: 12,
+    height: 56,
+    paddingHorizontal: 12,
   },
   checkbox: {
     width: 24,
@@ -388,20 +399,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optionBody: {
-    flex: 1,
-    gap: 3,
-  },
   optionTitle: {
-    fontSize: 14,
+    flex: 1,
+    fontSize: 13,
     fontWeight: '800',
-  },
-  optionSubtitle: {
-    fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 16,
   },
   ctaButton: {
-    minHeight: 52,
+    height: 56,
     borderRadius: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -409,9 +414,16 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
   },
+  primaryAction: {
+    flex: 2,
+  },
+  secondaryAction: {
+    flex: 1,
+  },
   ctaButtonLabel: {
     fontSize: 15,
     fontWeight: '800',
+    flexShrink: 1,
   },
   loadingWrap: {
     paddingVertical: 8,
