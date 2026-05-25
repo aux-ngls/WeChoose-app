@@ -786,7 +786,7 @@ const styles = StyleSheet.create({
   groupModeBar: {
     alignItems: 'flex-end',
     minHeight: 36,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   cardFrame: {
     aspectRatio: 2 / 3,
