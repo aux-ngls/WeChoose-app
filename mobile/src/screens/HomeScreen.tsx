@@ -717,6 +717,24 @@ export default function HomeScreen() {
     ],
     [pan.x],
   );
+  const dislikeTintOpacity = useMemo(
+    () =>
+      pan.x.interpolate({
+        inputRange: [-200, -70, 0],
+        outputRange: [0.2, 0.08, 0],
+        extrapolate: 'clamp',
+      }),
+    [pan.x],
+  );
+  const watchLaterTintOpacity = useMemo(
+    () =>
+      pan.x.interpolate({
+        inputRange: [0, 70, 200],
+        outputRange: [0, 0.08, 0.2],
+        extrapolate: 'clamp',
+      }),
+    [pan.x],
+  );
 
   return (
     <AppScreen scroll={false} contentStyle={[styles.screen, isWideLayout && styles.tabletScreen]}>
@@ -756,18 +774,26 @@ export default function HomeScreen() {
                 <Image source={{ uri: currentMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
                 <Animated.View
                   pointerEvents="none"
+                  style={[styles.swipeTint, styles.swipeTintLeft, { opacity: dislikeTintOpacity }]}
+                />
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.swipeTint, styles.swipeTintRight, { opacity: watchLaterTintOpacity }]}
+                />
+                <Animated.View
+                  pointerEvents="none"
                   style={[
                     styles.swipeHint,
                     styles.swipeHintLeft,
                     {
                       opacity: dislikeHintOpacity,
                       transform: dislikeHintTransform,
-                      borderColor: 'rgba(248,113,113,0.35)',
-                      backgroundColor: 'rgba(127,29,29,0.22)',
+                      borderColor: 'rgba(248,113,113,0.52)',
+                      backgroundColor: 'rgba(127,29,29,0.34)',
                     },
                   ]}
                 >
-                  <Ionicons name="close" size={14} color="#fecaca" />
+                  <Ionicons name="close" size={15} color="#fee2e2" />
                   <Text style={styles.swipeHintLabel}>{"J'aime pas"}</Text>
                 </Animated.View>
                 <Animated.View
@@ -778,12 +804,12 @@ export default function HomeScreen() {
                     {
                       opacity: watchLaterHintOpacity,
                       transform: watchLaterHintTransform,
-                      borderColor: 'rgba(125,211,252,0.34)',
-                      backgroundColor: 'rgba(8,47,73,0.22)',
+                      borderColor: 'rgba(125,211,252,0.52)',
+                      backgroundColor: 'rgba(8,47,73,0.34)',
                     },
                   ]}
                 >
-                  <Ionicons name="bookmark-outline" size={14} color="#bae6fd" />
+                  <Ionicons name="bookmark-outline" size={15} color="#e0f2fe" />
                   <Text style={styles.swipeHintLabel}>À regarder plus tard</Text>
                 </Animated.View>
                 <LinearGradient
@@ -925,18 +951,33 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  swipeTint: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: '54%',
+    zIndex: 1,
+  },
+  swipeTintLeft: {
+    left: 0,
+    backgroundColor: 'rgba(127,29,29,0.92)',
+  },
+  swipeTintRight: {
+    right: 0,
+    backgroundColor: 'rgba(8,47,73,0.92)',
+  },
   swipeHint: {
     position: 'absolute',
-    top: 18,
+    top: 22,
     zIndex: 3,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    maxWidth: 132,
+    maxWidth: 168,
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
   },
   swipeHintLeft: {
     left: 18,
@@ -947,9 +988,12 @@ const styles = StyleSheet.create({
   swipeHintLabel: {
     flexShrink: 1,
     color: '#f8fafc',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.1,
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.26)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   heroGradient: {
     position: 'absolute',

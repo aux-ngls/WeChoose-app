@@ -170,6 +170,12 @@ function buildOfflinePlaylistEntry(
 
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedOwnedServices = new Set(ownedStreamingServices.map((service) => service.trim().toLowerCase()));
+  const hasStreamingMetadata = snapshot.movies.some(
+    (movie) => Array.isArray(movie.subscription_provider_names) && movie.subscription_provider_names.length > 0,
+  );
+  if (onlyOwnedStreamingServices && normalizedOwnedServices.size > 0 && !hasStreamingMetadata) {
+    return null;
+  }
   const filteredMovies = snapshot.movies.filter((movie) => {
     if (normalizedQuery && !movie.title.toLowerCase().includes(normalizedQuery)) {
       return false;
