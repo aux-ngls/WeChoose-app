@@ -464,8 +464,10 @@ export default function HomeScreen() {
       duration: 160,
       useNativeDriver: true,
     }).start(() => {
-      pan.setValue({ x: 0, y: 0 });
       onFinished?.();
+      requestAnimationFrame(() => {
+        pan.setValue({ x: 0, y: 0 });
+      });
     });
   }, [pan]);
 
