@@ -661,67 +661,11 @@ export default function HomeScreen() {
     }),
     [pan.x, pan.y],
   );
-  const dislikeHintOpacity = useMemo(
-    () =>
-      pan.x.interpolate({
-        inputRange: [-170, -70, 0],
-        outputRange: [1, 0.22, 0],
-        extrapolate: 'clamp',
-      }),
-    [pan.x],
-  );
-  const watchLaterHintOpacity = useMemo(
-    () =>
-      pan.x.interpolate({
-        inputRange: [0, 70, 170],
-        outputRange: [0, 0.22, 1],
-        extrapolate: 'clamp',
-      }),
-    [pan.x],
-  );
-  const dislikeHintTransform = useMemo(
-    () => [
-      {
-        translateX: pan.x.interpolate({
-          inputRange: [-170, 0],
-          outputRange: [0, -10],
-          extrapolate: 'clamp',
-        }),
-      },
-      {
-        scale: pan.x.interpolate({
-          inputRange: [-170, -60, 0],
-          outputRange: [1, 0.98, 0.94],
-          extrapolate: 'clamp',
-        }),
-      },
-    ],
-    [pan.x],
-  );
-  const watchLaterHintTransform = useMemo(
-    () => [
-      {
-        translateX: pan.x.interpolate({
-          inputRange: [0, 170],
-          outputRange: [10, 0],
-          extrapolate: 'clamp',
-        }),
-      },
-      {
-        scale: pan.x.interpolate({
-          inputRange: [0, 60, 170],
-          outputRange: [0.94, 0.98, 1],
-          extrapolate: 'clamp',
-        }),
-      },
-    ],
-    [pan.x],
-  );
   const dislikeTintOpacity = useMemo(
     () =>
       pan.x.interpolate({
-        inputRange: [-200, -70, 0],
-        outputRange: [0.2, 0.08, 0],
+        inputRange: [-210, -110, -40, 0],
+        outputRange: [0.9, 0.55, 0.12, 0],
         extrapolate: 'clamp',
       }),
     [pan.x],
@@ -729,10 +673,52 @@ export default function HomeScreen() {
   const watchLaterTintOpacity = useMemo(
     () =>
       pan.x.interpolate({
-        inputRange: [0, 70, 200],
-        outputRange: [0, 0.08, 0.2],
+        inputRange: [0, 40, 110, 210],
+        outputRange: [0, 0.12, 0.55, 0.9],
         extrapolate: 'clamp',
       }),
+    [pan.x],
+  );
+  const dislikeLabelOpacity = useMemo(
+    () =>
+      pan.x.interpolate({
+        inputRange: [-200, -90, -35, 0],
+        outputRange: [1, 0.82, 0.25, 0],
+        extrapolate: 'clamp',
+      }),
+    [pan.x],
+  );
+  const watchLaterLabelOpacity = useMemo(
+    () =>
+      pan.x.interpolate({
+        inputRange: [0, 35, 90, 200],
+        outputRange: [0, 0.25, 0.82, 1],
+        extrapolate: 'clamp',
+      }),
+    [pan.x],
+  );
+  const dislikeLabelTransform = useMemo(
+    () => [
+      {
+        translateX: pan.x.interpolate({
+          inputRange: [-200, 0],
+          outputRange: [0, -14],
+          extrapolate: 'clamp',
+        }),
+      },
+    ],
+    [pan.x],
+  );
+  const watchLaterLabelTransform = useMemo(
+    () => [
+      {
+        translateX: pan.x.interpolate({
+          inputRange: [0, 200],
+          outputRange: [14, 0],
+          extrapolate: 'clamp',
+        }),
+      },
+    ],
     [pan.x],
   );
 
@@ -775,11 +761,33 @@ export default function HomeScreen() {
                 <Animated.View
                   pointerEvents="none"
                   style={[styles.swipeTint, styles.swipeTintLeft, { opacity: dislikeTintOpacity }]}
-                />
+                >
+                  <Animated.View
+                    style={[
+                      styles.swipeLabelWrap,
+                      styles.swipeLabelLeft,
+                      { opacity: dislikeLabelOpacity, transform: dislikeLabelTransform },
+                    ]}
+                  >
+                    <Ionicons name="close" size={22} color="#fff1f2" />
+                    <Text style={styles.swipeLabelText}>Pas intéressé</Text>
+                  </Animated.View>
+                </Animated.View>
                 <Animated.View
                   pointerEvents="none"
                   style={[styles.swipeTint, styles.swipeTintRight, { opacity: watchLaterTintOpacity }]}
-                />
+                >
+                  <Animated.View
+                    style={[
+                      styles.swipeLabelWrap,
+                      styles.swipeLabelRight,
+                      { opacity: watchLaterLabelOpacity, transform: watchLaterLabelTransform },
+                    ]}
+                  >
+                    <Ionicons name="bookmark-outline" size={22} color="#ecfdf5" />
+                    <Text style={styles.swipeLabelText}>Ajouter à regarder plus tard</Text>
+                  </Animated.View>
+                </Animated.View>
                 <LinearGradient
                   pointerEvents="none"
                   colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}
@@ -800,40 +808,6 @@ export default function HomeScreen() {
                   </View>
                   <Text style={styles.title}>{currentMovie.title}</Text>
                 </View>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.swipeHint,
-                    styles.swipeHintLeft,
-                    styles.swipeHintTop,
-                    {
-                      opacity: dislikeHintOpacity,
-                      transform: dislikeHintTransform,
-                      borderColor: 'rgba(248,113,113,0.62)',
-                      backgroundColor: 'rgba(127,29,29,0.54)',
-                    },
-                  ]}
-                >
-                  <Ionicons name="close" size={16} color="#fff1f2" />
-                  <Text style={styles.swipeHintLabel}>{"J'aime pas"}</Text>
-                </Animated.View>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.swipeHint,
-                    styles.swipeHintRight,
-                    styles.swipeHintTop,
-                    {
-                      opacity: watchLaterHintOpacity,
-                      transform: watchLaterHintTransform,
-                      borderColor: 'rgba(125,211,252,0.62)',
-                      backgroundColor: 'rgba(8,47,73,0.54)',
-                    },
-                  ]}
-                >
-                  <Ionicons name="bookmark-outline" size={16} color="#f0f9ff" />
-                  <Text style={styles.swipeHintLabel}>À regarder plus tard</Text>
-                </Animated.View>
               </Pressable>
             </Animated.View>
           </View>
@@ -957,49 +931,41 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: '54%',
-    zIndex: 1,
+    width: '50%',
+    zIndex: 2,
+    justifyContent: 'center',
   },
   swipeTintLeft: {
     left: 0,
-    backgroundColor: 'rgba(127,29,29,0.92)',
+    backgroundColor: 'rgba(153,27,27,0.96)',
   },
   swipeTintRight: {
     right: 0,
-    backgroundColor: 'rgba(8,47,73,0.92)',
+    backgroundColor: 'rgba(22,101,52,0.96)',
   },
-  swipeHint: {
-    position: 'absolute',
-    top: 22,
-    zIndex: 3,
-    elevation: 8,
-    flexDirection: 'row',
+  swipeLabelWrap: {
+    alignSelf: 'center',
+    width: '82%',
     alignItems: 'center',
-    gap: 6,
-    maxWidth: 168,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    gap: 10,
+    paddingHorizontal: 10,
   },
-  swipeHintLeft: {
-    left: 18,
+  swipeLabelLeft: {
+    marginRight: 18,
   },
-  swipeHintRight: {
-    right: 18,
+  swipeLabelRight: {
+    marginLeft: 18,
   },
-  swipeHintTop: {
-    zIndex: 6,
-  },
-  swipeHintLabel: {
-    flexShrink: 1,
-    color: '#f8fafc',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    textShadowColor: 'rgba(0,0,0,0.26)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+  swipeLabelText: {
+    color: '#ffffff',
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '900',
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
   heroGradient: {
     position: 'absolute',
