@@ -133,7 +133,7 @@ export default function HomeScreen() {
   const tinderCardWidth = useMemo(() => {
     const contentWidth = Math.min(width, isWideLayout ? 760 : width);
     const availableWidth = contentWidth - (isWideLayout ? 80 : 28);
-    const reservedVerticalSpace = isWideLayout ? 300 : 320;
+    const reservedVerticalSpace = isWideLayout ? 285 : 295;
     const maxCardHeight = Math.max(isWideLayout ? 420 : 300, height - reservedVerticalSpace);
     const maxCardWidthFromHeight = maxCardHeight * (2 / 3);
     const maxCardWidth = Math.min(isWideLayout ? 440 : 390, availableWidth, maxCardWidthFromHeight);
@@ -912,7 +912,7 @@ const styles = StyleSheet.create({
   },
   bottomArea: {
     alignSelf: 'center',
-    marginTop: 18,
+    marginTop: 12,
     gap: 10,
   },
   undoSlot: {
