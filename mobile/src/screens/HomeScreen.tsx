@@ -9,6 +9,7 @@ import {
   DeviceEventEmitter,
   Image,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -770,6 +771,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: Platform.OS === 'ios' ? 20 : 8,
   },
   stackContent: {
     alignItems: 'center',
