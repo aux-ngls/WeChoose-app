@@ -30,6 +30,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
+import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 import {
   FALLBACK_POSTER,
   FAVORITES_PLAYLIST_ID,
@@ -61,9 +62,17 @@ type PlaylistCacheEntry = {
   bufferedPage: BufferedPage | null;
 };
 
+type PlaylistOfflineSnapshot = {
+  movies: SearchMovie[];
+  totalCount: number;
+  updatedAt: string;
+};
+
 const INITIAL_PLAYLIST_PAGE_SIZE = 120;
 const PLAYLIST_PAGE_SIZE = 72;
 const SEARCH_DEBOUNCE_MS = 220;
+const MAX_PERSISTED_PLAYLIST_MOVIES = 240;
+const PERSISTED_PLAYLIST_SCOPE = 'playlist-screen';
 
 const playlistMoviesCache = new Map<string, PlaylistCacheEntry>();
 
@@ -87,6 +96,126 @@ function mergeUniqueMovies(currentMovies: SearchMovie[], nextMovies: SearchMovie
     mergedMovies.push(movie);
   }
   return mergedMovies;
+}
+
+function mergeSnapshotMovies(currentMovies: SearchMovie[], nextMovies: SearchMovie[]) {
+  const mergedById = new Map<number, SearchMovie>();
+  for (const movie of currentMovies) {
+    mergedById.set(movie.id, movie);
+  }
+  for (const movie of nextMovies) {
+    mergedById.set(movie.id, movie);
+  }
+
+  return Array.from(mergedById.values()).sort((leftMovie, rightMovie) => {
+    if (typeof leftMovie.sort_index === 'number' && typeof rightMovie.sort_index === 'number') {
+      return leftMovie.sort_index - rightMovie.sort_index;
+    }
+
+    const leftAddedAt = leftMovie.added_at ? Date.parse(leftMovie.added_at) : 0;
+    const rightAddedAt = rightMovie.added_at ? Date.parse(rightMovie.added_at) : 0;
+    if (leftAddedAt !== rightAddedAt) {
+      return rightAddedAt - leftAddedAt;
+    }
+
+    return leftMovie.title.localeCompare(rightMovie.title, 'fr', { sensitivity: 'base' });
+  });
+}
+
+function sortPlaylistMoviesLocally(movies: SearchMovie[], sortMode: SortMode) {
+  return [...movies].sort((leftMovie, rightMovie) => {
+    if (sortMode === 'manual') {
+      const leftSortIndex = typeof leftMovie.sort_index === 'number' ? leftMovie.sort_index : Number.MAX_SAFE_INTEGER;
+      const rightSortIndex = typeof rightMovie.sort_index === 'number' ? rightMovie.sort_index : Number.MAX_SAFE_INTEGER;
+      if (leftSortIndex !== rightSortIndex) {
+        return leftSortIndex - rightSortIndex;
+      }
+
+      return leftMovie.title.localeCompare(rightMovie.title, 'fr', { sensitivity: 'base' });
+    }
+
+    if (sortMode === 'genre') {
+      const leftGenre = leftMovie.primary_genre?.trim().toLowerCase() ?? 'zzzz';
+      const rightGenre = rightMovie.primary_genre?.trim().toLowerCase() ?? 'zzzz';
+      if (leftGenre !== rightGenre) {
+        return leftGenre.localeCompare(rightGenre, 'fr', { sensitivity: 'base' });
+      }
+
+      return leftMovie.title.localeCompare(rightMovie.title, 'fr', { sensitivity: 'base' });
+    }
+
+    if (sortMode === 'recent' || sortMode === 'oldest') {
+      const leftAddedAt = leftMovie.added_at ? Date.parse(leftMovie.added_at) : 0;
+      const rightAddedAt = rightMovie.added_at ? Date.parse(rightMovie.added_at) : 0;
+      if (leftAddedAt !== rightAddedAt) {
+        return sortMode === 'recent' ? rightAddedAt - leftAddedAt : leftAddedAt - rightAddedAt;
+      }
+
+      return leftMovie.title.localeCompare(rightMovie.title, 'fr', { sensitivity: 'base' });
+    }
+
+    if (rightMovie.rating !== leftMovie.rating) {
+      return rightMovie.rating - leftMovie.rating;
+    }
+
+    return leftMovie.title.localeCompare(rightMovie.title, 'fr', { sensitivity: 'base' });
+  });
+}
+
+function buildOfflinePlaylistEntry(
+  snapshot: PlaylistOfflineSnapshot | null,
+  sortMode: SortMode,
+  query: string,
+  onlyOwnedStreamingServices: boolean,
+  ownedStreamingServices: string[],
+): PlaylistCacheEntry | null {
+  if (!snapshot || snapshot.movies.length === 0) {
+    return null;
+  }
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedOwnedServices = new Set(ownedStreamingServices.map((service) => service.trim().toLowerCase()));
+  const filteredMovies = snapshot.movies.filter((movie) => {
+    if (normalizedQuery && !movie.title.toLowerCase().includes(normalizedQuery)) {
+      return false;
+    }
+
+    if (!onlyOwnedStreamingServices) {
+      return true;
+    }
+
+    if (normalizedOwnedServices.size === 0) {
+      return true;
+    }
+
+    const providerNames = movie.subscription_provider_names ?? [];
+    if (providerNames.length === 0) {
+      return false;
+    }
+
+    return providerNames.some((providerName) => normalizedOwnedServices.has(providerName.trim().toLowerCase()));
+  });
+
+  const sortedMovies = sortPlaylistMoviesLocally(filteredMovies, sortMode);
+  const initialItems = sortedMovies.slice(0, INITIAL_PLAYLIST_PAGE_SIZE);
+  const nextItems = sortedMovies.slice(INITIAL_PLAYLIST_PAGE_SIZE, INITIAL_PLAYLIST_PAGE_SIZE + PLAYLIST_PAGE_SIZE);
+  const nextOffset = initialItems.length;
+  const hasMore = sortedMovies.length > initialItems.length;
+
+  return {
+    movies: initialItems,
+    totalCount: sortedMovies.length,
+    hasMore,
+    nextOffset,
+    bufferedPage:
+      nextItems.length > 0
+        ? {
+            items: nextItems,
+            nextOffset: Math.min(sortedMovies.length, INITIAL_PLAYLIST_PAGE_SIZE + PLAYLIST_PAGE_SIZE),
+            hasMore: sortedMovies.length > INITIAL_PLAYLIST_PAGE_SIZE + PLAYLIST_PAGE_SIZE,
+          }
+        : null,
+  };
 }
 
 function formatPlaylistRating(rating: number, playlistId: number) {
@@ -131,9 +260,14 @@ export default function PlaylistDetailsScreen({
   const bufferedPageRef = useRef(bufferedPage);
   const generationRef = useRef(0);
   const prefetchInFlightRef = useRef(false);
+  const offlineSnapshotRef = useRef<PlaylistOfflineSnapshot | null>(null);
   const cacheKey = useMemo(
     () => buildPlaylistCacheKey(route.params.playlistId, sortMode, debouncedQuery, onlyOwnedStreamingServices),
     [debouncedQuery, onlyOwnedStreamingServices, route.params.playlistId, sortMode],
+  );
+  const persistentCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_PLAYLIST_SCOPE, session?.username, String(route.params.playlistId)),
+    [route.params.playlistId, session?.username],
   );
 
   useEffect(() => {
@@ -183,6 +317,78 @@ export default function PlaylistDetailsScreen({
       bufferedPage,
     });
   }, [bufferedPage, dataCacheKey, hasMore, movies, nextOffset, totalCount]);
+
+  const buildOfflineEntryForCurrentFilters = useCallback(
+    () =>
+      buildOfflinePlaylistEntry(
+        offlineSnapshotRef.current,
+        sortMode,
+        debouncedQuery,
+        onlyOwnedStreamingServices,
+        ownedStreamingServices,
+      ),
+    [debouncedQuery, onlyOwnedStreamingServices, ownedStreamingServices, sortMode],
+  );
+
+  useEffect(() => {
+    if (!session) {
+      offlineSnapshotRef.current = null;
+      return;
+    }
+
+    let isCancelled = false;
+
+    const hydrateOfflineSnapshot = async () => {
+      const cachedSnapshot = await readPersistentCache<PlaylistOfflineSnapshot>(persistentCacheKey);
+      if (isCancelled || !cachedSnapshot) {
+        return;
+      }
+
+      offlineSnapshotRef.current = cachedSnapshot;
+      if (moviesRef.current.length > 0) {
+        return;
+      }
+
+      const offlineEntry = buildOfflineEntryForCurrentFilters();
+      if (!offlineEntry) {
+        return;
+      }
+
+      startTransition(() => setMovies(offlineEntry.movies));
+      setTotalCount(offlineEntry.totalCount);
+      setHasMore(offlineEntry.hasMore);
+      setNextOffset(offlineEntry.nextOffset);
+      setBufferedPage(offlineEntry.bufferedPage);
+      setDataCacheKey(cacheKey);
+      setLoading(false);
+      setLoadingMore(false);
+      setError('');
+    };
+
+    void hydrateOfflineSnapshot();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [buildOfflineEntryForCurrentFilters, cacheKey, persistentCacheKey, session]);
+
+  useEffect(() => {
+    if (!session || debouncedQuery || onlyOwnedStreamingServices || movies.length === 0) {
+      return;
+    }
+
+    const mergedMovies = mergeSnapshotMovies(offlineSnapshotRef.current?.movies ?? [], movies).slice(
+      0,
+      MAX_PERSISTED_PLAYLIST_MOVIES,
+    );
+    const snapshot: PlaylistOfflineSnapshot = {
+      movies: mergedMovies,
+      totalCount: Math.max(totalCount, mergedMovies.length),
+      updatedAt: new Date().toISOString(),
+    };
+    offlineSnapshotRef.current = snapshot;
+    void writePersistentCache(persistentCacheKey, snapshot);
+  }, [debouncedQuery, movies, onlyOwnedStreamingServices, persistentCacheKey, session, totalCount]);
 
   useEffect(() => {
     if (!canReorder && reorderingMovieId) {
@@ -287,6 +493,18 @@ export default function PlaylistDetailsScreen({
           return;
         }
         if (generation === generationRef.current) {
+          const offlineEntry = buildOfflineEntryForCurrentFilters();
+          if (offlineEntry) {
+            applyVisiblePage(requestCacheKey, {
+              items: offlineEntry.movies,
+              playlist_total_count: offlineEntry.totalCount,
+              next_offset: offlineEntry.nextOffset,
+              has_more: offlineEntry.hasMore,
+              resolved_sort: sortMode,
+            });
+            setBufferedPage(offlineEntry.bufferedPage);
+            return;
+          }
           setError('Impossible de charger cette playlist.');
         }
       } finally {
@@ -295,7 +513,7 @@ export default function PlaylistDetailsScreen({
         }
       }
     },
-    [applyVisiblePage, fetchPage, signOut, sortMode, startBackgroundPrefetch],
+    [applyVisiblePage, buildOfflineEntryForCurrentFilters, fetchPage, signOut, sortMode, startBackgroundPrefetch],
   );
 
   const loadOwnedStreamingServices = useCallback(async () => {
@@ -321,7 +539,7 @@ export default function PlaylistDetailsScreen({
     generationRef.current += 1;
     const generation = generationRef.current;
     const cachedPage = playlistMoviesCache.get(cacheKey);
-    setIsSortMenuOpen(false);
+    const offlineEntry = buildOfflineEntryForCurrentFilters();
     setError('');
 
     if (cachedPage) {
@@ -339,6 +557,19 @@ export default function PlaylistDetailsScreen({
       return;
     }
 
+    if (offlineEntry) {
+      startTransition(() => setMovies(offlineEntry.movies));
+      setTotalCount(offlineEntry.totalCount);
+      setHasMore(offlineEntry.hasMore);
+      setNextOffset(offlineEntry.nextOffset);
+      setBufferedPage(offlineEntry.bufferedPage);
+      setDataCacheKey(cacheKey);
+      setLoading(false);
+      setLoadingMore(false);
+      void loadInitialPage(generation, cacheKey, { silent: true });
+      return;
+    }
+
     startTransition(() => setMovies([]));
     setTotalCount(0);
     setHasMore(false);
@@ -346,7 +577,7 @@ export default function PlaylistDetailsScreen({
     setBufferedPage(null);
     setDataCacheKey(cacheKey);
     void loadInitialPage(generation, cacheKey);
-  }, [cacheKey, loadInitialPage, session, startBackgroundPrefetch]);
+  }, [buildOfflineEntryForCurrentFilters, cacheKey, loadInitialPage, session, startBackgroundPrefetch]);
 
   useFocusEffect(
     useCallback(() => {
