@@ -7,7 +7,6 @@ import {
   FlatList,
   Image,
   LayoutAnimation,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -550,16 +549,15 @@ export default function PlaylistDetailsScreen({
 
     generationRef.current += 1;
     const generation = generationRef.current;
-      const cachedPage = playlistMoviesCache.get(cacheKey);
-      const offlineEntry = buildOfflinePlaylistEntry(
-        offlineSnapshotRef.current,
-        sortMode,
-        debouncedQuery,
-        onlyOwnedStreamingServices,
-        ownedStreamingServices,
-      );
-      setIsSortMenuOpen(false);
-      setError('');
+    const cachedPage = playlistMoviesCache.get(cacheKey);
+    const offlineEntry = buildOfflinePlaylistEntry(
+      offlineSnapshotRef.current,
+      sortMode,
+      debouncedQuery,
+      onlyOwnedStreamingServices,
+      ownedStreamingServices,
+    );
+    setError('');
 
     if (cachedPage) {
       startTransition(() => setMovies(cachedPage.movies));
@@ -815,6 +813,32 @@ export default function PlaylistDetailsScreen({
           </Pressable>
         ) : null}
       </View>
+      {isSortMenuOpen ? (
+        <View style={[styles.sortMenu, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          {availableSortOptions.map((option) => {
+            const isActive = sortMode === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => {
+                  setSortMode(option.key);
+                  setIsSortMenuOpen(false);
+                }}
+                style={[
+                  styles.sortOptionRow,
+                  { borderColor: theme.rgba.border },
+                  isActive && { backgroundColor: theme.colors.accentSoft },
+                ]}
+              >
+                <Text style={[styles.sortOptionLabel, { color: theme.colors.textSoft }, isActive && { color: theme.colors.text }]}>
+                  {option.label}
+                </Text>
+                {isActive ? <Ionicons name="checkmark" size={16} color={theme.colors.secondaryAccent} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       {loading && movies.length === 0 ? (
         <View style={styles.loadingState}>
           <ActivityIndicator color={theme.colors.text} />
@@ -839,46 +863,6 @@ export default function PlaylistDetailsScreen({
       </View>
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
-
-      <Modal visible={isSortMenuOpen} transparent animationType="fade" onRequestClose={() => setIsSortMenuOpen(false)}>
-        <Pressable style={styles.sortModalBackdrop} onPress={() => setIsSortMenuOpen(false)}>
-          <Pressable
-            style={[styles.sortModalCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <View style={styles.sortModalHeader}>
-              <Text style={[styles.sortModalTitle, { color: theme.colors.text }]}>Trier la playlist</Text>
-              <Pressable onPress={() => setIsSortMenuOpen(false)} style={styles.sortModalCloseButton}>
-                <Ionicons name="close" size={18} color={theme.colors.textSoft} />
-              </Pressable>
-            </View>
-            <View style={[styles.sortMenu, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              {availableSortOptions.map((option) => {
-                const isActive = sortMode === option.key;
-                return (
-                  <Pressable
-                    key={option.key}
-                    onPress={() => {
-                      setSortMode(option.key);
-                      setIsSortMenuOpen(false);
-                    }}
-                    style={[
-                      styles.sortOptionRow,
-                      { borderColor: theme.rgba.border },
-                      isActive && { backgroundColor: theme.colors.accentSoft },
-                    ]}
-                  >
-                    <Text style={[styles.sortOptionLabel, { color: theme.colors.textSoft }, isActive && { color: theme.colors.text }]}>
-                      {option.label}
-                    </Text>
-                    {isActive ? <Ionicons name="checkmark" size={16} color={theme.colors.secondaryAccent} /> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       <FlatList
         ref={listRef}
@@ -1064,36 +1048,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     padding: 8,
-  },
-  sortModalBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(2,6,23,0.55)',
-  },
-  sortModalCard: {
-    borderRadius: 28,
-    borderWidth: 1,
-    padding: 14,
-    gap: 12,
-  },
-  sortModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 4,
-  },
-  sortModalTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  sortModalCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sortOptionRow: {
     minHeight: 42,

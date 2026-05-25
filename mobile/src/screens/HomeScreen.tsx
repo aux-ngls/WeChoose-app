@@ -780,38 +780,6 @@ export default function HomeScreen() {
                   pointerEvents="none"
                   style={[styles.swipeTint, styles.swipeTintRight, { opacity: watchLaterTintOpacity }]}
                 />
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.swipeHint,
-                    styles.swipeHintLeft,
-                    {
-                      opacity: dislikeHintOpacity,
-                      transform: dislikeHintTransform,
-                      borderColor: 'rgba(248,113,113,0.52)',
-                      backgroundColor: 'rgba(127,29,29,0.34)',
-                    },
-                  ]}
-                >
-                  <Ionicons name="close" size={15} color="#fee2e2" />
-                  <Text style={styles.swipeHintLabel}>{"J'aime pas"}</Text>
-                </Animated.View>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.swipeHint,
-                    styles.swipeHintRight,
-                    {
-                      opacity: watchLaterHintOpacity,
-                      transform: watchLaterHintTransform,
-                      borderColor: 'rgba(125,211,252,0.52)',
-                      backgroundColor: 'rgba(8,47,73,0.34)',
-                    },
-                  ]}
-                >
-                  <Ionicons name="bookmark-outline" size={15} color="#e0f2fe" />
-                  <Text style={styles.swipeHintLabel}>À regarder plus tard</Text>
-                </Animated.View>
                 <LinearGradient
                   pointerEvents="none"
                   colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}
@@ -832,6 +800,40 @@ export default function HomeScreen() {
                   </View>
                   <Text style={styles.title}>{currentMovie.title}</Text>
                 </View>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.swipeHint,
+                    styles.swipeHintLeft,
+                    styles.swipeHintTop,
+                    {
+                      opacity: dislikeHintOpacity,
+                      transform: dislikeHintTransform,
+                      borderColor: 'rgba(248,113,113,0.62)',
+                      backgroundColor: 'rgba(127,29,29,0.54)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="close" size={16} color="#fff1f2" />
+                  <Text style={styles.swipeHintLabel}>{"J'aime pas"}</Text>
+                </Animated.View>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.swipeHint,
+                    styles.swipeHintRight,
+                    styles.swipeHintTop,
+                    {
+                      opacity: watchLaterHintOpacity,
+                      transform: watchLaterHintTransform,
+                      borderColor: 'rgba(125,211,252,0.62)',
+                      backgroundColor: 'rgba(8,47,73,0.54)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="bookmark-outline" size={16} color="#f0f9ff" />
+                  <Text style={styles.swipeHintLabel}>À regarder plus tard</Text>
+                </Animated.View>
               </Pressable>
             </Animated.View>
           </View>
@@ -970,6 +972,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 22,
     zIndex: 3,
+    elevation: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -984,6 +987,9 @@ const styles = StyleSheet.create({
   },
   swipeHintRight: {
     right: 18,
+  },
+  swipeHintTop: {
+    zIndex: 6,
   },
   swipeHintLabel: {
     flexShrink: 1,
