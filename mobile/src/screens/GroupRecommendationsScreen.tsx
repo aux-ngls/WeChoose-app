@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
@@ -110,6 +110,13 @@ export default function GroupRecommendationsScreen({
     return `Toi + ${selectedUsers.length} personne${selectedUsers.length > 1 ? 's' : ''}`;
   }, [selectedUsers.length]);
 
+  const showHelp = useCallback(() => {
+    Alert.alert(
+      'Soiree groupe',
+      "Choisis plusieurs profils puis lance la recherche. Les films sont tries selon la probabilite de plaire a chaque personne, avec un score minimum pour que personne ne soit laisse de cote. Le bouton 'Deja vu' permet aussi de reintroduire les films que certains membres ont deja notes.",
+    );
+  }, []);
+
   return (
     <AppScreen scroll={false} contentStyle={{ flex: 1 }}>
       <FlatList
@@ -148,7 +155,12 @@ export default function GroupRecommendationsScreen({
                 <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Soiree groupe</Text>
                 <Text style={[styles.headerMeta, { color: theme.colors.textMuted }]}>{headerSummary}</Text>
               </View>
-              <View style={styles.iconSpacer} />
+              <Pressable
+                style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                onPress={showHelp}
+              >
+                <Ionicons name="help" size={18} color={theme.colors.text} />
+              </Pressable>
             </View>
 
             <SearchField
@@ -209,8 +221,8 @@ export default function GroupRecommendationsScreen({
                 <View style={[styles.checkbox, { borderColor: includeSeen ? theme.colors.accent : theme.rgba.border, backgroundColor: includeSeen ? theme.colors.accent : 'transparent' }]}>
                   {includeSeen ? <Ionicons name="checkmark" size={14} color={theme.colors.accentText} /> : null}
                 </View>
-                <Text style={[styles.optionTitle, { color: theme.colors.text }]} numberOfLines={2}>
-                  Afficher les films deja vus
+                <Text style={[styles.optionTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                  Deja vu
                 </Text>
               </Pressable>
             </View>
