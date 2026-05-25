@@ -610,7 +610,7 @@ export default function PlaylistDetailsScreen({
       <FlatList
         ref={listRef}
         data={movies}
-        key={`playlist-${cacheKey}-grid`}
+        key={`playlist-${route.params.playlistId}-grid`}
         numColumns={3}
         columnWrapperStyle={styles.columns}
         keyExtractor={(item) => String(item.id)}
