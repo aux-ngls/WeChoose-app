@@ -900,6 +900,7 @@ const styles = StyleSheet.create({
   },
   bottomArea: {
     alignSelf: 'center',
+    marginTop: 12,
     gap: 10,
   },
   undoButton: {
