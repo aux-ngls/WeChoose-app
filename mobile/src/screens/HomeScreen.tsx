@@ -661,66 +661,6 @@ export default function HomeScreen() {
     }),
     [pan.x, pan.y],
   );
-  const dislikeTintOpacity = useMemo(
-    () =>
-      pan.x.interpolate({
-        inputRange: [-210, -110, -40, 0],
-        outputRange: [0.9, 0.55, 0.12, 0],
-        extrapolate: 'clamp',
-      }),
-    [pan.x],
-  );
-  const watchLaterTintOpacity = useMemo(
-    () =>
-      pan.x.interpolate({
-        inputRange: [0, 40, 110, 210],
-        outputRange: [0, 0.12, 0.55, 0.9],
-        extrapolate: 'clamp',
-      }),
-    [pan.x],
-  );
-  const dislikeLabelOpacity = useMemo(
-    () =>
-      pan.x.interpolate({
-        inputRange: [-200, -90, -35, 0],
-        outputRange: [1, 0.82, 0.25, 0],
-        extrapolate: 'clamp',
-      }),
-    [pan.x],
-  );
-  const watchLaterLabelOpacity = useMemo(
-    () =>
-      pan.x.interpolate({
-        inputRange: [0, 35, 90, 200],
-        outputRange: [0, 0.25, 0.82, 1],
-        extrapolate: 'clamp',
-      }),
-    [pan.x],
-  );
-  const dislikeLabelTransform = useMemo(
-    () => [
-      {
-        translateX: pan.x.interpolate({
-          inputRange: [-200, 0],
-          outputRange: [0, -14],
-          extrapolate: 'clamp',
-        }),
-      },
-    ],
-    [pan.x],
-  );
-  const watchLaterLabelTransform = useMemo(
-    () => [
-      {
-        translateX: pan.x.interpolate({
-          inputRange: [0, 200],
-          outputRange: [14, 0],
-          extrapolate: 'clamp',
-        }),
-      },
-    ],
-    [pan.x],
-  );
 
   return (
     <AppScreen scroll={false} contentStyle={[styles.screen, isWideLayout && styles.tabletScreen]}>
@@ -758,36 +698,6 @@ export default function HomeScreen() {
                 disabled={submitting}
               >
                 <Image source={{ uri: currentMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
-                <Animated.View
-                  pointerEvents="none"
-                  style={[styles.swipeTint, styles.swipeTintLeft, { opacity: dislikeTintOpacity }]}
-                >
-                  <Animated.View
-                    style={[
-                      styles.swipeLabelWrap,
-                      styles.swipeLabelLeft,
-                      { opacity: dislikeLabelOpacity, transform: dislikeLabelTransform },
-                    ]}
-                  >
-                    <Ionicons name="close" size={22} color="#fff1f2" />
-                    <Text style={styles.swipeLabelText}>Pas intéressé</Text>
-                  </Animated.View>
-                </Animated.View>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[styles.swipeTint, styles.swipeTintRight, { opacity: watchLaterTintOpacity }]}
-                >
-                  <Animated.View
-                    style={[
-                      styles.swipeLabelWrap,
-                      styles.swipeLabelRight,
-                      { opacity: watchLaterLabelOpacity, transform: watchLaterLabelTransform },
-                    ]}
-                  >
-                    <Ionicons name="bookmark-outline" size={22} color="#ecfdf5" />
-                    <Text style={styles.swipeLabelText}>Ajouter à regarder plus tard</Text>
-                  </Animated.View>
-                </Animated.View>
                 <LinearGradient
                   pointerEvents="none"
                   colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}
@@ -926,46 +836,6 @@ const styles = StyleSheet.create({
   heroPoster: {
     width: '100%',
     height: '100%',
-  },
-  swipeTint: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: '50%',
-    zIndex: 2,
-    justifyContent: 'center',
-  },
-  swipeTintLeft: {
-    left: 0,
-    backgroundColor: 'rgba(153,27,27,0.96)',
-  },
-  swipeTintRight: {
-    right: 0,
-    backgroundColor: 'rgba(22,101,52,0.96)',
-  },
-  swipeLabelWrap: {
-    alignSelf: 'center',
-    width: '82%',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 10,
-  },
-  swipeLabelLeft: {
-    marginRight: 18,
-  },
-  swipeLabelRight: {
-    marginLeft: 18,
-  },
-  swipeLabelText: {
-    color: '#ffffff',
-    textAlign: 'center',
-    fontSize: 17,
-    fontWeight: '900',
-    lineHeight: 22,
-    letterSpacing: -0.2,
-    textShadowColor: 'rgba(0,0,0,0.28)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
   },
   heroGradient: {
     position: 'absolute',
