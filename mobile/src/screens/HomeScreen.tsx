@@ -771,7 +771,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'ios' ? 38 : 8,
+    paddingTop: Platform.OS === 'ios' ? 28 : 8,
   },
   stackContent: {
     alignItems: 'center',
@@ -779,7 +779,7 @@ const styles = StyleSheet.create({
   },
   groupModeBar: {
     alignItems: 'flex-end',
-    marginTop: Platform.OS === 'ios' ? 14 : 0,
+    marginBottom: Platform.OS === 'ios' ? -18 : -10,
   },
   cardFrame: {
     aspectRatio: 2 / 3,
@@ -797,6 +797,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+    transform: [{ translateY: 16 }],
   },
   loadingCard: {
     alignItems: 'center',
@@ -905,7 +906,7 @@ const styles = StyleSheet.create({
   },
   bottomArea: {
     alignSelf: 'center',
-    marginTop: 68,
+    marginTop: 40,
     gap: 10,
   },
   undoButton: {
@@ -919,9 +920,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.05)',
     paddingHorizontal: 14,
     paddingVertical: 10,
+    marginTop: 24,
   },
   undoSpacer: {
-    height: 38,
+    height: 62,
   },
   undoLabel: {
     color: '#ffffff',
