@@ -73,6 +73,7 @@ interface ConversationMessageEventPayload {
 const conversationCache = new Map<string, ConversationCacheEntry>();
 const PERSISTED_CONVERSATION_SCOPE = 'conversation-screen';
 const MAX_PERSISTED_MESSAGES = 60;
+const CONVERSATION_PAGE_SIZE = 40;
 
 function getConversationCacheKey(username: string | undefined, conversationId: number): string {
   return `${username ?? 'anonymous'}:${conversationId}`;
@@ -135,6 +136,7 @@ function findConfirmedServerMessageIndex(pendingMessage: LocalDirectMessage, ser
 }
 
 function mergeServerMessages(currentMessages: LocalDirectMessage[], serverMessages: DirectMessage[]) {
+  const serverMessageIds = new Set(serverMessages.map((message) => message.id));
   const currentByServerId = new Map(
     currentMessages
       .filter((message) => message.id > 0)
@@ -158,7 +160,14 @@ function mergeServerMessages(currentMessages: LocalDirectMessage[], serverMessag
     return true;
   });
 
-  return [...mergedServerMessages, ...stillPendingMessages];
+  const preservedServerMessages = currentMessages.filter(
+    (message) => message.id > 0 && !serverMessageIds.has(message.id),
+  );
+  const confirmedMessages = [...preservedServerMessages, ...mergedServerMessages].sort(
+    (leftMessage, rightMessage) => leftMessage.id - rightMessage.id,
+  );
+
+  return [...confirmedMessages, ...stillPendingMessages];
 }
 
 function normalizeRealtimeMessage(message: DirectMessage, currentUsername: string): DirectMessage {
@@ -192,6 +201,14 @@ function mergeRealtimeMessage(currentMessages: LocalDirectMessage[], incomingMes
   }
 
   return [...currentMessages, normalizedMessage];
+}
+
+function mergeOlderServerMessages(currentMessages: LocalDirectMessage[], olderMessages: DirectMessage[]) {
+  const existingServerMessageIds = new Set(
+    currentMessages.filter((message) => message.id > 0).map((message) => message.id),
+  );
+  const uniqueOlderMessages = olderMessages.filter((message) => !existingServerMessageIds.has(message.id));
+  return [...uniqueOlderMessages, ...currentMessages];
 }
 
 function areMessageListsEquivalent(left: LocalDirectMessage[], right: LocalDirectMessage[]) {
@@ -255,6 +272,7 @@ export default function ConversationScreen({
   const [replyTarget, setReplyTarget] = useState<LocalDirectMessage | null>(null);
   const [swipePreviewTarget, setSwipePreviewTarget] = useState<LocalDirectMessage | null>(null);
   const listRef = useRef<FlatList<ConversationItem>>(null);
+  const messagesRef = useRef(messages);
   const shouldScrollToEndRef = useRef(true);
   const isNearBottomRef = useRef(true);
   const hasLoadedConversationRef = useRef(false);
@@ -262,11 +280,17 @@ export default function ConversationScreen({
   const messageCountRef = useRef(0);
   const optimisticMessageIdRef = useRef(-1);
   const loadingConversationRef = useRef(false);
+  const loadingOlderMessagesRef = useRef(false);
+  const hasMoreOlderMessagesRef = useRef(true);
   const participantSnapshotRef = useRef({ participantId, participantUsername });
   const composerBottomGap = keyboardLift > 0 ? keyboardLift : Math.max(insets.bottom, 10);
   const replyBannerOpacity = useRef(new Animated.Value(0)).current;
   const replyBannerTranslateY = useRef(new Animated.Value(10)).current;
   const activeReplyTarget = swipePreviewTarget ?? replyTarget;
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     participantSnapshotRef.current = { participantId, participantUsername };
@@ -330,7 +354,7 @@ export default function ConversationScreen({
 
     loadingConversationRef.current = true;
     try {
-      const payload = await fetchConversation(session.token, route.params.conversationId, { limit: 40 });
+      const payload = await fetchConversation(session.token, route.params.conversationId, { limit: CONVERSATION_PAGE_SIZE });
       const hasNewMessages = payload.messages.length > messageCountRef.current;
       if (!hasLoadedConversationRef.current) {
         shouldScrollToEndRef.current = true;
@@ -338,6 +362,7 @@ export default function ConversationScreen({
       } else if (hasNewMessages && isNearBottomRef.current) {
         shouldScrollToEndRef.current = true;
       }
+      hasMoreOlderMessagesRef.current = payload.messages.length >= CONVERSATION_PAGE_SIZE;
       messageCountRef.current = payload.messages.length;
       const nextParticipantUsername = payload.conversation.participant.username;
       const nextParticipantId = payload.conversation.participant.id;
@@ -366,6 +391,52 @@ export default function ConversationScreen({
     } finally {
       loadingConversationRef.current = false;
       setLoading(false);
+    }
+  }, [cacheKey, route.params.conversationId, session, signOut]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!session || loadingOlderMessagesRef.current || !hasMoreOlderMessagesRef.current) {
+      return;
+    }
+
+    const oldestServerMessage = messagesRef.current.find((message) => message.id > 0);
+    if (!oldestServerMessage) {
+      return;
+    }
+
+    loadingOlderMessagesRef.current = true;
+    try {
+      const payload = await fetchConversation(session.token, route.params.conversationId, {
+        limit: CONVERSATION_PAGE_SIZE,
+        beforeId: oldestServerMessage.id,
+      });
+      hasMoreOlderMessagesRef.current = payload.messages.length >= CONVERSATION_PAGE_SIZE;
+      if (payload.messages.length === 0) {
+        return;
+      }
+
+      const nextParticipantUsername = payload.conversation.participant.username;
+      const nextParticipantId = payload.conversation.participant.id;
+      setMessages((current) => {
+        const mergedMessages = mergeOlderServerMessages(current, payload.messages);
+        conversationCache.set(cacheKey, {
+          participantId: nextParticipantId,
+          participantUsername: nextParticipantUsername,
+          messages: mergedMessages,
+        });
+        return areMessageListsEquivalent(current, mergedMessages) ? current : mergedMessages;
+      });
+      setParticipantUsername((current) => (current === nextParticipantUsername ? current : nextParticipantUsername));
+      setParticipantId((current) => (current === nextParticipantId ? current : nextParticipantId));
+      setError('');
+    } catch (fetchError) {
+      if (fetchError instanceof ApiError && fetchError.status === 401) {
+        await signOut();
+        return;
+      }
+      setError('Impossible de charger les anciens messages.');
+    } finally {
+      loadingOlderMessagesRef.current = false;
     }
   }, [cacheKey, route.params.conversationId, session, signOut]);
 
@@ -414,6 +485,7 @@ export default function ConversationScreen({
     setParticipantId(cachedConversation?.participantId ?? route.params.participantId ?? null);
     hasInitialConversationLoadedRef.current = Boolean(cachedConversation);
     messageCountRef.current = cachedConversation?.messages.length ?? 0;
+    hasMoreOlderMessagesRef.current = true;
     setLoading(!cachedConversation);
   }, [cacheKey, route.params.conversationId, route.params.participantId, route.params.participantUsername]);
 
@@ -500,6 +572,7 @@ export default function ConversationScreen({
       shouldScrollToEndRef.current = true;
       isNearBottomRef.current = true;
       messageCountRef.current = 0;
+      hasMoreOlderMessagesRef.current = true;
       void loadConversation();
       const interval = setInterval(() => {
         void loadConversation();
@@ -769,6 +842,10 @@ export default function ConversationScreen({
             isNearBottomRef.current = event.nativeEvent.contentOffset.y < 90;
           }}
           scrollEventThrottle={80}
+          onEndReached={() => {
+            void loadOlderMessages();
+          }}
+          onEndReachedThreshold={0.35}
           onContentSizeChange={() => {
             if (shouldScrollToEndRef.current) {
               scrollToLatestMessage(false);

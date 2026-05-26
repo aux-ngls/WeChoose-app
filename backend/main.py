@@ -7542,12 +7542,16 @@ def start_direct_conversation(target_user_id: int, current_user: dict = Depends(
 def get_direct_conversation_messages(
     conversation_id: int,
     limit: int = 40,
+    before_id: Optional[int] = None,
     current_user: dict = Depends(get_current_user),
 ):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
     conversation_row = get_direct_conversation_for_user(cursor, conversation_id, current_user["id"])
     safe_limit = max(1, min(limit, 100))
+
+    before_filter = f"AND dm.id < {SQL_PARAM}" if before_id is not None else ""
+    query_params: tuple[Any, ...] = (conversation_id, before_id, safe_limit) if before_id is not None else (conversation_id, safe_limit)
 
     cursor.execute(
         """
@@ -7577,12 +7581,13 @@ def get_direct_conversation_messages(
             LEFT JOIN direct_messages reply_dm ON reply_dm.id = dm.reply_to_message_id
             LEFT JOIN users reply_sender ON reply_sender.id = reply_dm.sender_id
             WHERE dm.conversation_id = {param}
+            {before_filter}
             ORDER BY dm.id DESC
             LIMIT {param}
         ) ordered_messages
         ORDER BY id ASC
-        """.format(param=SQL_PARAM),
-        (conversation_id, safe_limit),
+        """.format(param=SQL_PARAM, before_filter=before_filter),
+        query_params,
     )
     messages = [
         serialize_direct_message_row(row, current_user["id"])

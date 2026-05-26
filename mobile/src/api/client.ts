@@ -464,11 +464,14 @@ export async function fetchConversations(token: string): Promise<DirectConversat
 export async function fetchConversation(
   token: string,
   conversationId: number,
-  options?: { limit?: number },
+  options?: { limit?: number; beforeId?: number },
 ): Promise<DirectConversationDetails> {
   const params = new URLSearchParams();
   if (options?.limit) {
     params.set('limit', String(options.limit));
+  }
+  if (options?.beforeId) {
+    params.set('before_id', String(options.beforeId));
   }
   const suffix = params.toString() ? `?${params.toString()}` : '';
   return request<DirectConversationDetails>(`/messages/conversations/${conversationId}${suffix}`, undefined, token);
