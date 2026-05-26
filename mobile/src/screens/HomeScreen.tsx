@@ -47,6 +47,7 @@ const CACHE_VERSION = 4;
 const SWIPE_THRESHOLD = 110;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
 const OFFSCREEN_DISTANCE = 420;
+const TINDER_VERTICAL_SHIFT = 16;
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
 
 type SwipeDirection = 'left' | 'right';
@@ -778,6 +779,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: Platform.OS === 'ios' ? 24 : 10,
+    transform: [{ translateY: TINDER_VERTICAL_SHIFT }],
   },
   stackContent: {
     alignItems: 'center',
@@ -914,6 +916,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 12,
     gap: 10,
+    transform: [{ translateY: TINDER_VERTICAL_SHIFT }],
   },
   undoSlot: {
     height: 74,
