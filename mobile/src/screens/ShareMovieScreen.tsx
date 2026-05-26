@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DeviceEventEmitter, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
@@ -18,6 +19,37 @@ import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, type SocialUser } from '../types';
 import { CONVERSATION_MESSAGE_EVENT, INBOX_CONVERSATION_EVENT } from '../utils/events';
 import { playMovieSentHapticSignature } from '../utils/haptics';
+
+const RECENT_SHARE_USERS_LIMIT = 8;
+const RECENT_SHARE_USERS_VERSION = 1;
+
+type RecentShareUsersPayload = {
+  version: number;
+  users: SocialUser[];
+};
+
+function getRecentShareUsersKey(username: string) {
+  return `qulte:recent-share-users:${username}:v${RECENT_SHARE_USERS_VERSION}`;
+}
+
+function parseRecentShareUsers(rawValue: string | null): SocialUser[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const payload = JSON.parse(rawValue) as Partial<RecentShareUsersPayload>;
+    if (payload.version !== RECENT_SHARE_USERS_VERSION || !Array.isArray(payload.users)) {
+      return [];
+    }
+
+    return payload.users
+      .filter((user): user is SocialUser => typeof user?.id === 'number' && typeof user?.username === 'string')
+      .slice(0, RECENT_SHARE_USERS_LIMIT);
+  } catch {
+    return [];
+  }
+}
 
 export default function ShareMovieScreen({
   navigation,
@@ -41,16 +73,43 @@ export default function ShareMovieScreen({
   const [loading, setLoading] = useState(false);
   const [sharingUserIds, setSharingUserIds] = useState<number[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<SearchMovie | null>(initialMovie);
+  const [recentShareUsers, setRecentShareUsers] = useState<SocialUser[]>([]);
   const [error, setError] = useState('');
   const movieToShare = selectedMovie ?? initialMovie;
+  const trimmedQuery = query.trim();
+  const displayedUsers = useMemo(
+    () => (trimmedQuery.length < 2 ? recentShareUsers : userResults),
+    [recentShareUsers, trimmedQuery.length, userResults],
+  );
+
+  useEffect(() => {
+    if (!session || isConversationShare) {
+      setRecentShareUsers([]);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadRecentShareUsers = async () => {
+      const users = parseRecentShareUsers(await AsyncStorage.getItem(getRecentShareUsersKey(session.username)));
+      if (!isCancelled) {
+        setRecentShareUsers(users);
+      }
+    };
+
+    void loadRecentShareUsers();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isConversationShare, session]);
 
   useEffect(() => {
     if (!session) {
       return;
     }
 
-    const trimmed = query.trim();
-    if (trimmed.length < 2) {
+    if (trimmedQuery.length < 2) {
       setUserResults([]);
       setMovieResults([]);
       return;
@@ -61,10 +120,10 @@ export default function ShareMovieScreen({
         setLoading(true);
         try {
           if (isConversationShare) {
-            const payload = await searchMovies(session.token, trimmed);
+            const payload = await searchMovies(session.token, trimmedQuery);
             setMovieResults(payload);
           } else {
-            const payload = await searchSocialUsers(session.token, trimmed);
+            const payload = await searchSocialUsers(session.token, trimmedQuery);
             setUserResults(payload);
           }
           setError('');
@@ -85,7 +144,26 @@ export default function ShareMovieScreen({
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [isConversationShare, query, session, signOut]);
+  }, [isConversationShare, session, signOut, trimmedQuery]);
+
+  const rememberRecentShareUser = useCallback(
+    async (user: SocialUser) => {
+      if (!session || isConversationShare) {
+        return;
+      }
+
+      const nextUsers = [user, ...recentShareUsers.filter((recentUser) => recentUser.id !== user.id)].slice(
+        0,
+        RECENT_SHARE_USERS_LIMIT,
+      );
+      setRecentShareUsers(nextUsers);
+      await AsyncStorage.setItem(
+        getRecentShareUsersKey(session.username),
+        JSON.stringify({ version: RECENT_SHARE_USERS_VERSION, users: nextUsers }),
+      );
+    },
+    [isConversationShare, recentShareUsers, session],
+  );
 
   const shareWithUser = async (user: SocialUser) => {
     if (!session || !movieToShare) {
@@ -104,6 +182,7 @@ export default function ShareMovieScreen({
         movie_poster_url: movieToShare.poster_url,
         movie_rating: movieToShare.rating,
       });
+      await rememberRecentShareUser(user);
       void playMovieSentHapticSignature();
       DeviceEventEmitter.emit(INBOX_CONVERSATION_EVENT, {
         type: 'messages.updated',
@@ -268,7 +347,7 @@ export default function ShareMovieScreen({
                 </View>
               </Pressable>
             ))
-          : userResults.map((user) => {
+          : displayedUsers.map((user) => {
           const isSharing = sharingUserIds.includes(user.id);
           return (
             <Pressable key={user.id} style={[styles.userCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]} onPress={() => void shareWithUser(user)}>
