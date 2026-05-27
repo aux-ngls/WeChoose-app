@@ -7,62 +7,53 @@ import QulteMark from '../components/QulteMark';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
-const PRINCIPLES: Array<{
+const SECTIONS: Array<{
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
-  text: string;
+  lines: string[];
 }> = [
   {
     icon: 'sparkles-outline',
-    title: 'Qulte apprend de tes choix',
-    text: 'Chaque note, swipe et ajout en playlist affine tes prochaines recommandations.',
+    title: '1. Les recommandations',
+    lines: [
+      'Qulte te propose des films selon tes goûts.',
+      'Si tu as déjà vu un film, note-le avec les étoiles sous l’affiche.',
+      'Si tu ne l’as pas vu, swipe à droite pour l’ajouter à “À regarder plus tard”, ou à gauche pour passer.',
+      'Tu peux aussi toucher l’affiche pour ouvrir sa fiche complète : résumé, trailer, casting et plus.',
+      'À chaque action, l’algorithme apprend et améliore ses prochaines recommandations.',
+    ],
   },
   {
-    icon: 'bookmark-outline',
-    title: 'Tu gardes les films qui comptent',
-    text: 'Tu peux mettre un film de côté pour plus tard, l’ajouter à une playlist ou le partager.',
+    icon: 'search-outline',
+    title: '2. La recherche',
+    lines: [
+      'Tu peux rechercher des films pour consulter leur fiche, les noter, les ajouter à une playlist ou les partager.',
+      'Tu peux aussi rechercher des utilisateurs pour découvrir leur profil, leurs critiques et leurs goûts.',
+    ],
   },
   {
     icon: 'people-outline',
-    title: 'Le cinéma devient social',
-    text: 'Critiques, profils et messages t’aident à découvrir des films aussi par les autres.',
-  },
-];
-
-const STEPS: Array<{
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  text: string;
-}> = [
-  {
-    icon: 'home-outline',
-    title: 'Accueil',
-    text: 'Un film s’affiche. Tu peux le noter, le passer, ou l’ajouter à regarder plus tard.',
-  },
-  {
-    icon: 'film-outline',
-    title: 'Fiche film',
-    text: 'Tu retrouves la bande-annonce, le casting, les plateformes, les playlists et le partage au même endroit.',
-  },
-  {
-    icon: 'bookmark-outline',
-    title: 'Playlists',
-    text: 'Classe tes envies, retrouve tes films favoris et filtre facilement ce que tu veux regarder.',
+    title: '3. Le social',
+    lines: [
+      'La partie sociale te permet d’écrire des critiques de films et de lire celles de tes amis.',
+      'Tu peux suivre d’autres utilisateurs, découvrir leurs avis et échanger autour des films.',
+    ],
   },
   {
     icon: 'chatbubble-ellipses-outline',
-    title: 'Messages',
-    text: 'Discute en privé et partage un film directement dans une conversation.',
-  },
-  {
-    icon: 'people-outline',
-    title: 'Social',
-    text: 'Publie des critiques, commente, et suis les profils dont les goûts t’inspirent.',
+    title: '4. Les messages privés',
+    lines: [
+      'Tu peux discuter en privé avec d’autres utilisateurs.',
+      'Les messages permettent de parler d’un film, de réagir à une critique ou de partager directement un film dans une conversation.',
+    ],
   },
   {
     icon: 'person-circle-outline',
-    title: 'Profil',
-    text: 'Retrouve tes playlists, tes critiques et tout ce qui construit ton univers cinéma.',
+    title: '5. Ton profil',
+    lines: [
+      'Ton profil rassemble tes goûts, tes critiques et ton activité.',
+      'C’est l’endroit où les autres peuvent découvrir ton univers cinéma.',
+    ],
   },
 ];
 
@@ -93,41 +84,27 @@ export default function TutorialScreen() {
         <QulteMark size={52} />
         <Text style={[styles.title, { color: theme.colors.text }]}>Bienvenue sur Qulte</Text>
         <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Qulte t’aide à trouver quoi regarder, à garder tes films de côté, et à partager le cinéma avec les bonnes personnes.
+          Qulte t’aide à trouver quoi regarder, partager tes avis et découvrir les goûts de tes amis.
         </Text>
       </View>
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
-      <View style={[styles.principleCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
-        <Text style={[styles.principleTitle, { color: theme.colors.text }]}>En 20 secondes</Text>
-        <Text style={[styles.principleIntro, { color: theme.colors.textSoft }]}>
-          Le plus simple à retenir : tu réagis aux films, Qulte comprend mieux tes goûts, puis l’app te recommande de mieux en mieux.
-        </Text>
-        <View style={styles.principles}>
-          {PRINCIPLES.map((item) => (
-            <View key={item.title} style={styles.principleRow}>
-              <View style={[styles.principleIcon, { backgroundColor: theme.rgba.card }]}>
-                <Ionicons name={item.icon} size={16} color={theme.colors.accent} />
-              </View>
-              <View style={styles.stepBody}>
-                <Text style={[styles.stepTitle, { color: theme.colors.text }]}>{item.title}</Text>
-                <Text style={[styles.stepText, { color: theme.colors.textMuted }]}>{item.text}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-
       <View style={styles.steps}>
-        {STEPS.map((step) => (
-          <View key={step.title} style={[styles.stepRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        {SECTIONS.map((section) => (
+          <View key={section.title} style={[styles.stepRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <View style={[styles.stepIcon, { backgroundColor: theme.colors.accentSoft }]}>
-              <Ionicons name={step.icon} size={18} color={theme.colors.accent} />
+              <Ionicons name={section.icon} size={18} color={theme.colors.accent} />
             </View>
             <View style={styles.stepBody}>
-              <Text style={[styles.stepTitle, { color: theme.colors.text }]}>{step.title}</Text>
-              <Text style={[styles.stepText, { color: theme.colors.textMuted }]}>{step.text}</Text>
+              <Text style={[styles.stepTitle, { color: theme.colors.text }]}>{section.title}</Text>
+              <View style={styles.stepLines}>
+                {section.lines.map((line) => (
+                  <Text key={line} style={[styles.stepText, { color: theme.colors.textMuted }]}>
+                    {line}
+                  </Text>
+                ))}
+              </View>
             </View>
           </View>
         ))}
@@ -169,43 +146,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  principleCard: {
-    gap: 12,
-    borderRadius: 28,
-    borderWidth: 1,
-    padding: 16,
-  },
-  principleTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  principleIntro: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '700',
-  },
-  principles: {
-    gap: 10,
-  },
-  principleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  principleIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
   steps: {
     gap: 10,
   },
   stepRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
     borderRadius: 22,
     borderWidth: 1,
@@ -221,6 +167,10 @@ const styles = StyleSheet.create({
   stepBody: {
     flex: 1,
     gap: 3,
+  },
+  stepLines: {
+    gap: 6,
+    marginTop: 2,
   },
   stepTitle: {
     fontSize: 14,
