@@ -83,7 +83,8 @@ export default function SettingsScreen() {
   const [resetError, setResetError] = useState('');
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success' | 'info'; message: string } | null>(null);
 
-  const isTestAccount = session?.username.trim().toLowerCase() === 'test';
+  const normalizedUsername = session?.username.trim().toLowerCase() ?? '';
+  const isTestAccount = normalizedUsername === 'test' || normalizedUsername === 'apple.review';
   const appVersionLabel = useMemo(() => getAppVersionLabel(), []);
 
   useEffect(() => {

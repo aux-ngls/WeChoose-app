@@ -116,7 +116,7 @@ export default function AuthScreen() {
   };
 
   return (
-    <AppScreen contentStyle={styles.content}>
+    <AppScreen keyboardAware contentStyle={styles.content}>
       <View style={styles.heroCard}>
         <View style={styles.brandRow}>
           <QulteMark size={54} />
@@ -264,7 +264,8 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingVertical: 28,
+    paddingTop: 36,
+    paddingBottom: 96,
   },
   heroCard: {
     gap: 20,

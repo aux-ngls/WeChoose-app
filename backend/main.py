@@ -110,6 +110,11 @@ news_highlights_cache: dict[int, tuple[float, dict]] = {}
 TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
 GLOBAL_RECOMMENDATION_AI_ENABLED = True
 TEST_AI_DASHBOARD_USERNAME = "test"
+TEST_RESET_USERNAMES = {
+    username.strip().lower()
+    for username in os.getenv("TEST_RESET_USERNAMES", "test,apple.review").split(",")
+    if username.strip()
+}
 PASS_REACTION_TYPES = {"pass"}
 PASS_RECONSIDER_COOLDOWN_DAYS = 14
 MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.tar.gz"
@@ -2167,14 +2172,33 @@ def delete_many_by_ids(cursor, table_name: str, column_name: str, values: list[i
     return max(cursor.rowcount, 0)
 
 
+def is_test_reset_user(cursor, user_id: int, username: str) -> bool:
+    normalized_username = str(username).strip().lower()
+    if normalized_username in TEST_RESET_USERNAMES:
+        return True
+
+    placeholders = sql_placeholders(len(TEST_RESET_USERNAMES))
+    cursor.execute(
+        f"""
+        SELECT 1
+        FROM users
+        WHERE id = {SQL_PARAM}
+          AND lower(username) IN ({placeholders})
+        LIMIT 1
+        """,
+        (user_id, *sorted(TEST_RESET_USERNAMES)),
+    )
+    return cursor.fetchone() is not None
+
+
 @app.post("/users/me/reset-test-data")
 def reset_test_user_data(current_user: dict = Depends(get_current_user)):
-    if str(current_user["username"]).strip().lower() != "test":
-        raise HTTPException(status_code=403, detail="Reset reserve au compte test.")
-
     user_id = int(current_user["id"])
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
+    if not is_test_reset_user(cursor, user_id, str(current_user["username"])):
+        conn.close()
+        raise HTTPException(status_code=403, detail="Reset reserve au compte test.")
     reset_counts, previous_avatar_url = purge_user_data(cursor, user_id, delete_account=False)
     conn.commit()
     conn.close()
