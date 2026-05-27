@@ -264,11 +264,11 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     justifyContent: 'flex-start',
-    paddingTop: 52,
-    paddingBottom: 40,
+    paddingTop: 32,
+    paddingBottom: 28,
   },
   heroCard: {
-    gap: 18,
+    gap: 16,
   },
   brandRow: {
     flexDirection: 'row',
