@@ -770,7 +770,7 @@ export default function HomeScreen() {
       {showTinderHelp ? (
         <View style={styles.helpOverlay}>
           <Pressable style={styles.helpBackdrop} onPress={() => setShowTinderHelp(false)} />
-          <View style={[styles.helpCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}>
+          <View style={[styles.helpCard, { borderColor: theme.rgba.border, backgroundColor: theme.isDark ? '#0f172a' : '#ffffff' }]}>
             <View style={styles.helpHeader}>
               <Text style={[styles.helpTitle, { color: theme.colors.text }]}>Comment fonctionne le Tinder ?</Text>
               <Pressable onPress={() => setShowTinderHelp(false)} hitSlop={10}>
@@ -998,7 +998,7 @@ const styles = StyleSheet.create({
   },
   helpBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(2,6,23,0.58)',
+    backgroundColor: 'rgba(2,6,23,0.72)',
   },
   helpCard: {
     width: '100%',
@@ -1007,6 +1007,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 18,
     gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   helpHeader: {
     flexDirection: 'row',
