@@ -26,7 +26,6 @@ import {
   ApiError,
   dislikeMovie,
   fetchMovieFeed,
-  fetchSocialProfile,
   fetchUserMovieRating,
   getOnboardingPreferences,
   rateMovie,
@@ -38,7 +37,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SearchMovie, type SocialProfile, WATCH_LATER_PLAYLIST_ID } from '../types';
+import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
 
 const TARGET_STACK_SIZE = 14;
 const REFILL_THRESHOLD = 8;
@@ -64,10 +63,6 @@ interface TinderMovieCache {
   username: string;
   movies: SearchMovie[];
   fetchedAt: number;
-}
-
-interface ProfileCompletionState {
-  missingItems: string[];
 }
 
 let tinderMovieCache: TinderMovieCache | null = null;
@@ -124,7 +119,6 @@ export default function HomeScreen() {
   const [selectedRating, setSelectedRating] = useState(0);
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
   const [showTinderHelp, setShowTinderHelp] = useState(false);
-  const [profileCompletion, setProfileCompletion] = useState<ProfileCompletionState | null>(null);
   const isFetchingRef = useRef(false);
   const locallyExcludedMovieIdsRef = useRef<Set<number>>(new Set());
   const onboardingExcludedMovieIdsRef = useRef<Set<number>>(new Set());
@@ -138,22 +132,6 @@ export default function HomeScreen() {
   const currentMovie = useMemo(() => movies[0] ?? null, [movies]);
   const secondMovie = useMemo(() => movies[1] ?? null, [movies]);
   const isWideLayout = width >= 700;
-  const computeMissingProfileItems = useCallback((profile: SocialProfile): string[] => {
-    const missing: string[] = [];
-    if (!profile.profile_description?.trim()) {
-      missing.push('une description');
-    }
-    if ((profile.profile_movies?.length ?? 0) < 3) {
-      missing.push('tes films préférés');
-    }
-    if ((profile.profile_people?.length ?? 0) < 1) {
-      missing.push('tes acteurs ou réalisateurs');
-    }
-    if (!profile.profile_soundtrack) {
-      missing.push('ta musique de film favorite');
-    }
-    return missing;
-  }, []);
   const tinderCardWidth = useMemo(() => {
     const contentWidth = Math.min(width, isWideLayout ? 760 : width);
     const availableWidth = contentWidth - (isWideLayout ? 80 : 28);
@@ -346,17 +324,6 @@ export default function HomeScreen() {
         return;
       }
       void (async () => {
-        try {
-          const socialProfile = await fetchSocialProfile(session.token, session.username);
-          const missingItems = computeMissingProfileItems(socialProfile);
-          setProfileCompletion(missingItems.length > 0 ? { missingItems } : null);
-        } catch (profileError) {
-          if (profileError instanceof ApiError && profileError.status === 401) {
-            await signOut();
-            return;
-          }
-        }
-
         await loadOnboardingExcludes();
         let hasMovies = moviesRef.current.length > 0;
         if (!hasMovies) {
@@ -376,7 +343,7 @@ export default function HomeScreen() {
           void loadFeed(currentStack.map((movie) => movie.id));
         }
       })();
-    }, [computeMissingProfileItems, hydrateCachedMovies, loadFeed, loadOnboardingExcludes, session, signOut]),
+    }, [hydrateCachedMovies, loadFeed, loadOnboardingExcludes, session]),
   );
 
   const refillIfNeeded = useCallback((nextMovies: SearchMovie[]) => {
@@ -708,25 +675,6 @@ export default function HomeScreen() {
     <AppScreen scroll={false} contentStyle={[styles.screen, isWideLayout && styles.tabletScreen]}>
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
-      {profileCompletion ? (
-        <Pressable
-          style={[styles.profileReminderCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.rgba.card }]}
-          onPress={() => navigation.navigate('MainTabs', { screen: 'Profile' })}
-        >
-          <View style={[styles.profileReminderIcon, { backgroundColor: theme.colors.accentSoft }]}>
-            <Ionicons name="person-circle-outline" size={18} color={theme.colors.accent} />
-          </View>
-          <View style={styles.profileReminderBody}>
-            <Text style={[styles.profileReminderTitle, { color: theme.colors.text }]}>Complète ton profil Qulte</Text>
-            <Text style={[styles.profileReminderText, { color: theme.colors.textMuted }]}>
-              Ajoute {profileCompletion.missingItems.slice(0, 3).join(', ')}
-              {profileCompletion.missingItems.length > 3 ? ' et le reste' : ''} pour mieux te présenter et rendre Qulte plus personnel.
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
-        </Pressable>
-      ) : null}
-
       <View style={styles.stackArea}>
         {loading && movies.length === 0 ? (
           <View style={[styles.loadingCard, { width: tinderCardWidth, borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -853,35 +801,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     gap: 14,
-  },
-  profileReminderCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  profileReminderIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileReminderBody: {
-    flex: 1,
-    gap: 3,
-  },
-  profileReminderTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  profileReminderText: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '700',
   },
   tabletScreen: {
     maxWidth: 540,
