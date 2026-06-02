@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   Image,
   Pressable,
   StyleSheet,
@@ -107,55 +108,63 @@ export default function OnboardingScreen() {
       Animated.parallel([
         Animated.timing(heroOpacity, {
           toValue: 1,
-          duration: 520,
+          duration: 900,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(heroEnter, {
           toValue: 0,
-          duration: 520,
+          duration: 980,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-        Animated.spring(titleScale, {
+        Animated.timing(titleScale, {
           toValue: 1,
-          speed: 12,
-          bounciness: 6,
+          duration: 950,
+          easing: Easing.out(Easing.exp),
           useNativeDriver: true,
         }),
       ]),
-      Animated.stagger(110, [
+      Animated.stagger(180, [
         Animated.parallel([
           Animated.timing(step1Opacity, {
             toValue: 1,
-            duration: 320,
+            duration: 520,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
           Animated.timing(step1Shift, {
             toValue: 0,
-            duration: 320,
+            duration: 560,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
         ]),
         Animated.parallel([
           Animated.timing(step2Opacity, {
             toValue: 1,
-            duration: 320,
+            duration: 520,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
           Animated.timing(step2Shift, {
             toValue: 0,
-            duration: 320,
+            duration: 560,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
         ]),
         Animated.parallel([
           Animated.timing(step3Opacity, {
             toValue: 1,
-            duration: 320,
+            duration: 520,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
           Animated.timing(step3Shift, {
             toValue: 0,
-            duration: 320,
+            duration: 560,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
         ]),
@@ -163,12 +172,14 @@ export default function OnboardingScreen() {
       Animated.parallel([
         Animated.timing(ctaOpacity, {
           toValue: 1,
-          duration: 260,
+          duration: 420,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(ctaShift, {
           toValue: 0,
-          duration: 260,
+          duration: 460,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
