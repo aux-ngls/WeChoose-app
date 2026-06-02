@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Pressable,
   StyleSheet,
@@ -50,6 +51,7 @@ function personFromName(name: string): ProfileShowcasePerson {
 export default function OnboardingScreen() {
   const { session, completeOnboarding, signOut } = useAuth();
   const { theme } = useTheme();
+  const [showWelcome, setShowWelcome] = useState(true);
   const [genres, setGenres] = useState<string[]>([]);
   const [people, setPeople] = useState<ProfileShowcasePerson[]>([]);
   const [movies, setMovies] = useState<SearchMovie[]>([]);
@@ -62,6 +64,19 @@ export default function OnboardingScreen() {
   const [searchingMovies, setSearchingMovies] = useState(false);
   const [searchingPeople, setSearchingPeople] = useState(false);
   const [error, setError] = useState('');
+  const heroShift = useRef(new Animated.Value(0)).current;
+  const heroGlow = useRef(new Animated.Value(0.7)).current;
+  const heroEnter = useRef(new Animated.Value(18)).current;
+  const heroOpacity = useRef(new Animated.Value(0)).current;
+  const titleScale = useRef(new Animated.Value(0.96)).current;
+  const step1Opacity = useRef(new Animated.Value(0)).current;
+  const step2Opacity = useRef(new Animated.Value(0)).current;
+  const step3Opacity = useRef(new Animated.Value(0)).current;
+  const step1Shift = useRef(new Animated.Value(18)).current;
+  const step2Shift = useRef(new Animated.Value(18)).current;
+  const step3Shift = useRef(new Animated.Value(18)).current;
+  const ctaOpacity = useRef(new Animated.Value(0)).current;
+  const ctaShift = useRef(new Animated.Value(12)).current;
 
   const selectedMovieIds = useMemo(() => new Set(movies.map((movie) => movie.id)), [movies]);
   const selectedPeopleKeys = useMemo(
@@ -70,6 +85,147 @@ export default function OnboardingScreen() {
   );
   const missingMoviesCount = Math.max(0, MIN_FAVORITE_MOVIES - movies.length);
   const canContinue = movies.length >= MIN_FAVORITE_MOVIES && !saving;
+
+  useEffect(() => {
+    if (!showWelcome) {
+      return;
+    }
+
+    heroEnter.setValue(18);
+    heroOpacity.setValue(0);
+    titleScale.setValue(0.96);
+    step1Opacity.setValue(0);
+    step2Opacity.setValue(0);
+    step3Opacity.setValue(0);
+    step1Shift.setValue(18);
+    step2Shift.setValue(18);
+    step3Shift.setValue(18);
+    ctaOpacity.setValue(0);
+    ctaShift.setValue(12);
+
+    const entrance = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(heroOpacity, {
+          toValue: 1,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heroEnter, {
+          toValue: 0,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+        Animated.spring(titleScale, {
+          toValue: 1,
+          speed: 12,
+          bounciness: 6,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.stagger(110, [
+        Animated.parallel([
+          Animated.timing(step1Opacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.timing(step1Shift, {
+            toValue: 0,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(step2Opacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.timing(step2Shift, {
+            toValue: 0,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(step3Opacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.timing(step3Shift, {
+            toValue: 0,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+      Animated.parallel([
+        Animated.timing(ctaOpacity, {
+          toValue: 1,
+          duration: 260,
+          useNativeDriver: true,
+        }),
+        Animated.timing(ctaShift, {
+          toValue: 0,
+          duration: 260,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]);
+
+    const animation = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(heroShift, {
+            toValue: -8,
+            duration: 2600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(heroShift, {
+            toValue: 0,
+            duration: 2600,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(heroGlow, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(heroGlow, {
+            toValue: 0.7,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    );
+
+    entrance.start();
+    animation.start();
+
+    return () => {
+      entrance.stop();
+      animation.stop();
+    };
+  }, [
+    ctaOpacity,
+    ctaShift,
+    heroEnter,
+    heroGlow,
+    heroOpacity,
+    heroShift,
+    showWelcome,
+    step1Opacity,
+    step1Shift,
+    step2Opacity,
+    step2Shift,
+    step3Opacity,
+    step3Shift,
+    titleScale,
+  ]);
 
   useEffect(() => {
     if (!session) {
@@ -251,6 +407,154 @@ export default function OnboardingScreen() {
     );
   }
 
+  if (showWelcome) {
+    return (
+      <AppScreen contentStyle={styles.welcomeScreen}>
+        <View style={styles.welcomeBackdrop}>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.welcomeOrbPrimary,
+              {
+                backgroundColor: theme.colors.accent,
+                opacity: heroGlow.interpolate({
+                  inputRange: [0.7, 1],
+                  outputRange: [0.18, 0.28],
+                }),
+                transform: [{ translateY: heroShift }],
+              },
+            ]}
+          />
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.welcomeOrbSecondary,
+              {
+                backgroundColor: theme.colors.secondaryAccent,
+                opacity: heroGlow.interpolate({
+                  inputRange: [0.7, 1],
+                  outputRange: [0.12, 0.2],
+                }),
+                transform: [{ translateY: Animated.multiply(heroShift, -0.6) }],
+              },
+            ]}
+          />
+        </View>
+
+        <Animated.View
+          style={[
+            styles.welcomeHero,
+            {
+              borderColor: theme.rgba.border,
+              backgroundColor: theme.rgba.card,
+              opacity: heroOpacity,
+              transform: [{ translateY: Animated.add(heroShift, heroEnter) }],
+            },
+          ]}
+        >
+          <Text style={[styles.welcomeEyebrow, { color: theme.colors.secondaryAccent }]}>Bienvenue</Text>
+          <Animated.Text
+            style={[
+              styles.welcomeTitle,
+              {
+                color: theme.colors.text,
+                transform: [{ scale: titleScale }],
+              },
+            ]}
+          >
+            Qulte
+          </Animated.Text>
+          <Text style={[styles.welcomeText, { color: theme.colors.textMuted }]}>
+            En moins de deux minutes, on prépare tes premières recommandations puis on t’explique les bases pour bien démarrer.
+          </Text>
+        </Animated.View>
+
+        <View style={styles.welcomeSteps}>
+          <Animated.View
+            style={[
+              styles.welcomeStep,
+              {
+                borderColor: theme.rgba.border,
+                backgroundColor: theme.rgba.cardStrong,
+                opacity: step1Opacity,
+                transform: [{ translateY: step1Shift }],
+              },
+            ]}
+          >
+            <View style={[styles.welcomeStepBadge, { backgroundColor: theme.colors.accentSoft }]}>
+              <Text style={[styles.welcomeStepBadgeLabel, { color: theme.colors.accent }]}>1</Text>
+            </View>
+            <View style={styles.welcomeStepBody}>
+              <Text style={[styles.welcomeStepTitle, { color: theme.colors.text }]}>Films et acteurs préférés</Text>
+              <Text style={[styles.welcomeStepText, { color: theme.colors.textMuted }]}>
+                Ces choix servent à initialiser l’algorithme et à lancer des recommandations déjà pertinentes.
+              </Text>
+            </View>
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.welcomeStep,
+              {
+                borderColor: theme.rgba.border,
+                backgroundColor: theme.rgba.cardStrong,
+                opacity: step2Opacity,
+                transform: [{ translateY: step2Shift }],
+              },
+            ]}
+          >
+            <View style={[styles.welcomeStepBadge, { backgroundColor: theme.colors.accentSoft }]}>
+              <Text style={[styles.welcomeStepBadgeLabel, { color: theme.colors.accent }]}>2</Text>
+            </View>
+            <View style={styles.welcomeStepBody}>
+              <Text style={[styles.welcomeStepTitle, { color: theme.colors.text }]}>Le tuto</Text>
+              <Text style={[styles.welcomeStepText, { color: theme.colors.textMuted }]}>
+                Il est important de le lire : il t’explique comment utiliser Qulte pour que l’IA apprenne vraiment de toi.
+              </Text>
+            </View>
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.welcomeStep,
+              {
+                borderColor: theme.rgba.border,
+                backgroundColor: theme.rgba.cardStrong,
+                opacity: step3Opacity,
+                transform: [{ translateY: step3Shift }],
+              },
+            ]}
+          >
+            <View style={[styles.welcomeStepBadge, { backgroundColor: theme.colors.accentSoft }]}>
+              <Text style={[styles.welcomeStepBadgeLabel, { color: theme.colors.accent }]}>3</Text>
+            </View>
+            <View style={styles.welcomeStepBody}>
+              <Text style={[styles.welcomeStepTitle, { color: theme.colors.text }]}>Qulte est à toi</Text>
+              <Text style={[styles.welcomeStepText, { color: theme.colors.textMuted }]}>
+                Ensuite, l’app est prête : tu peux découvrir, noter, partager et laisser tes goûts guider chaque reco.
+              </Text>
+            </View>
+          </Animated.View>
+        </View>
+
+        <Animated.View
+          style={{
+            opacity: ctaOpacity,
+            transform: [{ translateY: ctaShift }],
+          }}
+        >
+          <Pressable
+            style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
+            onPress={() => setShowWelcome(false)}
+          >
+            <Text style={[styles.primaryButtonLabel, { color: theme.colors.accentText }]}>Commencer</Text>
+            <Ionicons name="arrow-forward" size={18} color={theme.colors.accentText} />
+          </Pressable>
+        </Animated.View>
+      </AppScreen>
+    );
+  }
+
   return (
     <AppScreen>
       <ScreenHeader
@@ -416,6 +720,93 @@ const styles = StyleSheet.create({
   helperText: {
     color: '#9ca3af',
     fontSize: 14,
+  },
+  welcomeScreen: {
+    paddingVertical: 24,
+  },
+  welcomeBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  welcomeOrbPrimary: {
+    position: 'absolute',
+    top: 10,
+    right: -36,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+  },
+  welcomeOrbSecondary: {
+    position: 'absolute',
+    top: 120,
+    left: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 999,
+  },
+  welcomeHero: {
+    gap: 10,
+    borderRadius: 32,
+    borderWidth: 1,
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+  },
+  welcomeEyebrow: {
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 1.8,
+  },
+  welcomeTitle: {
+    fontFamily: 'Georgia',
+    fontSize: 44,
+    lineHeight: 48,
+    fontWeight: '700',
+  },
+  welcomeText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
+  welcomeSteps: {
+    gap: 12,
+  },
+  welcomeStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 14,
+  },
+  welcomeStepBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  welcomeStepBadgeLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  welcomeStepBody: {
+    flex: 1,
+    gap: 4,
+  },
+  welcomeStepTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  welcomeStepText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
   },
   progressRow: {
     flexDirection: 'row',
