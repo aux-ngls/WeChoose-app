@@ -570,6 +570,14 @@ export default function ProfileScreen() {
   const profileReviews = profile?.reviews ?? [];
   const visibleReviews = showAllReviews ? profileReviews : profileReviews.slice(0, 2);
   const profileDescription = profile?.profile_description?.trim() ?? '';
+  const missingProfileItems = profile
+    ? [
+        !profileDescription ? 'ajouter une description' : null,
+        profile.profile_movies.length < 3 ? 'ajouter tes films préférés' : null,
+        profile.profile_people.length < 1 ? 'ajouter des acteurs ou réalisateurs' : null,
+        !profile.profile_soundtrack ? 'ajouter ta musique de film favorite' : null,
+      ].filter((item): item is string => Boolean(item))
+    : [];
 
   return (
     <AppScreen refreshing={refreshing} onRefresh={() => void refreshProfile()}>
@@ -581,6 +589,25 @@ export default function ProfileScreen() {
 
       {profile ? (
         <>
+          {missingProfileItems.length > 0 && !isEditingShowcase ? (
+            <Pressable
+              style={[styles.profileCompletionCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.rgba.cardStrong }]}
+              onPress={openShowcaseEditor}
+            >
+              <View style={[styles.profileCompletionIcon, { backgroundColor: theme.colors.accentSoft }]}>
+                <Ionicons name="sparkles-outline" size={18} color={theme.colors.accent} />
+              </View>
+              <View style={styles.profileCompletionBody}>
+                <Text style={[styles.profileCompletionTitle, { color: theme.colors.text }]}>Ton profil peut être encore plus fort</Text>
+                <Text style={[styles.profileCompletionText, { color: theme.colors.textMuted }]}>
+                  Il te reste à {missingProfileItems.slice(0, 3).join(', ')}
+                  {missingProfileItems.length > 3 ? ' et compléter le reste' : ''}.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+            </Pressable>
+          ) : null}
+
           <LinearGradient
             colors={theme.gradients.profileCover}
             start={{ x: 0, y: 0 }}
@@ -1103,6 +1130,35 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  profileCompletionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  profileCompletionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileCompletionBody: {
+    flex: 1,
+    gap: 4,
+  },
+  profileCompletionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  profileCompletionText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
   profileCover: {
     position: 'relative',
     overflow: 'hidden',
