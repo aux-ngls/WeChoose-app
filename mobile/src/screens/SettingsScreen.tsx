@@ -25,9 +25,10 @@ import FormField from '../components/FormField';
 import InlineBanner from '../components/InlineBanner';
 import type { RootStackParamList } from '../navigation/types';
 import { registerForPushNotifications } from '../notifications/push';
+import { useTipJar } from '../support/TipJarContext';
 import { useTheme, type ThemePreference } from '../theme/ThemeContext';
 import type { BlockedUser, ProfilePreferencesPayload } from '../types';
-import { openDonationPage, openStoreReviewPage } from '../utils/appSupport';
+import { openStoreReviewPage } from '../utils/appSupport';
 import { STREAMING_SERVICE_OPTIONS } from '../utils/streaming';
 
 const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -64,6 +65,7 @@ export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { session, refreshOnboardingState, reopenTutorial, signOut } = useAuth();
   const { theme, themePreference, resolvedThemeName, setThemePreference } = useTheme();
+  const { openTipJar } = useTipJar();
   const [savingThemePreference, setSavingThemePreference] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermissionState>('loading');
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
@@ -453,17 +455,6 @@ export default function SettingsScreen() {
       setFeedback({
         tone: 'error',
         message: "Impossible d'ouvrir la page d'avis pour le moment.",
-      });
-    }
-  };
-
-  const handleOpenDonationPage = async () => {
-    try {
-      await openDonationPage();
-    } catch {
-      setFeedback({
-        tone: 'error',
-        message: "Impossible d'ouvrir la page de soutien pour le moment.",
       });
     }
   };
@@ -907,16 +898,16 @@ export default function SettingsScreen() {
 
           <Pressable
             style={[styles.optionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-            onPress={() => void handleOpenDonationPage()}
+            onPress={openTipJar}
           >
             <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }]}>
               <Ionicons name="heart-circle-outline" size={18} color={theme.colors.accent} />
             </View>
             <View style={styles.optionBody}>
               <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Faire un don</Text>
-              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Ouvre la page de soutien de Qulte pour aider l’application à continuer.</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Ouvre un soutien in-app simple pour aider Qulte à continuer.</Text>
             </View>
-            <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
           </Pressable>
         </View>
       </View>

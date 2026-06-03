@@ -36,9 +36,10 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
+import { useTipJar } from '../support/TipJarContext';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
-import { openDonationPage, recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
+import { recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
 
 const TARGET_STACK_SIZE = 14;
 const REFILL_THRESHOLD = 8;
@@ -107,6 +108,7 @@ function prefetchMoviePosters(movies: SearchMovie[]) {
 export default function HomeScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const { openTipJar } = useTipJar();
   const { width, height } = useWindowDimensions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const initialCache =
@@ -837,7 +839,7 @@ export default function HomeScreen() {
               style={[styles.donationButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}
               onPress={() => {
                 setShowSupportPrompt(false);
-                void openDonationPage();
+                openTipJar();
               }}
             >
               <Ionicons name="heart-outline" size={16} color={theme.colors.accent} />

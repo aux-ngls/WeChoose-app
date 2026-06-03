@@ -1,11 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as StoreReview from 'expo-store-review';
 import { Linking, Platform } from 'react-native';
-import { WEB_URL } from '../api/config';
 
 const APP_STORE_ID = '6763633848';
 const ANDROID_PACKAGE_NAME = 'dev.dury.qulte';
-const DONATION_URL = process.env.EXPO_PUBLIC_DONATION_URL ?? `${WEB_URL}/support`;
 const APPRECIATION_STATE_VERSION = 1;
 const INTERACTION_THRESHOLD = 15;
 const REPROMPT_AFTER_MS = 1000 * 60 * 60 * 24 * 45;
@@ -89,8 +87,4 @@ export async function openStoreReviewPage() {
   const webUrl = `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE_NAME}&showAllReviews=true`;
   const supported = await Linking.canOpenURL(nativeUrl);
   await Linking.openURL(supported ? nativeUrl : webUrl);
-}
-
-export async function openDonationPage() {
-  await Linking.openURL(DONATION_URL);
 }
