@@ -38,6 +38,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
+import { openDonationPage, recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
 
 const TARGET_STACK_SIZE = 14;
 const REFILL_THRESHOLD = 8;
@@ -119,6 +120,7 @@ export default function HomeScreen() {
   const [selectedRating, setSelectedRating] = useState(0);
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
   const [showTinderHelp, setShowTinderHelp] = useState(false);
+  const [showSupportPrompt, setShowSupportPrompt] = useState(false);
   const isFetchingRef = useRef(false);
   const locallyExcludedMovieIdsRef = useRef<Set<number>>(new Set());
   const onboardingExcludedMovieIdsRef = useRef<Set<number>>(new Set());
@@ -542,6 +544,10 @@ export default function HomeScreen() {
         type: actionType,
         movie,
       });
+      const shouldPrompt = await recordAppreciationInteraction(session.username);
+      if (shouldPrompt) {
+        setShowSupportPrompt(true);
+      }
     } catch (submitError) {
       if (submitError instanceof ApiError && submitError.status === 401) {
         await signOut();
@@ -583,6 +589,10 @@ export default function HomeScreen() {
     try {
       await rateMovie(session.token, movie.id, rating);
       setLastUndoableAction({ type: 'rating', movie, rating });
+      const shouldPrompt = await recordAppreciationInteraction(session.username);
+      if (shouldPrompt) {
+        setShowSupportPrompt(true);
+      }
     } catch (submitError) {
       if (submitError instanceof ApiError && submitError.status === 401) {
         await signOut();
@@ -789,6 +799,50 @@ export default function HomeScreen() {
             <Text style={[styles.helpText, { color: theme.colors.textMuted }]}>
               Tu peux aussi toucher l’affiche pour voir le résumé, le trailer, le casting et plus.
             </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {showSupportPrompt ? (
+        <View style={styles.helpOverlay}>
+          <Pressable style={styles.helpBackdrop} onPress={() => setShowSupportPrompt(false)} />
+          <View style={[styles.helpCard, { borderColor: theme.rgba.border, backgroundColor: theme.isDark ? '#0f172a' : '#ffffff' }]}>
+            <View style={styles.helpHeader}>
+              <Text style={[styles.helpTitle, { color: theme.colors.text }]}>Tu apprécies Qulte ?</Text>
+              <Pressable onPress={() => setShowSupportPrompt(false)} hitSlop={10}>
+                <Ionicons name="close" size={20} color={theme.colors.text} />
+              </Pressable>
+            </View>
+            <Text style={[styles.helpText, { color: theme.colors.textMuted }]}>
+              Si l’app t’aide vraiment à trouver de bons films, tu peux nous donner un vrai coup de pouce.
+            </Text>
+            <View style={styles.supportActions}>
+              <Pressable
+                style={[styles.secondarySupportButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                onPress={() => setShowSupportPrompt(false)}
+              >
+                <Text style={[styles.secondarySupportButtonLabel, { color: theme.colors.text }]}>Plus tard</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.primarySupportButton, { backgroundColor: theme.colors.secondaryAccent }]}
+                onPress={() => {
+                  setShowSupportPrompt(false);
+                  void requestInAppReview();
+                }}
+              >
+                <Text style={[styles.primarySupportButtonLabel, { color: theme.colors.secondaryAccentText }]}>Noter l’app</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              style={[styles.donationButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}
+              onPress={() => {
+                setShowSupportPrompt(false);
+                void openDonationPage();
+              }}
+            >
+              <Ionicons name="heart-outline" size={16} color={theme.colors.accent} />
+              <Text style={[styles.donationButtonLabel, { color: theme.colors.accent }]}>Soutenir Qulte par un don</Text>
+            </Pressable>
           </View>
         </View>
       ) : null}
@@ -1029,5 +1083,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     fontWeight: '700',
+  },
+  supportActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  secondarySupportButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  secondarySupportButtonLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  primarySupportButton: {
+    flex: 1.2,
+    minHeight: 46,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  primarySupportButtonLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  donationButton: {
+    marginTop: 2,
+    minHeight: 46,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  donationButtonLabel: {
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

@@ -27,6 +27,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { registerForPushNotifications } from '../notifications/push';
 import { useTheme, type ThemePreference } from '../theme/ThemeContext';
 import type { BlockedUser, ProfilePreferencesPayload } from '../types';
+import { openDonationPage, openStoreReviewPage } from '../utils/appSupport';
 import { STREAMING_SERVICE_OPTIONS } from '../utils/streaming';
 
 const appearanceOptions: Array<{ value: ThemePreference; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -445,6 +446,28 @@ export default function SettingsScreen() {
     await Linking.openURL(`${API_URL}/privacy`);
   };
 
+  const handleOpenStoreReviewPage = async () => {
+    try {
+      await openStoreReviewPage();
+    } catch {
+      setFeedback({
+        tone: 'error',
+        message: "Impossible d'ouvrir la page d'avis pour le moment.",
+      });
+    }
+  };
+
+  const handleOpenDonationPage = async () => {
+    try {
+      await openDonationPage();
+    } catch {
+      setFeedback({
+        tone: 'error',
+        message: "Impossible d'ouvrir la page de soutien pour le moment.",
+      });
+    }
+  };
+
   const handleUnblockUser = async (targetUserId: number) => {
     if (!session || updatingBlockedUserIds.includes(targetUserId)) {
       return;
@@ -856,6 +879,45 @@ export default function SettingsScreen() {
           ) : (
             <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Aucun compte bloqué pour le moment.</Text>
           )}
+        </View>
+      </View>
+
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="heart-outline" size={18} color={theme.colors.accent} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Soutien</Text>
+          </View>
+        </View>
+
+        <View style={styles.optionsList}>
+          <Pressable
+            style={[styles.optionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+            onPress={() => void handleOpenStoreReviewPage()}
+          >
+            <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }]}>
+              <Ionicons name="star-outline" size={18} color={theme.colors.accent} />
+            </View>
+            <View style={styles.optionBody}>
+              <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Noter Qulte</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Ouvre la page d’avis pour laisser une note sur le store.</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+          </Pressable>
+
+          <Pressable
+            style={[styles.optionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+            onPress={() => void handleOpenDonationPage()}
+          >
+            <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }]}>
+              <Ionicons name="heart-circle-outline" size={18} color={theme.colors.accent} />
+            </View>
+            <View style={styles.optionBody}>
+              <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Faire un don</Text>
+              <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Ouvre la page de soutien de Qulte pour aider l’application à continuer.</Text>
+            </View>
+            <Ionicons name="open-outline" size={18} color={theme.colors.textMuted} />
+          </Pressable>
         </View>
       </View>
 
