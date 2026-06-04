@@ -1,7 +1,6 @@
 import Constants from 'expo-constants';
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import TipJarSheet from './TipJarSheet';
 
 type TipJarContextValue = {
   openTipJar: () => void;
@@ -15,6 +14,10 @@ function getExpoGoMessage() {
 
 export function TipJarProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
+  const TipJarSheet = useMemo(
+    () => (visible ? (require('./TipJarSheet').default as ComponentType<{ onClose: () => void }>) : null),
+    [visible],
+  );
 
   const openTipJar = useCallback(() => {
     if (Constants.executionEnvironment === 'storeClient') {
@@ -33,7 +36,7 @@ export function TipJarProvider({ children }: { children: ReactNode }) {
   return (
     <TipJarContext.Provider value={contextValue}>
       {children}
-      {visible ? <TipJarSheet onClose={closeTipJar} /> : null}
+      {visible && TipJarSheet ? <TipJarSheet onClose={closeTipJar} /> : null}
     </TipJarContext.Provider>
   );
 }
