@@ -37,7 +37,6 @@
       }
     },
     "plugins": [
-      "expo-iap",
       "expo-notifications",
       "expo-web-browser",
       [

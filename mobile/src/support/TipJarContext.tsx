@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { createContext, useCallback, useContext, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 
 type TipJarContextValue = {
@@ -13,22 +13,11 @@ function getExpoGoMessage() {
 }
 
 export function TipJarProvider({ children }: { children: ReactNode }) {
-  const [visible, setVisible] = useState(false);
-  const TipJarSheet = useMemo(
-    () => (visible ? (require('./TipJarSheet').default as ComponentType<{ onClose: () => void }>) : null),
-    [visible],
-  );
-
   const openTipJar = useCallback(() => {
-    if (Constants.executionEnvironment === 'storeClient') {
-      Alert.alert('Dons indisponibles ici', getExpoGoMessage());
-      return;
-    }
-    setVisible(true);
-  }, []);
-
-  const closeTipJar = useCallback(() => {
-    setVisible(false);
+    const message = Constants.executionEnvironment === 'storeClient'
+      ? getExpoGoMessage()
+      : 'Le soutien par don arrive bientôt sur les builds iPhone. On le remettra dès que l’intégration native iOS sera stable.';
+    Alert.alert('Soutien indisponible pour le moment', message);
   }, []);
 
   const contextValue = useMemo<TipJarContextValue>(() => ({ openTipJar }), [openTipJar]);
@@ -36,7 +25,6 @@ export function TipJarProvider({ children }: { children: ReactNode }) {
   return (
     <TipJarContext.Provider value={contextValue}>
       {children}
-      {visible && TipJarSheet ? <TipJarSheet onClose={closeTipJar} /> : null}
     </TipJarContext.Provider>
   );
 }
