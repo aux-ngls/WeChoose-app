@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as StoreReview from 'expo-store-review';
 import { Linking, Platform } from 'react-native';
 
 const APP_STORE_ID = '6763633848';
@@ -69,11 +68,17 @@ export async function recordAppreciationInteraction(username: string): Promise<b
 }
 
 export async function requestInAppReview() {
-  const isAvailable = await StoreReview.isAvailableAsync();
-  if (isAvailable) {
-    await StoreReview.requestReview();
-    return;
+  try {
+    const StoreReview = await import('expo-store-review');
+    const isAvailable = await StoreReview.isAvailableAsync();
+    if (isAvailable) {
+      await StoreReview.requestReview();
+      return;
+    }
+  } catch {
+    // Fallback handled below when the native module is unavailable in the current build.
   }
+
   await openStoreReviewPage();
 }
 
