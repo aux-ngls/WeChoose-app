@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -20,6 +21,70 @@ type SearchResult =
   | { kind: 'movie'; id: string; movie: SearchMovie }
   | { kind: 'user'; id: string; user: SocialUser };
 
+const RECENT_MOVIES_LIMIT = 8;
+const RECENT_USERS_LIMIT = 8;
+const RECENT_SEARCHES_VERSION = 1;
+
+type RecentMoviesPayload = {
+  version: number;
+  movies: SearchMovie[];
+};
+
+type RecentUsersPayload = {
+  version: number;
+  users: SocialUser[];
+};
+
+function getRecentMoviesKey(username: string) {
+  return `qulte:recent-search-movies:${username}:v${RECENT_SEARCHES_VERSION}`;
+}
+
+function getRecentUsersKey(username: string) {
+  return `qulte:recent-search-users:${username}:v${RECENT_SEARCHES_VERSION}`;
+}
+
+function parseRecentMovies(rawValue: string | null): SearchMovie[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const payload = JSON.parse(rawValue) as Partial<RecentMoviesPayload>;
+    if (payload.version !== RECENT_SEARCHES_VERSION || !Array.isArray(payload.movies)) {
+      return [];
+    }
+
+    return payload.movies
+      .filter((movie): movie is SearchMovie =>
+        typeof movie?.id === 'number' &&
+        typeof movie?.title === 'string' &&
+        typeof movie?.rating === 'number',
+      )
+      .slice(0, RECENT_MOVIES_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function parseRecentUsers(rawValue: string | null): SocialUser[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const payload = JSON.parse(rawValue) as Partial<RecentUsersPayload>;
+    if (payload.version !== RECENT_SEARCHES_VERSION || !Array.isArray(payload.users)) {
+      return [];
+    }
+
+    return payload.users
+      .filter((user): user is SocialUser => typeof user?.id === 'number' && typeof user?.username === 'string')
+      .slice(0, RECENT_USERS_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
 function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) {
     return null;
@@ -38,9 +103,41 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [movieResults, setMovieResults] = useState<SearchMovie[]>([]);
   const [userResults, setUserResults] = useState<SocialUser[]>([]);
+  const [recentMovies, setRecentMovies] = useState<SearchMovie[]>([]);
+  const [recentUsers, setRecentUsers] = useState<SocialUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!session) {
+      setRecentMovies([]);
+      setRecentUsers([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadRecentSearches = async () => {
+      const [moviesRaw, usersRaw] = await Promise.all([
+        AsyncStorage.getItem(getRecentMoviesKey(session.username)),
+        AsyncStorage.getItem(getRecentUsersKey(session.username)),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      setRecentMovies(parseRecentMovies(moviesRaw));
+      setRecentUsers(parseRecentUsers(usersRaw));
+    };
+
+    void loadRecentSearches();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   const performSearch = useCallback(async (nextQuery: string, mode: SearchMode, options?: { forceRefresh?: boolean }) => {
     if (!session) {
@@ -110,11 +207,41 @@ export default function SearchScreen() {
   const results: SearchResult[] = searchMode === 'movies'
     ? movieResults.map((movie) => ({ kind: 'movie', id: `movie-${movie.id}`, movie }))
     : userResults.map((user) => ({ kind: 'user', id: `user-${user.id}`, user }));
+  const recentResults: SearchResult[] = searchMode === 'movies'
+    ? recentMovies.map((movie) => ({ kind: 'movie', id: `recent-movie-${movie.id}`, movie }))
+    : recentUsers.map((user) => ({ kind: 'user', id: `recent-user-${user.id}`, user }));
+  const displayedResults = query.trim().length >= 2 ? results : recentResults;
+
+  const rememberRecentMovie = useCallback(async (movie: SearchMovie) => {
+    if (!session) {
+      return;
+    }
+
+    const nextMovies = [movie, ...recentMovies.filter((recentMovie) => recentMovie.id !== movie.id)].slice(0, RECENT_MOVIES_LIMIT);
+    setRecentMovies(nextMovies);
+    await AsyncStorage.setItem(
+      getRecentMoviesKey(session.username),
+      JSON.stringify({ version: RECENT_SEARCHES_VERSION, movies: nextMovies }),
+    );
+  }, [recentMovies, session]);
+
+  const rememberRecentUser = useCallback(async (user: SocialUser) => {
+    if (!session) {
+      return;
+    }
+
+    const nextUsers = [user, ...recentUsers.filter((recentUser) => recentUser.id !== user.id)].slice(0, RECENT_USERS_LIMIT);
+    setRecentUsers(nextUsers);
+    await AsyncStorage.setItem(
+      getRecentUsersKey(session.username),
+      JSON.stringify({ version: RECENT_SEARCHES_VERSION, users: nextUsers }),
+    );
+  }, [recentUsers, session]);
 
   return (
     <AppScreen scroll={false} contentStyle={{ flex: 1 }}>
       <FlatList
-        data={results}
+        data={displayedResults}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
@@ -172,6 +299,12 @@ export default function SearchScreen() {
               placeholder={searchMode === 'movies' ? 'Chercher un film' : 'Chercher un utilisateur'}
               icon={searchMode === 'movies' ? 'search' : 'person-outline'}
             />
+            {query.trim().length < 2 && recentResults.length > 0 ? (
+              <View style={styles.recentHeader}>
+                <Ionicons name="time-outline" size={15} color={theme.colors.textMuted} />
+                <Text style={[styles.recentHeaderLabel, { color: theme.colors.textMuted }]}>Recherches recentes</Text>
+              </View>
+            ) : null}
             {error ? <InlineBanner message={error} tone="error" /> : null}
             {loading ? (
               <View style={styles.loadingWrap}>
@@ -184,7 +317,10 @@ export default function SearchScreen() {
           item.kind === 'movie' ? (
             <Pressable
               style={[styles.itemCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-              onPress={() => navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title })}
+              onPress={() => {
+                void rememberRecentMovie(item.movie);
+                navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title });
+              }}
             >
               <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               <View style={styles.itemBody}>
@@ -198,7 +334,10 @@ export default function SearchScreen() {
           ) : (
             <Pressable
               style={[styles.itemCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-              onPress={() => navigation.navigate('UserProfile', { username: item.user.username })}
+              onPress={() => {
+                void rememberRecentUser(item.user);
+                navigation.navigate('UserProfile', { username: item.user.username });
+              }}
             >
               {resolveMediaUrl(item.user.avatar_url) ? (
                 <Image source={{ uri: resolveMediaUrl(item.user.avatar_url) ?? '' }} style={styles.avatar} />
@@ -224,7 +363,7 @@ export default function SearchScreen() {
             query.trim().length >= 2 ? (
               <EmptyStateCard title={searchMode === 'movies' ? 'Aucun film' : 'Aucun profil'} />
             ) : (
-              <EmptyStateCard title="Cherche un film ou un profil" />
+              <EmptyStateCard title="Aucune recherche recente" />
             )
           ) : null
         }
@@ -287,6 +426,15 @@ const styles = StyleSheet.create({
   loadingWrap: {
     paddingVertical: 4,
     alignItems: 'center',
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recentHeaderLabel: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   itemCard: {
     flexDirection: 'row',
