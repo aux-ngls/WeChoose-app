@@ -685,7 +685,7 @@ const styles = StyleSheet.create({
   },
   heroPoster: {
     width: '100%',
-    aspectRatio: 0.82,
+    aspectRatio: 2 / 3,
   },
   heroFade: {
     ...StyleSheet.absoluteFillObject,
