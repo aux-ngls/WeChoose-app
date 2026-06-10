@@ -106,7 +106,7 @@ export default function MovieDetailsScreen({
     const applyOrientation = async () => {
       try {
         if (showTrailer) {
-          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+          await ScreenOrientation.unlockAsync();
         } else {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
         }
