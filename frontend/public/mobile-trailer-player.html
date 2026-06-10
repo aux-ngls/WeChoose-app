@@ -50,67 +50,15 @@
       const videoId = rawVideoId.replace(/[^a-zA-Z0-9_-]/g, '');
       const playerHost = document.getElementById('player');
       const empty = document.getElementById('empty');
-      let lastToggleBridgeAt = 0;
 
       function showEmpty() {
         playerHost.style.display = 'none';
         empty.style.display = 'flex';
       }
 
-      function postBridgeMessage(type) {
-        const now = Date.now();
-        if (now - lastToggleBridgeAt < 220) {
-          return;
-        }
-        lastToggleBridgeAt = now;
-
-        if (!window.ReactNativeWebView || typeof window.ReactNativeWebView.postMessage !== 'function') {
-          return;
-        }
-
-        try {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type }));
-        } catch (_) {
-          // Ignore bridge serialization errors.
-        }
-      }
-
-      function disableCaptions(player) {
-        if (!player) {
-          return;
-        }
-
-        try {
-          if (typeof player.setOption === 'function') {
-            player.setOption('captions', 'track', {});
-          }
-        } catch (_) {
-          // Some players reject caption options depending on the trailer.
-        }
-
-        try {
-          if (typeof player.unloadModule === 'function') {
-            player.unloadModule('captions');
-          }
-        } catch (_) {
-          // Ignore unsupported module calls.
-        }
-      }
-
       if (!videoId) {
         showEmpty();
       } else {
-        document.addEventListener('click', () => {
-          postBridgeMessage('toggle-ui');
-        });
-        document.addEventListener(
-          'touchend',
-          () => {
-            postBridgeMessage('toggle-ui');
-          },
-          { passive: true },
-        );
-
         window.onYouTubeIframeAPIReady = function onYouTubeIframeAPIReady() {
           new window.YT.Player('player', {
             width: '100%',
@@ -120,28 +68,11 @@
             playerVars: {
               autoplay: 1,
               playsinline: 1,
-              fs: 0,
               rel: 0,
-              cc_load_policy: 0,
-              iv_load_policy: 3,
-              enablejsapi: 1,
               origin: window.location.origin,
               widget_referrer: window.location.href,
             },
             events: {
-              onReady: function onReady(event) {
-                disableCaptions(event.target);
-                try {
-                  event.target.playVideo();
-                } catch (_) {
-                  // Autoplay can still be denied by the embedded player in some contexts.
-                }
-              },
-              onStateChange: function onStateChange(event) {
-                if (event.data === window.YT.PlayerState.PLAYING) {
-                  disableCaptions(event.target);
-                }
-              },
               onError: showEmpty,
             },
           });

@@ -3,7 +3,7 @@
     "name": "Qulte",
     "slug": "qulte-mobile",
     "version": "1.0.1",
-    "orientation": "default",
+    "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "qulte",
@@ -38,7 +38,6 @@
     },
     "plugins": [
       "expo-notifications",
-      "expo-screen-orientation",
       "expo-web-browser",
       [
         "expo-image-picker",
