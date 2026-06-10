@@ -416,7 +416,7 @@ export default function MovieDetailsScreen({
             {error ? <InlineBanner message={error} tone="error" /> : null}
             {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
 
-            <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+            <View style={styles.sectionCard}>
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Actions</Text>
               <View style={styles.actionsRow}>
                 <Pressable
@@ -480,21 +480,21 @@ export default function MovieDetailsScreen({
             </View>
 
             {movie.overview ? (
-              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <View style={styles.sectionCard}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Synopsis</Text>
                 <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.overview}</Text>
               </View>
             ) : null}
 
             {movie.directors.length > 0 ? (
-              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <View style={styles.sectionCard}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Réalisation</Text>
                 <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.directors.join(', ')}</Text>
               </View>
             ) : null}
 
             {providers.length > 0 ? (
-              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <View style={styles.sectionCard}>
                 <View style={styles.rowBetween}>
                   <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Où le regarder</Text>
                   {movie.watch_providers.link ? (
@@ -525,7 +525,7 @@ export default function MovieDetailsScreen({
             ) : null}
 
             {movie.cast.length > 0 ? (
-              <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <View style={styles.sectionCard}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Casting</Text>
                 <FlatList
                   horizontal
@@ -752,11 +752,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionCard: {
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    padding: 18,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
     gap: 14,
   },
   sectionTitle: {
