@@ -11,12 +11,14 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import type { WebViewMessageEvent } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
@@ -79,6 +81,7 @@ export default function MovieDetailsScreen({
   const [feedback, setFeedback] = useState('');
   const [userRating, setUserRating] = useState(0);
   const [showTrailer, setShowTrailer] = useState(false);
+  const [showTrailerControls, setShowTrailerControls] = useState(false);
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
@@ -95,6 +98,7 @@ export default function MovieDetailsScreen({
 
   useEffect(() => {
     setShowTrailer(false);
+    setShowTrailerControls(false);
   }, [route.params.movieId]);
 
   useEffect(() => {
@@ -116,6 +120,7 @@ export default function MovieDetailsScreen({
     setError('');
     setFeedback('');
     setShowPlaylistPicker(false);
+    setShowTrailerControls(false);
     setNewPlaylistName('');
 
     void (async () => {
@@ -168,7 +173,7 @@ export default function MovieDetailsScreen({
     if (!videoId) {
       return null;
     }
-    return `${API_URL}/mobile-trailer-player.html?videoId=${encodeURIComponent(videoId)}`;
+    return `${API_URL}/mobile-trailer-player.html?videoId=${encodeURIComponent(videoId)}&uiVersion=4`;
   }, [movie?.trailer_url]);
 
   const handleWatchLater = async () => {
@@ -321,7 +326,19 @@ export default function MovieDetailsScreen({
     }
 
     setError('');
+    setShowTrailerControls(false);
     setShowTrailer(true);
+  };
+
+  const handleTrailerMessage = (event: WebViewMessageEvent) => {
+    try {
+      const payload = JSON.parse(event.nativeEvent.data) as { type?: string };
+      if (payload.type === 'toggle-ui') {
+        setShowTrailerControls((current) => !current);
+      }
+    } catch {
+      // Ignore malformed player bridge events.
+    }
   };
 
   const resetModalPosition = (translateY: Animated.Value) => {
@@ -559,27 +576,37 @@ export default function MovieDetailsScreen({
         )}
       </AppScreen>
 
-      <Modal visible={showTrailer} animationType="slide" presentationStyle="fullScreen">
+      <Modal visible={showTrailer} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setShowTrailer(false)}>
         <View style={styles.trailerModal}>
-          <View style={[styles.trailerHeader, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-            <Text style={styles.trailerTitle} numberOfLines={1}>{movie?.title ?? 'Bande-annonce'}</Text>
-            <Pressable style={styles.iconButton} onPress={() => setShowTrailer(false)}>
-              <Ionicons name="close" size={22} color="#ffffff" />
-            </Pressable>
+          <StatusBar hidden />
+          <View style={styles.trailerSurface}>
+            {trailerPlayerUrl ? (
+              <WebView
+                source={{ uri: trailerPlayerUrl }}
+                allowsInlineMediaPlayback
+                allowsFullscreenVideo
+                mediaPlaybackRequiresUserAction={false}
+                onMessage={handleTrailerMessage}
+                style={styles.trailerWebview}
+              />
+            ) : (
+              <View style={styles.stateCard}>
+                <Text style={styles.stateText}>Aucune bande-annonce disponible.</Text>
+              </View>
+            )}
+            {showTrailerControls ? (
+              <View style={styles.trailerOverlay} pointerEvents="box-none">
+                <View style={[styles.trailerTopBar, { top: Math.max(insets.top, 12) + 4 }]}>
+                  <Text style={styles.trailerOverlayTitle} numberOfLines={1}>
+                    {movie?.title ?? 'Bande-annonce'}
+                  </Text>
+                  <Pressable style={styles.trailerCloseButton} onPress={() => setShowTrailer(false)}>
+                    <Ionicons name="close" size={20} color="#ffffff" />
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </View>
-          {trailerPlayerUrl ? (
-            <WebView
-              source={{ uri: trailerPlayerUrl }}
-              allowsInlineMediaPlayback
-              allowsFullscreenVideo
-              mediaPlaybackRequiresUserAction={false}
-              style={styles.trailerWebview}
-            />
-          ) : (
-            <View style={styles.stateCard}>
-              <Text style={styles.stateText}>Aucune bande-annonce disponible.</Text>
-            </View>
-          )}
         </View>
       </Modal>
 
@@ -911,7 +938,14 @@ const styles = StyleSheet.create({
   },
   trailerModal: {
     flex: 1,
-    backgroundColor: '#050507',
+    backgroundColor: '#000000',
+    position: 'relative',
+  },
+  trailerSurface: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#000000',
   },
   modalHandleZone: {
     alignItems: 'center',
@@ -941,8 +975,40 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   trailerWebview: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
+  },
+  trailerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+  },
+  trailerTopBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  trailerOverlayTitle: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 15,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.48)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  trailerCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   sheetBackdrop: {
     flex: 1,

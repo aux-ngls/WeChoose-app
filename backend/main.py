@@ -105,8 +105,12 @@ WATCH_LATER_NAME = "À regarder plus tard"
 PLAYLIST_SORT_OPTIONS = {"manual", "genre", "recent", "oldest", "rating"}
 NOW_PLAYING_CACHE_TTL_SECONDS = 300
 NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
+TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS = 60 * 60 * 6
+TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 6
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
+tmdb_watch_providers_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+tmdb_movie_details_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
 GLOBAL_RECOMMENDATION_AI_ENABLED = True
 TEST_AI_DASHBOARD_USERNAME = "test"
@@ -118,6 +122,7 @@ TEST_RESET_USERNAMES = {
 PASS_REACTION_TYPES = {"pass"}
 PASS_RECONSIDER_COOLDOWN_DAYS = 14
 MOBILE_ARCHIVE_PATH = "/home/wechoose/frontend/public/downloads/wechoose-mobile.tar.gz"
+MOBILE_TRAILER_PLAYER_PATH = "/home/wechoose/frontend/public/mobile-trailer-player.html"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
 AVATAR_PUBLIC_PREFIX = "/uploads/avatars"
@@ -177,6 +182,7 @@ STRICT_RATE_LIMITS = {
 }
 rate_limit_events: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 rate_limit_lock = Lock()
+tmdb_cache_lock = Lock()
 notification_executor = ThreadPoolExecutor(max_workers=int(os.getenv("NOTIFICATION_WORKERS", "4") or "4"))
 DBIntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError) if psycopg is not None else (sqlite3.IntegrityError,)
 SQL_PARAM = "%s" if DATABASE_BACKEND == "postgres" else "?"
@@ -2447,93 +2453,215 @@ def fetch_posters_from_tmdb(movie_ids: list[int]) -> dict[int, str]:
 
     return poster_urls
 
-@lru_cache(maxsize=512)
-def get_tmdb_watch_providers(movie_id: int) -> dict:
+def get_cached_tmdb_payload(
+    cache: dict[int, tuple[float, dict[str, Any]]],
+    key: int,
+    *,
+    allow_stale: bool = False,
+) -> Optional[dict[str, Any]]:
+    with tmdb_cache_lock:
+        cached_entry = cache.get(int(key))
+
+    if not cached_entry:
+        return None
+
+    expires_at, payload = cached_entry
+    if expires_at > time.time() or allow_stale:
+        return payload
+
+    return None
+
+
+def set_cached_tmdb_payload(
+    cache: dict[int, tuple[float, dict[str, Any]]],
+    key: int,
+    payload: dict[str, Any],
+    ttl_seconds: int,
+) -> dict[str, Any]:
+    with tmdb_cache_lock:
+        cache[int(key)] = (time.time() + ttl_seconds, payload)
+        if len(cache) > 4096:
+            oldest_keys = sorted(cache.items(), key=lambda item: item[1][0])[:1024]
+            for cached_key, _ in oldest_keys:
+                cache.pop(cached_key, None)
+    return payload
+
+
+def fetch_tmdb_watch_providers_payload(movie_id: int) -> Optional[dict]:
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers?api_key={TMDB_API_KEY}"
-        data = requests.get(url, timeout=2).json()
-        results = data.get("results", {}) if isinstance(data, dict) else {}
-        preferred_regions = ("FR", "US")
-        region_code = next((region for region in preferred_regions if region in results), None)
-        if not region_code and results:
-            region_code = next(iter(results.keys()), None)
-        region_data = results.get(region_code, {}) if region_code else {}
+        response = requests.get(url, timeout=2)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        logger.warning("Echec TMDB watch providers pour movie_id=%s: %s", movie_id, exc)
+        return None
 
-        def serialize_provider_list(items) -> list[dict]:
-            serialized = []
-            seen_provider_ids: set[int] = set()
-            for item in items or []:
-                provider_id = item.get("provider_id")
-                if not isinstance(provider_id, int) or provider_id in seen_provider_ids:
-                    continue
-                seen_provider_ids.add(provider_id)
-                serialized.append(
-                    {
-                        "id": provider_id,
-                        "name": str(item.get("provider_name") or ""),
-                        "logo_url": f"https://image.tmdb.org/t/p/w154{item.get('logo_path')}" if item.get("logo_path") else None,
-                    }
-                )
-            return serialized
+    return data if isinstance(data, dict) else None
 
-        return {
-            "region": region_code or "",
-            "link": str(region_data.get("link") or ""),
-            "subscription": serialize_provider_list(region_data.get("flatrate")),
-            "rent": serialize_provider_list(region_data.get("rent")),
-            "buy": serialize_provider_list(region_data.get("buy")),
-        }
-    except Exception:
-        return {
-            "region": "",
-            "link": "",
-            "subscription": [],
-            "rent": [],
-            "buy": [],
-        }
 
-@lru_cache(maxsize=1024)
-def get_tmdb_details(movie_id):
+def serialize_tmdb_watch_providers(data: dict) -> dict:
+    results = data.get("results", {}) if isinstance(data, dict) else {}
+    preferred_regions = ("FR", "US")
+    region_code = next((region for region in preferred_regions if region in results), None)
+    if not region_code and results:
+        region_code = next(iter(results.keys()), None)
+    region_data = results.get(region_code, {}) if region_code else {}
+
+    def serialize_provider_list(items) -> list[dict]:
+        serialized = []
+        seen_provider_ids: set[int] = set()
+        for item in items or []:
+            provider_id = item.get("provider_id")
+            if not isinstance(provider_id, int) or provider_id in seen_provider_ids:
+                continue
+            seen_provider_ids.add(provider_id)
+            serialized.append(
+                {
+                    "id": provider_id,
+                    "name": str(item.get("provider_name") or ""),
+                    "logo_url": f"https://image.tmdb.org/t/p/w154{item.get('logo_path')}" if item.get("logo_path") else None,
+                }
+            )
+        return serialized
+
+    return {
+        "region": region_code or "",
+        "link": str(region_data.get("link") or ""),
+        "subscription": serialize_provider_list(region_data.get("flatrate")),
+        "rent": serialize_provider_list(region_data.get("rent")),
+        "buy": serialize_provider_list(region_data.get("buy")),
+    }
+
+
+def get_tmdb_watch_providers(movie_id: int) -> dict:
+    cached_payload = get_cached_tmdb_payload(tmdb_watch_providers_cache, movie_id)
+    if cached_payload is not None:
+        return cached_payload
+
+    provider_payload = fetch_tmdb_watch_providers_payload(movie_id)
+    if provider_payload is not None:
+        return set_cached_tmdb_payload(
+            tmdb_watch_providers_cache,
+            movie_id,
+            serialize_tmdb_watch_providers(provider_payload),
+            TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS,
+        )
+
+    stale_payload = get_cached_tmdb_payload(tmdb_watch_providers_cache, movie_id, allow_stale=True)
+    if stale_payload is not None:
+        return stale_payload
+
+    return {
+        "region": "",
+        "link": "",
+        "subscription": [],
+        "rent": [],
+        "buy": [],
+    }
+
+
+def fetch_tmdb_movie_details_payload(movie_id: int) -> Optional[dict]:
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=fr-FR&append_to_response=videos,credits"
-        data = requests.get(url, timeout=3).json()
-        trailer = next((f"https://www.youtube.com/embed/{v['key']}" for v in data.get('videos', {}).get('results', []) if v['site']=='YouTube' and v['type']=='Trailer'), None)
-        cast = [
-            {
-                "id": int(a["id"]) if isinstance(a.get("id"), int) else None,
-                "name": a["name"],
-                "character": a["character"],
-                "photo": f"https://image.tmdb.org/t/p/w200{a['profile_path']}" if a.get('profile_path') else None,
-            }
-            for a in data.get('credits', {}).get('cast', [])[:8]
-        ]
-        directors = [
-            crew_member.get("name")
-            for crew_member in data.get("credits", {}).get("crew", [])
-            if crew_member.get("job") == "Director" and crew_member.get("name")
-        ][:2]
-        genres = [
-            genre.get("name")
-            for genre in data.get("genres", [])
-            if isinstance(genre, dict) and genre.get("name")
-        ]
-        watch_providers = get_tmdb_watch_providers(movie_id)
+        response = requests.get(url, timeout=3)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        logger.warning("Echec TMDB details pour movie_id=%s: %s", movie_id, exc)
+        return None
+
+    return data if isinstance(data, dict) and isinstance(data.get("id"), int) else None
+
+
+def build_tmdb_movie_details_payload(data: dict, watch_providers: dict) -> dict:
+    trailer = next(
+        (
+            f"https://www.youtube.com/embed/{video['key']}"
+            for video in data.get("videos", {}).get("results", [])
+            if video.get("site") == "YouTube" and video.get("type") == "Trailer" and video.get("key")
+        ),
+        None,
+    )
+    cast = [
+        {
+            "id": int(actor["id"]) if isinstance(actor.get("id"), int) else None,
+            "name": actor["name"],
+            "character": actor["character"],
+            "photo": f"https://image.tmdb.org/t/p/w200{actor['profile_path']}" if actor.get("profile_path") else None,
+        }
+        for actor in data.get("credits", {}).get("cast", [])[:8]
+    ]
+    directors = [
+        crew_member.get("name")
+        for crew_member in data.get("credits", {}).get("crew", [])
+        if crew_member.get("job") == "Director" and crew_member.get("name")
+    ][:2]
+    genres = [
+        genre.get("name")
+        for genre in data.get("genres", [])
+        if isinstance(genre, dict) and genre.get("name")
+    ]
+    return {
+        "id": data["id"],
+        "title": data["title"],
+        "overview": data.get("overview") or "",
+        "rating": data.get("vote_average") or 0,
+        "poster_url": "https://image.tmdb.org/t/p/w500" + data.get("poster_path", "") if data.get("poster_path") else "",
+        "trailer_url": trailer,
+        "cast": cast,
+        "release_date": data.get("release_date", "").split("-")[0],
+        "runtime": int(data.get("runtime") or 0),
+        "tagline": str(data.get("tagline") or ""),
+        "genres": genres[:4],
+        "directors": [str(name) for name in directors],
+        "watch_providers": watch_providers,
+    }
+
+
+def get_tmdb_details(movie_id):
+    cached_payload = get_cached_tmdb_payload(tmdb_movie_details_cache, movie_id)
+    if cached_payload is not None:
+        return cached_payload
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        details_future = executor.submit(fetch_tmdb_movie_details_payload, movie_id)
+        watch_providers_future = executor.submit(get_tmdb_watch_providers, movie_id)
+        data = details_future.result()
+        watch_providers = watch_providers_future.result()
+
+    if data is not None:
+        payload = build_tmdb_movie_details_payload(data, watch_providers)
+        return set_cached_tmdb_payload(
+            tmdb_movie_details_cache,
+            movie_id,
+            payload,
+            TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS,
+        )
+
+    stale_payload = get_cached_tmdb_payload(tmdb_movie_details_cache, movie_id, allow_stale=True)
+    if stale_payload is not None:
+        return stale_payload
+
+    summary = get_tmdb_movie_summary(movie_id)
+    if summary is not None:
         return {
-            "id": data['id'],
-            "title": data['title'],
-            "overview": data['overview'],
-            "rating": data['vote_average'],
-            "poster_url": "https://image.tmdb.org/t/p/w500"+data.get('poster_path','') if data.get('poster_path') else "",
-            "trailer_url": trailer,
-            "cast": cast,
-            "release_date": data.get('release_date', '').split('-')[0],
-            "runtime": int(data.get("runtime") or 0),
-            "tagline": str(data.get("tagline") or ""),
-            "genres": genres[:4],
-            "directors": [str(name) for name in directors],
+            "id": summary["id"],
+            "title": summary["title"],
+            "overview": "",
+            "rating": summary.get("rating") or 0,
+            "poster_url": summary.get("poster_url") or "",
+            "trailer_url": None,
+            "cast": [],
+            "release_date": "",
+            "runtime": 0,
+            "tagline": "",
+            "genres": [],
+            "directors": [],
             "watch_providers": watch_providers,
         }
-    except: return None
+
+    return None
 
 
 @lru_cache(maxsize=512)
@@ -7901,7 +8029,10 @@ def search_soundtracks_endpoint(query: str):
 
 @app.get("/movie/{id}")
 def movie_detail(id: int):
-    return get_tmdb_details(id)
+    details = get_tmdb_details(id)
+    if not details:
+        raise HTTPException(status_code=502, detail="Impossible de charger cette fiche film pour le moment.")
+    return details
 
 
 @app.get("/person/{person_id}")
@@ -7912,96 +8043,17 @@ def person_detail(person_id: int, current_user: dict = Depends(get_current_user)
     return person
 
 
-@app.get("/mobile-trailer-player.html", response_class=HTMLResponse)
-def mobile_trailer_player(video_id: str = Query("", alias="videoId")):
-    safe_video_id = re.sub(r"[^a-zA-Z0-9_-]", "", video_id or "")
-    return f"""<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <title>Qulte Trailer Player</title>
-    <style>
-      html, body {{
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        background: #000;
-        overflow: hidden;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }}
-
-      body {{
-        display: flex;
-        align-items: stretch;
-        justify-content: stretch;
-      }}
-
-      #player, #empty {{
-        width: 100%;
-        height: 100%;
-      }}
-
-      #empty {{
-        display: none;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-        box-sizing: border-box;
-        color: rgba(255,255,255,0.86);
-        text-align: center;
-        line-height: 1.5;
-        background:
-          radial-gradient(circle at top, rgba(244,114,182,0.18), transparent 42%),
-          #050507;
-      }}
-    </style>
-  </head>
-  <body>
-    <div id="player"></div>
-    <div id="empty">Bande-annonce indisponible.</div>
-    <script>
-      const videoId = {json.dumps(safe_video_id)};
-      const playerHost = document.getElementById('player');
-      const empty = document.getElementById('empty');
-
-      function showEmpty() {{
-        playerHost.style.display = 'none';
-        empty.style.display = 'flex';
-      }}
-
-      if (!videoId) {{
-        showEmpty();
-      }} else {{
-        window.onYouTubeIframeAPIReady = function onYouTubeIframeAPIReady() {{
-          new window.YT.Player('player', {{
-            width: '100%',
-            height: '100%',
-            videoId,
-            host: 'https://www.youtube.com',
-            playerVars: {{
-              autoplay: 1,
-              playsinline: 1,
-              rel: 0,
-              origin: window.location.origin,
-              widget_referrer: window.location.href,
-            }},
-            events: {{
-              onError: showEmpty,
-            }},
-          }});
-        }};
-
-        const script = document.createElement('script');
-        script.src = 'https://www.youtube.com/iframe_api';
-        script.async = true;
-        script.onerror = showEmpty;
-        document.head.appendChild(script);
-      }}
-    </script>
-  </body>
-</html>"""
+@app.get("/mobile-trailer-player.html")
+def mobile_trailer_player():
+    return FileResponse(
+        MOBILE_TRAILER_PLAYER_PATH,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/support", response_class=HTMLResponse)
