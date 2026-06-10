@@ -56,6 +56,32 @@
         empty.style.display = 'flex';
       }
 
+      function requestPlayerFullscreen(player) {
+        const iframe = player && typeof player.getIframe === 'function' ? player.getIframe() : null;
+        if (!iframe) {
+          return;
+        }
+
+        iframe.setAttribute('allow', 'autoplay; fullscreen');
+        iframe.setAttribute('allowfullscreen', 'true');
+
+        const requestFullscreen =
+          iframe.requestFullscreen ||
+          iframe.webkitRequestFullscreen ||
+          iframe.webkitEnterFullscreen ||
+          iframe.msRequestFullscreen;
+
+        if (typeof requestFullscreen === 'function') {
+          setTimeout(() => {
+            try {
+              requestFullscreen.call(iframe);
+            } catch (_) {
+              // Some iOS/WebKit combinations ignore programmatic fullscreen requests.
+            }
+          }, 120);
+        }
+      }
+
       if (!videoId) {
         showEmpty();
       } else {
@@ -67,12 +93,16 @@
             host: 'https://www.youtube.com',
             playerVars: {
               autoplay: 1,
-              playsinline: 1,
+              playsinline: 0,
+              fs: 1,
               rel: 0,
               origin: window.location.origin,
               widget_referrer: window.location.href,
             },
             events: {
+              onReady: function onReady(event) {
+                requestPlayerFullscreen(event.target);
+              },
               onError: showEmpty,
             },
           });
