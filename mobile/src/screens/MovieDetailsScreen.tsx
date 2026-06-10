@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -393,14 +394,19 @@ export default function MovieDetailsScreen({
           <>
             <View style={[styles.heroCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
               <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+              <LinearGradient
+                colors={['rgba(7,10,18,0.02)', 'rgba(7,10,18,0.18)', 'rgba(7,10,18,0.68)', 'rgba(7,10,18,0.96)']}
+                locations={[0, 0.38, 0.72, 1]}
+                style={styles.heroFade}
+              />
               <View style={styles.heroBody}>
-                <Text style={[styles.movieTitle, { color: theme.colors.text }]}>{movie.title}</Text>
-                {metaLine ? <Text style={[styles.metaLine, { color: theme.colors.textSoft }]}>{metaLine}</Text> : null}
-                {movie.tagline ? <Text style={[styles.tagline, { color: theme.colors.accent }]}>{movie.tagline}</Text> : null}
+                <Text style={[styles.movieTitle, styles.movieTitleOverlay, { color: theme.colors.text }]}>{movie.title}</Text>
+                {metaLine ? <Text style={[styles.metaLine, styles.metaLineOverlay, { color: '#e2e8f0' }]}>{metaLine}</Text> : null}
+                {movie.tagline ? <Text style={[styles.tagline, { color: '#f9d2e7' }]}>{movie.tagline}</Text> : null}
                 <View style={styles.genreRow}>
                   {movie.genres.map((genre) => (
-                    <View key={genre} style={[styles.genreChip, { backgroundColor: theme.rgba.cardStrong }]}>
-                      <Text style={[styles.genreChipLabel, { color: theme.colors.text }]}>{genre}</Text>
+                    <View key={genre} style={[styles.genreChip, styles.genreChipOverlay]}>
+                      <Text style={[styles.genreChipLabel, { color: '#ffffff' }]}>{genre}</Text>
                     </View>
                   ))}
                 </View>
@@ -681,8 +687,17 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 0.82,
   },
+  heroFade: {
+    ...StyleSheet.absoluteFillObject,
+  },
   heroBody: {
-    padding: 18,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 18,
+    paddingTop: 56,
+    paddingBottom: 18,
     gap: 10,
   },
   movieTitle: {
@@ -691,16 +706,29 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1,
   },
+  movieTitleOverlay: {
+    textShadowColor: 'rgba(0,0,0,0.42)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
   metaLine: {
     color: '#cbd5e1',
     fontSize: 13,
     lineHeight: 20,
+  },
+  metaLineOverlay: {
+    textShadowColor: 'rgba(0,0,0,0.36)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   tagline: {
     color: '#f9a8d4',
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 20,
+    textShadowColor: 'rgba(0,0,0,0.34)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 5,
   },
   genreRow: {
     flexDirection: 'row',
@@ -712,6 +740,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 12,
     paddingVertical: 8,
+  },
+  genreChipOverlay: {
+    backgroundColor: 'rgba(15,23,42,0.40)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   genreChipLabel: {
     color: '#ffffff',

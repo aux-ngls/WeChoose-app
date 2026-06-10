@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
 interface SearchFieldProps extends TextInputProps {
@@ -8,6 +8,7 @@ interface SearchFieldProps extends TextInputProps {
 
 export default function SearchField({ icon = 'search', ...props }: SearchFieldProps) {
   const { theme } = useTheme();
+  const canClear = typeof props.value === 'string' && props.value.length > 0 && typeof props.onChangeText === 'function';
 
   return (
     <View style={[styles.wrapper, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -17,6 +18,15 @@ export default function SearchField({ icon = 'search', ...props }: SearchFieldPr
         placeholderTextColor={theme.colors.textMuted}
         style={[styles.input, { color: theme.colors.text }, props.style]}
       />
+      {canClear ? (
+        <Pressable
+          style={[styles.clearButton, { backgroundColor: theme.rgba.cardStrong }]}
+          onPress={() => props.onChangeText?.('')}
+          hitSlop={8}
+        >
+          <Ionicons name="close" size={14} color={theme.colors.textMuted} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -38,5 +48,12 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     paddingVertical: 12,
+  },
+  clearButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
