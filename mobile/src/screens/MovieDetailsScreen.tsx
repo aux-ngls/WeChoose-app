@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -100,6 +101,28 @@ export default function MovieDetailsScreen({
     setShowTrailer(false);
     setShowTrailerControls(false);
   }, [route.params.movieId]);
+
+  useEffect(() => {
+    const applyOrientation = async () => {
+      try {
+        if (showTrailer) {
+          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        } else {
+          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        }
+      } catch {
+        // Ignore orientation lock failures on unsupported runtimes.
+      }
+    };
+
+    void applyOrientation();
+
+    return () => {
+      if (showTrailer) {
+        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
+      }
+    };
+  }, [showTrailer]);
 
   useEffect(() => {
     if (showPlaylistPicker) {
@@ -594,6 +617,11 @@ export default function MovieDetailsScreen({
                 <Text style={styles.stateText}>Aucune bande-annonce disponible.</Text>
               </View>
             )}
+            {!showTrailerControls ? (
+              <Pressable style={styles.trailerRevealTapZone} onPress={() => setShowTrailerControls(true)}>
+                <View />
+              </Pressable>
+            ) : null}
             {showTrailerControls ? (
               <View style={styles.trailerOverlay} pointerEvents="box-none">
                 <View style={[styles.trailerTopBar, { top: Math.max(insets.top, 12) + 4 }]}>
@@ -946,6 +974,11 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     backgroundColor: '#000000',
+  },
+  trailerRevealTapZone: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    backgroundColor: 'transparent',
   },
   modalHandleZone: {
     alignItems: 'center',
