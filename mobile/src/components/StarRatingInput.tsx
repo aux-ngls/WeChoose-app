@@ -27,7 +27,7 @@ export default function StarRatingInput({
   const inactiveColor = emptyColor ?? (theme.isDark ? '#475569' : '#d6b8c6');
   const [previewValue, setPreviewValue] = useState<number | null>(null);
   const rowRef = useRef<View | null>(null);
-  const rowPageXRef = useRef(0);
+  const rowFrameRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
 
   const STAR_SLOT_WIDTH = size + 8;
   const STAR_GAP = 6;
@@ -36,14 +36,20 @@ export default function StarRatingInput({
   const TRACK_WIDTH = STAR_SLOT_WIDTH * STAR_COUNT + STAR_GAP * (STAR_COUNT - 1);
   const displayedValue = previewValue ?? value;
 
-  const syncRowPosition = () => {
-    rowRef.current?.measureInWindow((pageX) => {
-      rowPageXRef.current = pageX;
+  const syncRowFrame = () => {
+    rowRef.current?.measureInWindow((x, y, width, height) => {
+      rowFrameRef.current = { x, y, width, height };
     });
   };
 
+  const isTouchInside = (event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+    const { x, y, width, height } = rowFrameRef.current;
+    return pageX >= x && pageX <= x + width && pageY >= y && pageY <= y + height;
+  };
+
   const getRatingFromTouch = (event: GestureResponderEvent, mode: 'start' | 'move' = 'move') => {
-    const absoluteX = event.nativeEvent.pageX - rowPageXRef.current;
+    const absoluteX = event.nativeEvent.pageX - rowFrameRef.current.x;
     const fallbackX = event.nativeEvent.locationX;
     const rawX =
       Number.isFinite(absoluteX) && absoluteX >= -24 && absoluteX <= TRACK_WIDTH + 24
@@ -70,7 +76,11 @@ export default function StarRatingInput({
     if (disabled) {
       return;
     }
-    syncRowPosition();
+    syncRowFrame();
+    if (!isTouchInside(event)) {
+      setPreviewValue(null);
+      return;
+    }
     setPreviewValue(getRatingFromTouch(event, 'move'));
   };
 
@@ -78,12 +88,21 @@ export default function StarRatingInput({
     if (disabled) {
       return;
     }
-    syncRowPosition();
+    syncRowFrame();
+    if (!isTouchInside(event)) {
+      setPreviewValue(null);
+      return;
+    }
     setPreviewValue(getRatingFromTouch(event, 'start'));
   };
 
   const commitPreview = (event: GestureResponderEvent) => {
     if (disabled) {
+      return;
+    }
+    syncRowFrame();
+    if (!isTouchInside(event)) {
+      setPreviewValue(null);
       return;
     }
     const nextValue = getRatingFromTouch(event);
@@ -113,7 +132,7 @@ export default function StarRatingInput({
     <View
       ref={rowRef}
       style={[styles.row, { width: TRACK_WIDTH }]}
-      onLayout={syncRowPosition}
+      onLayout={syncRowFrame}
       {...(!disabled ? panResponder.panHandlers : {})}
     >
       {[1, 2, 3, 4, 5].map((star) => {
