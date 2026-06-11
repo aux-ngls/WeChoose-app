@@ -513,10 +513,14 @@ export default function MovieDetailsScreen({
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.providersList}
                       renderItem={({ item }) => (
-                        <View style={[styles.providerCard, { backgroundColor: theme.rgba.cardStrong }]}>
+                        <Pressable
+                          style={[styles.providerCard, { backgroundColor: theme.rgba.cardStrong }]}
+                          disabled={!movie.watch_providers.link}
+                          onPress={() => void openProviderLink()}
+                        >
                           {item.logo_url ? <Image source={{ uri: item.logo_url }} style={styles.providerLogo} /> : null}
                           <Text style={[styles.providerName, { color: theme.colors.text }]} numberOfLines={2}>{item.name}</Text>
-                        </View>
+                        </Pressable>
                       )}
                     />
                   </View>
