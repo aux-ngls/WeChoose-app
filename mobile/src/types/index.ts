@@ -223,6 +223,9 @@ export interface MovieWatchProvider {
   id: number;
   name: string;
   logo_url: string | null;
+  web_url?: string | null;
+  ios_url?: string | null;
+  android_url?: string | null;
 }
 
 export interface MovieWatchProviders {

@@ -84,6 +84,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", DEFAULT_TMDB_API_KEY).strip() or DEFAULT_TMDB_API_KEY
+WATCHMODE_API_KEY = os.getenv("WATCHMODE_API_KEY", "").strip()
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "").strip()
 WEB_PUSH_SUBJECT = os.getenv("WEB_PUSH_SUBJECT", "").strip() or "mailto:qulte.developpeur@gmail.com"
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "").strip() or "qulte.developpeur@gmail.com"
@@ -107,10 +108,12 @@ NOW_PLAYING_CACHE_TTL_SECONDS = 300
 NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
 TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS = 60 * 60 * 6
 TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 6
+WATCHMODE_SOURCES_CACHE_TTL_SECONDS = 60 * 60 * 6
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
 tmdb_watch_providers_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 tmdb_movie_details_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+watchmode_sources_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
 GLOBAL_RECOMMENDATION_AI_ENABLED = True
 TEST_AI_DASHBOARD_USERNAME = "test"
@@ -2487,6 +2490,33 @@ def set_cached_tmdb_payload(
     return payload
 
 
+def get_cached_watchmode_sources(cache_key: str, *, allow_stale: bool = False) -> Optional[dict[str, Any]]:
+    with tmdb_cache_lock:
+        cached_entry = watchmode_sources_cache.get(cache_key)
+
+    if not cached_entry:
+        return None
+
+    expires_at, payload = cached_entry
+    if expires_at > time.time() or allow_stale:
+        return payload
+
+    return None
+
+
+def set_cached_watchmode_sources(cache_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+    with tmdb_cache_lock:
+        watchmode_sources_cache[cache_key] = (
+            time.time() + WATCHMODE_SOURCES_CACHE_TTL_SECONDS,
+            payload,
+        )
+        if len(watchmode_sources_cache) > 4096:
+            oldest_keys = sorted(watchmode_sources_cache.items(), key=lambda item: item[1][0])[:1024]
+            for cached_key, _ in oldest_keys:
+                watchmode_sources_cache.pop(cached_key, None)
+    return payload
+
+
 def fetch_tmdb_watch_providers_payload(movie_id: int) -> Optional[dict]:
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers?api_key={TMDB_API_KEY}"
@@ -2498,6 +2528,186 @@ def fetch_tmdb_watch_providers_payload(movie_id: int) -> Optional[dict]:
         return None
 
     return data if isinstance(data, dict) else None
+
+
+def normalize_watch_provider_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").strip().lower())
+
+
+WATCHMODE_PROVIDER_ALIASES = {
+    normalize_watch_provider_name("Amazon Video"): {
+        normalize_watch_provider_name("Prime Video"),
+        normalize_watch_provider_name("Amazon Prime Video"),
+        normalize_watch_provider_name("Amazon"),
+    },
+    normalize_watch_provider_name("Apple TV Store"): {
+        normalize_watch_provider_name("Apple TV"),
+        normalize_watch_provider_name("iTunes"),
+    },
+    normalize_watch_provider_name("Canal VOD"): {
+        normalize_watch_provider_name("Canal+"),
+    },
+    normalize_watch_provider_name("Google Play Movies"): {
+        normalize_watch_provider_name("Google Play"),
+    },
+}
+
+
+def sanitize_watchmode_url(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned or "paid plans only" in cleaned.lower():
+        return None
+    if cleaned.startswith("http://") or cleaned.startswith("https://") or "://" in cleaned:
+        return cleaned
+    return None
+
+
+def fetch_watchmode_payload(path: str, params: dict[str, Any]) -> Optional[Any]:
+    if not WATCHMODE_API_KEY:
+        return None
+
+    try:
+        response = requests.get(
+            f"https://api.watchmode.com/v1{path}",
+            params=params,
+            headers={"X-API-Key": WATCHMODE_API_KEY},
+            timeout=3,
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        logger.warning("Echec Watchmode path=%s params=%s: %s", path, params, exc)
+        return None
+
+
+def resolve_watchmode_title_id_for_tmdb_movie(movie_id: int) -> Optional[str]:
+    payload = fetch_watchmode_payload(
+        "/search",
+        {
+            "search_field": "tmdb_movie_id",
+            "search_value": str(movie_id),
+        },
+    )
+    if not isinstance(payload, dict):
+        return None
+
+    title_results = payload.get("title_results")
+    if not isinstance(title_results, list):
+        return None
+
+    for item in title_results:
+        if not isinstance(item, dict):
+            continue
+        if item.get("tmdb_type") != "movie":
+            continue
+        if int(item.get("tmdb_id") or 0) != int(movie_id):
+            continue
+        watchmode_id = item.get("id")
+        if isinstance(watchmode_id, int):
+            return str(watchmode_id)
+
+    return None
+
+
+def fetch_watchmode_sources_for_movie(movie_id: int, region_code: str) -> Optional[dict[str, Any]]:
+    normalized_region = (region_code or "FR").strip().upper() or "FR"
+    cache_key = f"{int(movie_id)}:{normalized_region}"
+    cached_payload = get_cached_watchmode_sources(cache_key)
+    if cached_payload is not None:
+        return cached_payload
+
+    watchmode_title_id = resolve_watchmode_title_id_for_tmdb_movie(int(movie_id))
+    if not watchmode_title_id:
+        return get_cached_watchmode_sources(cache_key, allow_stale=True)
+
+    payload = fetch_watchmode_payload(
+        f"/title/{watchmode_title_id}/sources",
+        {"regions": normalized_region},
+    )
+    if not isinstance(payload, list):
+        stale_payload = get_cached_watchmode_sources(cache_key, allow_stale=True)
+        return stale_payload
+
+    source_map: dict[str, dict[str, Any]] = {}
+    first_web_url: Optional[str] = None
+
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        source_name = str(item.get("name") or "").strip()
+        if not source_name:
+            continue
+        normalized_name = normalize_watch_provider_name(source_name)
+        if not normalized_name:
+            continue
+        source_payload = {
+            "name": source_name,
+            "type": str(item.get("type") or ""),
+            "web_url": sanitize_watchmode_url(item.get("web_url")),
+            "ios_url": sanitize_watchmode_url(item.get("ios_url")),
+            "android_url": sanitize_watchmode_url(item.get("android_url")),
+        }
+        source_map[normalized_name] = source_payload
+        if source_payload["web_url"] and not first_web_url:
+            first_web_url = source_payload["web_url"]
+
+    return set_cached_watchmode_sources(
+        cache_key,
+        {
+            "region": normalized_region,
+            "link": first_web_url or "",
+            "sources_by_name": source_map,
+        },
+    )
+
+
+def attach_watchmode_links_to_provider(provider: dict[str, Any], watchmode_sources_by_name: dict[str, Any]) -> dict[str, Any]:
+    enriched_provider = dict(provider)
+    normalized_name = normalize_watch_provider_name(str(provider.get("name") or ""))
+    match = watchmode_sources_by_name.get(normalized_name)
+
+    if not match:
+        alias_names = WATCHMODE_PROVIDER_ALIASES.get(normalized_name, set())
+        for alias_name in alias_names:
+            match = watchmode_sources_by_name.get(alias_name)
+            if match:
+                break
+
+    if not isinstance(match, dict):
+        return enriched_provider
+
+    enriched_provider["web_url"] = match.get("web_url")
+    enriched_provider["ios_url"] = match.get("ios_url")
+    enriched_provider["android_url"] = match.get("android_url")
+    return enriched_provider
+
+
+def enhance_watch_providers_with_watchmode(movie_id: int, watch_providers: dict) -> dict:
+    if not WATCHMODE_API_KEY:
+        return watch_providers
+
+    region_code = str(watch_providers.get("region") or "FR").strip().upper() or "FR"
+    watchmode_payload = fetch_watchmode_sources_for_movie(int(movie_id), region_code)
+    if not isinstance(watchmode_payload, dict):
+        return watch_providers
+
+    sources_by_name = watchmode_payload.get("sources_by_name")
+    if not isinstance(sources_by_name, dict) or not sources_by_name:
+        return watch_providers
+
+    enriched = dict(watch_providers)
+    for key in ("subscription", "rent", "buy"):
+        items = watch_providers.get(key)
+        if not isinstance(items, list):
+            continue
+        enriched[key] = [attach_watchmode_links_to_provider(item, sources_by_name) for item in items]
+
+    if not enriched.get("link") and watchmode_payload.get("link"):
+        enriched["link"] = str(watchmode_payload["link"])
+
+    return enriched
 
 
 def serialize_tmdb_watch_providers(data: dict) -> dict:
@@ -2541,16 +2751,17 @@ def get_tmdb_watch_providers(movie_id: int) -> dict:
 
     provider_payload = fetch_tmdb_watch_providers_payload(movie_id)
     if provider_payload is not None:
-        return set_cached_tmdb_payload(
+        tmdb_payload = set_cached_tmdb_payload(
             tmdb_watch_providers_cache,
             movie_id,
             serialize_tmdb_watch_providers(provider_payload),
             TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS,
         )
+        return enhance_watch_providers_with_watchmode(movie_id, tmdb_payload)
 
     stale_payload = get_cached_tmdb_payload(tmdb_watch_providers_cache, movie_id, allow_stale=True)
     if stale_payload is not None:
-        return stale_payload
+        return enhance_watch_providers_with_watchmode(movie_id, stale_payload)
 
     return {
         "region": "",

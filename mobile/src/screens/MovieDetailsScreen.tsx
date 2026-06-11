@@ -38,6 +38,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
+import type { MovieWatchProvider } from '../types';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
 const MODAL_DISMISS_THRESHOLD = 90;
@@ -307,11 +308,29 @@ export default function MovieDetailsScreen({
     }
   };
 
-  const openProviderLink = async () => {
-    if (!movie?.watch_providers.link) {
+  const openProviderLink = async (provider?: MovieWatchProvider | null) => {
+    const candidates = [
+      provider?.ios_url,
+      provider?.web_url,
+      provider?.android_url,
+      movie?.watch_providers.link,
+    ].filter((value): value is string => Boolean(value));
+
+    if (!candidates.length) {
       return;
     }
-    await Linking.openURL(movie.watch_providers.link);
+
+    for (const candidate of candidates) {
+      try {
+        const supported = await Linking.canOpenURL(candidate);
+        if (supported) {
+          await Linking.openURL(candidate);
+          return;
+        }
+      } catch {
+        // Continue to the next candidate link.
+      }
+    }
   };
 
   const openTrailer = () => {
@@ -515,8 +534,8 @@ export default function MovieDetailsScreen({
                       renderItem={({ item }) => (
                         <Pressable
                           style={[styles.providerCard, { backgroundColor: theme.rgba.cardStrong }]}
-                          disabled={!movie.watch_providers.link}
-                          onPress={() => void openProviderLink()}
+                          disabled={!item.web_url && !item.ios_url && !item.android_url && !movie.watch_providers.link}
+                          onPress={() => void openProviderLink(item)}
                         >
                           {item.logo_url ? <Image source={{ uri: item.logo_url }} style={styles.providerLogo} /> : null}
                           <Text style={[styles.providerName, { color: theme.colors.text }]} numberOfLines={2}>{item.name}</Text>
