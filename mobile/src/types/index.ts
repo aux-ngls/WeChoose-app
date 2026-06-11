@@ -362,6 +362,17 @@ export interface TestAiMetricsPayload {
   recent: TestAiRecentItem[];
 }
 
+export interface RuntimeAlertItem {
+  id: string;
+  tone: 'info' | 'success' | 'error';
+  title: string;
+  message: string;
+}
+
+export interface RuntimeAlertsPayload {
+  items: RuntimeAlertItem[];
+}
+
 export interface DirectMessage {
   id: number;
   content: string;

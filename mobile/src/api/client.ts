@@ -22,6 +22,7 @@ import type {
   SocialReview,
   SocialUser,
   TestAiMetricsPayload,
+  RuntimeAlertsPayload,
   UserMovieRating,
 } from '../types';
 
@@ -177,6 +178,10 @@ export async function resetRecommendationProfile(token: string): Promise<{
 
 export async function fetchTestAiMetrics(token: string): Promise<TestAiMetricsPayload> {
   return request<TestAiMetricsPayload>('/ai/test/metrics', undefined, token);
+}
+
+export async function fetchRuntimeAlerts(token: string): Promise<RuntimeAlertsPayload> {
+  return request<RuntimeAlertsPayload>('/app/runtime-alerts', undefined, token);
 }
 
 export async function getOnboardingPreferences(token: string): Promise<OnboardingPreferencesResponse> {

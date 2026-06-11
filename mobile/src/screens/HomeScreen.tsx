@@ -26,6 +26,7 @@ import {
   ApiError,
   dislikeMovie,
   fetchMovieFeed,
+  fetchRuntimeAlerts,
   fetchUserMovieRating,
   getOnboardingPreferences,
   rateMovie,
@@ -38,7 +39,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTipJar } from '../support/TipJarContext';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
+import { FALLBACK_POSTER, type RuntimeAlertItem, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
 import { recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
 
 const TARGET_STACK_SIZE = 14;
@@ -119,6 +120,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(() => !initialCache || initialCache.movies.length === 0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [runtimeAlert, setRuntimeAlert] = useState<RuntimeAlertItem | null>(null);
   const [selectedRating, setSelectedRating] = useState(0);
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
   const [showTinderHelp, setShowTinderHelp] = useState(false);
@@ -248,6 +250,22 @@ export default function HomeScreen() {
     }
   }, [filterExcludedMovies, session, signOut]);
 
+  const loadRuntimeAlerts = useCallback(async () => {
+    if (!session) {
+      setRuntimeAlert(null);
+      return;
+    }
+
+    try {
+      const payload = await fetchRuntimeAlerts(session.token);
+      setRuntimeAlert(payload.items[0] ?? null);
+    } catch (runtimeAlertError) {
+      if (runtimeAlertError instanceof ApiError && runtimeAlertError.status === 401) {
+        await signOut();
+      }
+    }
+  }, [session, signOut]);
+
   const hydrateCachedMovies = useCallback(async () => {
     if (!session || moviesRef.current.length > 0) {
       return moviesRef.current.length > 0;
@@ -328,6 +346,7 @@ export default function HomeScreen() {
         return;
       }
       void (async () => {
+        await loadRuntimeAlerts();
         await loadOnboardingExcludes();
         let hasMovies = moviesRef.current.length > 0;
         if (!hasMovies) {
@@ -347,7 +366,7 @@ export default function HomeScreen() {
           void loadFeed(currentStack.map((movie) => movie.id));
         }
       })();
-    }, [hydrateCachedMovies, loadFeed, loadOnboardingExcludes, session]),
+    }, [hydrateCachedMovies, loadFeed, loadOnboardingExcludes, loadRuntimeAlerts, session]),
   );
 
   const refillIfNeeded = useCallback((nextMovies: SearchMovie[]) => {
@@ -685,6 +704,7 @@ export default function HomeScreen() {
 
   return (
     <AppScreen scroll={false} contentStyle={[styles.screen, isWideLayout && styles.tabletScreen]}>
+      {runtimeAlert ? <InlineBanner message={`${runtimeAlert.title} - ${runtimeAlert.message}`} tone={runtimeAlert.tone} /> : null}
       {error ? <InlineBanner message={error} tone="error" /> : null}
 
       <View style={styles.stackArea}>

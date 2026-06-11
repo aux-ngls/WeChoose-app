@@ -112,6 +112,7 @@ TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS = 60 * 60 * 6
 TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 6
 WATCHMODE_SOURCES_CACHE_TTL_SECONDS = 60 * 60 * 6
 TMDB_WATCH_PAGE_LINKS_CACHE_TTL_SECONDS = 60 * 60 * 12
+TMDB_WATCH_SCRAPER_STATUS_KEY = "tmdb_watch_scraper_status"
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
 tmdb_watch_providers_cache: dict[int, tuple[float, dict[str, Any]]] = {}
@@ -593,12 +594,15 @@ def healthcheck():
     if REDIS_URL:
         redis_status = "connected" if redis_client is not None else "error"
 
-    overall_status = "ok" if db_status == "ok" and redis_status != "error" else "degraded"
+    scraper_status_payload = get_json_app_setting(TMDB_WATCH_SCRAPER_STATUS_KEY) or {"status": "ok"}
+    scraper_status = str(scraper_status_payload.get("status") or "ok")
+    overall_status = "ok" if db_status == "ok" and redis_status != "error" and scraper_status != "warning" else "degraded"
     return {
         "status": overall_status,
         "database": db_status,
         "redis": redis_status,
         "database_mode": DATABASE_BACKEND,
+        "watch_provider_scraper": scraper_status_payload,
     }
 
 
@@ -2795,6 +2799,37 @@ def scrape_tmdb_watch_page_provider_links(page_url: str) -> dict[str, str]:
     return provider_links
 
 
+@app.get("/app/runtime-alerts")
+def get_runtime_alerts(current_user: dict = Depends(get_current_user)):
+    del current_user
+    alerts: list[dict[str, str]] = []
+    scraper_status = get_json_app_setting(TMDB_WATCH_SCRAPER_STATUS_KEY) or {}
+    if str(scraper_status.get("status") or "ok") == "warning":
+        reason = str(scraper_status.get("last_failure_reason") or "scrape_failed")
+        last_failure_at = str(scraper_status.get("last_failure_at") or "")
+        message = (
+            "Les liens streaming exacts de certains films peuvent être moins fiables pour le moment. "
+            "Une mise à jour de la source TMDB est probablement nécessaire."
+        )
+        if reason == "zero_links_extracted":
+            message = (
+                "Qulte détecte un changement probable sur TMDB: certains liens streaming exacts "
+                "peuvent ne plus être récupérés automatiquement."
+            )
+        if last_failure_at:
+            message = f"{message} Dernière détection: {last_failure_at}."
+
+        alerts.append(
+            {
+                "id": "tmdb-watch-scraper-warning",
+                "tone": "error",
+                "title": "Liens streaming à vérifier",
+                "message": message,
+            }
+        )
+    return {"items": alerts}
+
+
 def build_provider_search_fallback_url(
     provider_name: str,
     movie_title: str,
@@ -3010,6 +3045,12 @@ def attach_tmdb_scraped_links_to_provider(provider: dict[str, Any], scraped_link
 def enhance_watch_providers_with_tmdb_scrape(movie_id: int, watch_providers: dict) -> dict:
     region_code = str(watch_providers.get("region") or "FR").strip().upper() or "FR"
     page_url = str(watch_providers.get("link") or "").strip()
+    expected_missing_provider_count = sum(
+        1
+        for key in ("subscription", "rent", "buy")
+        for item in (watch_providers.get(key) or [])
+        if isinstance(item, dict) and not item.get("web_url")
+    )
     cached_payload = get_cached_tmdb_page_provider_links(int(movie_id), region_code)
 
     provider_links_by_name: Optional[dict[str, str]] = None
@@ -3027,7 +3068,32 @@ def enhance_watch_providers_with_tmdb_scrape(movie_id: int, watch_providers: dic
         if scraped_links:
             cached_payload = set_cached_tmdb_page_provider_links(int(movie_id), region_code, scraped_links, page_url)
             provider_links_by_name = dict(scraped_links)
+            mark_tmdb_watch_scraper_status(
+                status_value="ok",
+                movie_id=int(movie_id),
+                region_code=region_code,
+                page_url=page_url,
+                extracted_links_count=len(scraped_links),
+                expected_provider_count=expected_missing_provider_count,
+            )
         else:
+            if page_url and expected_missing_provider_count > 0:
+                logger.warning(
+                    "Aucun lien exact extrait depuis TMDB watch page movie_id=%s region=%s expected_missing=%s url=%s",
+                    movie_id,
+                    region_code,
+                    expected_missing_provider_count,
+                    page_url,
+                )
+                mark_tmdb_watch_scraper_status(
+                    status_value="warning",
+                    movie_id=int(movie_id),
+                    region_code=region_code,
+                    page_url=page_url,
+                    reason="zero_links_extracted",
+                    extracted_links_count=0,
+                    expected_provider_count=expected_missing_provider_count,
+                )
             stale_payload = get_cached_tmdb_page_provider_links(int(movie_id), region_code, allow_stale=True)
             stale_links = stale_payload.get("provider_links") if isinstance(stale_payload, dict) else None
             if isinstance(stale_links, dict):
@@ -4421,6 +4487,84 @@ def set_app_setting(cursor, key: str, value: str):
         """.format(param=SQL_PARAM),
         (key, value),
     )
+
+
+def get_json_app_setting(key: str) -> Optional[dict[str, Any]]:
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        raw_value = get_app_setting(cursor, key)
+    finally:
+        conn.close()
+
+    if not raw_value:
+        return None
+
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return None
+
+    return payload if isinstance(payload, dict) else None
+
+
+def set_json_app_setting(key: str, payload: dict[str, Any]) -> None:
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        set_app_setting(cursor, key, json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_tmdb_watch_scraper_status(
+    *,
+    status_value: str,
+    movie_id: Optional[int] = None,
+    region_code: str = "FR",
+    page_url: str = "",
+    reason: str = "",
+    extracted_links_count: int = 0,
+    expected_provider_count: int = 0,
+) -> None:
+    now_iso = utcnow_naive().isoformat() + "Z"
+    previous = get_json_app_setting(TMDB_WATCH_SCRAPER_STATUS_KEY) or {}
+    consecutive_failures = int(previous.get("consecutive_failures") or 0)
+
+    if status_value == "ok":
+        payload = {
+            "status": "ok",
+            "last_ok_at": now_iso,
+            "last_checked_movie_id": movie_id,
+            "last_checked_region": region_code,
+            "last_checked_page_url": page_url,
+            "last_extracted_links_count": extracted_links_count,
+            "consecutive_failures": 0,
+            "last_failure_at": previous.get("last_failure_at"),
+            "last_failure_reason": previous.get("last_failure_reason"),
+            "last_failure_movie_id": previous.get("last_failure_movie_id"),
+            "last_failure_region": previous.get("last_failure_region"),
+            "last_failure_page_url": previous.get("last_failure_page_url"),
+        }
+    else:
+        payload = {
+            "status": "warning",
+            "last_ok_at": previous.get("last_ok_at"),
+            "last_checked_movie_id": movie_id,
+            "last_checked_region": region_code,
+            "last_checked_page_url": page_url,
+            "last_failure_at": now_iso,
+            "last_failure_reason": reason or "scrape_failed",
+            "last_failure_movie_id": movie_id,
+            "last_failure_region": region_code,
+            "last_failure_page_url": page_url,
+            "last_extracted_links_count": extracted_links_count,
+            "last_expected_provider_count": expected_provider_count,
+            "consecutive_failures": consecutive_failures + 1,
+        }
+
+    set_json_app_setting(TMDB_WATCH_SCRAPER_STATUS_KEY, payload)
 
 
 def encode_base64url(value: bytes) -> str:
