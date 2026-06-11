@@ -22,6 +22,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from threading import Lock
 from typing import Any, Optional
+from urllib.parse import quote_plus
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
@@ -2575,6 +2576,96 @@ def sanitize_watchmode_url(value: Any) -> Optional[str]:
     return None
 
 
+def build_provider_search_fallback_url(
+    provider_name: str,
+    movie_title: str,
+    region_code: str,
+) -> Optional[str]:
+    normalized_name = normalize_watch_provider_name(provider_name)
+    if not normalized_name:
+        return None
+
+    query = quote_plus((movie_title or "").strip())
+    region = (region_code or "FR").strip().upper() or "FR"
+    apple_locale = "fr" if region == "FR" else region.lower()
+
+    if "amazonchannel" in normalized_name:
+        return f"https://www.primevideo.com/search/ref=atv_nb_sr?phrase={query}" if query else "https://www.primevideo.com/"
+    if "appletvchannel" in normalized_name:
+        return f"https://tv.apple.com/{apple_locale}/search?term={query}" if query else f"https://tv.apple.com/{apple_locale}"
+
+    provider_fallbacks = {
+        normalize_watch_provider_name("Netflix"): (
+            f"https://www.netflix.com/search?q={query}" if query else "https://www.netflix.com/"
+        ),
+        normalize_watch_provider_name("Amazon Video"): (
+            f"https://www.primevideo.com/search/ref=atv_nb_sr?phrase={query}" if query else "https://www.primevideo.com/"
+        ),
+        normalize_watch_provider_name("Amazon Prime Video"): (
+            f"https://www.primevideo.com/search/ref=atv_nb_sr?phrase={query}" if query else "https://www.primevideo.com/"
+        ),
+        normalize_watch_provider_name("Amazon Prime Video with Ads"): (
+            f"https://www.primevideo.com/search/ref=atv_nb_sr?phrase={query}" if query else "https://www.primevideo.com/"
+        ),
+        normalize_watch_provider_name("Prime Video"): (
+            f"https://www.primevideo.com/search/ref=atv_nb_sr?phrase={query}" if query else "https://www.primevideo.com/"
+        ),
+        normalize_watch_provider_name("Apple TV Store"): (
+            f"https://tv.apple.com/{apple_locale}/search?term={query}" if query else f"https://tv.apple.com/{apple_locale}"
+        ),
+        normalize_watch_provider_name("Apple TV"): (
+            f"https://tv.apple.com/{apple_locale}/search?term={query}" if query else f"https://tv.apple.com/{apple_locale}"
+        ),
+        normalize_watch_provider_name("Disney Plus"): "https://www.disneyplus.com/",
+        normalize_watch_provider_name("Disney+"): "https://www.disneyplus.com/",
+        normalize_watch_provider_name("Canal+"): "https://www.canalplus.com/",
+        normalize_watch_provider_name("Canal VOD"): "https://vod.canalplus.com/",
+        normalize_watch_provider_name("HBO Max"): "https://www.max.com/",
+        normalize_watch_provider_name("Max"): "https://www.max.com/",
+        normalize_watch_provider_name("Paramount Plus"): (
+            f"https://www.paramountplus.com/fr/search/?q={query}" if region == "FR" and query else
+            "https://www.paramountplus.com/fr/search/" if region == "FR" else
+            f"https://www.paramountplus.com/search/?q={query}" if query else
+            "https://www.paramountplus.com/search/"
+        ),
+        normalize_watch_provider_name("Paramount+"): (
+            f"https://www.paramountplus.com/fr/search/?q={query}" if region == "FR" and query else
+            "https://www.paramountplus.com/fr/search/" if region == "FR" else
+            f"https://www.paramountplus.com/search/?q={query}" if query else
+            "https://www.paramountplus.com/search/"
+        ),
+    }
+    return provider_fallbacks.get(normalized_name)
+
+
+def apply_provider_search_fallbacks(
+    watch_providers: dict[str, Any],
+    movie_title: str,
+    region_code: str,
+) -> dict[str, Any]:
+    enriched = dict(watch_providers)
+    for key in ("subscription", "rent", "buy"):
+        items = watch_providers.get(key)
+        if not isinstance(items, list):
+            continue
+        enriched_items: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            enriched_item = dict(item)
+            if not enriched_item.get("web_url"):
+                fallback_url = build_provider_search_fallback_url(
+                    str(enriched_item.get("name") or ""),
+                    movie_title,
+                    region_code,
+                )
+                if fallback_url:
+                    enriched_item["web_url"] = fallback_url
+            enriched_items.append(enriched_item)
+        enriched[key] = enriched_items
+    return enriched
+
+
 def fetch_watchmode_payload(path: str, params: dict[str, Any]) -> Optional[Any]:
     if not WATCHMODE_API_KEY:
         return None
@@ -2797,6 +2888,11 @@ def fetch_tmdb_movie_details_payload(movie_id: int) -> Optional[dict]:
 
 
 def build_tmdb_movie_details_payload(data: dict, watch_providers: dict) -> dict:
+    resolved_watch_providers = apply_provider_search_fallbacks(
+        watch_providers,
+        str(data.get("title") or ""),
+        str(watch_providers.get("region") or ""),
+    )
     trailer = next(
         (
             f"https://www.youtube.com/embed/{video['key']}"
@@ -2837,7 +2933,7 @@ def build_tmdb_movie_details_payload(data: dict, watch_providers: dict) -> dict:
         "tagline": str(data.get("tagline") or ""),
         "genres": genres[:4],
         "directors": [str(name) for name in directors],
-        "watch_providers": watch_providers,
+        "watch_providers": resolved_watch_providers,
     }
 
 
