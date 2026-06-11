@@ -7068,22 +7068,54 @@ def fetch_now_playing_movies(limit: int = 18) -> list[dict]:
     if cached_items and cached_expiration > time.time():
         return [dict(movie) for movie in list(cached_items)[:limit]]
 
+    today = datetime.date.today()
+    recent_cutoff = today - datetime.timedelta(days=120)
+
     try:
-        url = f"https://api.themoviedb.org/3/movie/now_playing?api_key={TMDB_API_KEY}&language=fr-FR&page=1"
-        results = requests.get(url, timeout=3).json().get("results", [])[:limit]
+        response = requests.get(
+            "https://api.themoviedb.org/3/movie/now_playing",
+            params={
+                "api_key": TMDB_API_KEY,
+                "language": "fr-FR",
+                "page": 1,
+                "region": "FR",
+            },
+            timeout=3,
+        )
+        results = response.json().get("results", [])[: max(limit * 3, 40)]
     except Exception:
         results = []
 
-    movies = [
-        {
-            "id": int(movie["id"]),
-            "title": str(movie.get("title") or ""),
-            "poster_url": f"https://image.tmdb.org/t/p/w500{movie.get('poster_path', '')}" if movie.get("poster_path") else "",
-            "rating": float(movie.get("vote_average") or 0),
-            "overview": str(movie.get("overview") or ""),
-        }
-        for movie in results
-    ]
+    movies: list[dict] = []
+    for movie in results:
+        if not isinstance(movie, dict) or not isinstance(movie.get("id"), int):
+            continue
+
+        raw_release_date = str(movie.get("release_date") or "").strip()
+        if not raw_release_date:
+            continue
+
+        try:
+            release_date = datetime.date.fromisoformat(raw_release_date)
+        except ValueError:
+            continue
+
+        # Avoid very old re-releases or future placeholders in the cinema-only filter.
+        if release_date > today or release_date < recent_cutoff:
+            continue
+
+        movies.append(
+            {
+                "id": int(movie["id"]),
+                "title": str(movie.get("title") or ""),
+                "poster_url": f"https://image.tmdb.org/t/p/w500{movie.get('poster_path', '')}" if movie.get("poster_path") else "",
+                "rating": float(movie.get("vote_average") or 0),
+                "overview": str(movie.get("overview") or ""),
+            }
+        )
+        if len(movies) >= limit:
+            break
+
     now_playing_cache["items"] = movies
     now_playing_cache["expires_at"] = time.time() + NOW_PLAYING_CACHE_TTL_SECONDS
     return [dict(movie) for movie in movies[:limit]]
