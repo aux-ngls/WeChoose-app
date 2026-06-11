@@ -209,11 +209,14 @@ export async function saveOnboardingPreferences(
 
 export async function fetchMovieFeed(
   token: string,
-  options?: { excludeIds?: number[]; limit?: number; mode?: string },
+  options?: { excludeIds?: number[]; limit?: number; mode?: string; onlyNowPlaying?: boolean },
 ): Promise<SearchMovie[]> {
   const params = new URLSearchParams();
   params.set('limit', String(options?.limit ?? 8));
   params.set('mode', options?.mode ?? 'tinder');
+  if (options?.onlyNowPlaying) {
+    params.set('only_now_playing', '1');
+  }
   if (options?.excludeIds?.length) {
     params.set('exclude_ids', options.excludeIds.join(','));
   }
