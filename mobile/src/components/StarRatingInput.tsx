@@ -34,7 +34,7 @@ export default function StarRatingInput({
   const TRACK_WIDTH = STAR_SLOT_WIDTH * STAR_COUNT + STAR_GAP * (STAR_COUNT - 1);
   const displayedValue = previewValue ?? value;
 
-  const getRatingFromTouch = (event: GestureResponderEvent) => {
+  const getRatingFromTouch = (event: GestureResponderEvent, mode: 'start' | 'move' = 'move') => {
     const clampedX = Math.max(0, Math.min(event.nativeEvent.locationX, TRACK_WIDTH));
     const starIndex = Math.min(STAR_COUNT - 1, Math.floor(clampedX / STAR_UNIT));
     const offsetInUnit = clampedX - starIndex * STAR_UNIT;
@@ -45,6 +45,10 @@ export default function StarRatingInput({
       return baseStarValue;
     }
 
+    if (mode === 'start') {
+      return baseStarValue;
+    }
+
     return clampedOffset <= STAR_SLOT_WIDTH / 2 ? baseStarValue - 0.5 : baseStarValue;
   };
 
@@ -52,7 +56,14 @@ export default function StarRatingInput({
     if (disabled) {
       return;
     }
-    setPreviewValue(getRatingFromTouch(event));
+    setPreviewValue(getRatingFromTouch(event, 'move'));
+  };
+
+  const startPreview = (event: GestureResponderEvent) => {
+    if (disabled) {
+      return;
+    }
+    setPreviewValue(getRatingFromTouch(event, 'start'));
   };
 
   const commitPreview = (event: GestureResponderEvent) => {
@@ -73,7 +84,7 @@ export default function StarRatingInput({
       PanResponder.create({
         onStartShouldSetPanResponder: () => !disabled,
         onMoveShouldSetPanResponder: () => !disabled,
-        onPanResponderGrant: updatePreview,
+        onPanResponderGrant: startPreview,
         onPanResponderMove: updatePreview,
         onPanResponderRelease: commitPreview,
         onPanResponderTerminate: clearPreview,
