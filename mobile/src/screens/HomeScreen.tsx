@@ -758,6 +758,12 @@ export default function HomeScreen() {
                       <Ionicons name="star" size={12} color={theme.colors.ratingText} />
                       <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{currentMovie.rating.toFixed(1)}</Text>
                     </View>
+                    {currentMovie.is_now_playing ? (
+                      <View style={styles.nowPlayingPill}>
+                        <Ionicons name="ticket-outline" size={12} color="#fff7ed" />
+                        <Text style={styles.nowPlayingPillLabel}>Actuellement au cinéma</Text>
+                      </View>
+                    ) : null}
                     {currentMovie.release_date ? (
                       <View style={styles.metaPill}>
                         <Text style={styles.metaPillLabel}>{currentMovie.release_date}</Text>
@@ -1002,6 +1008,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  nowPlayingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: 'rgba(180, 83, 9, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 237, 213, 0.42)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  nowPlayingPillLabel: {
+    color: '#fff7ed',
+    fontSize: 11,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.22)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },

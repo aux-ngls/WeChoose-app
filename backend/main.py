@@ -6196,6 +6196,8 @@ def compute_recommendation_feed(
     if movies_df.empty:
         return []
 
+    now_playing_ids = {int(movie["id"]) for movie in fetch_now_playing_movies(limit=60)}
+
     positive_signal_weights: dict[int, float] = {}
     negative_signal_weights: dict[int, float] = {}
 
@@ -6620,6 +6622,7 @@ def compute_recommendation_feed(
             "title": str(row["title"]),
             "poster_url": poster_urls_by_movie_id.get(movie_id) or fetch_poster_from_tmdb(movie_id),
             "rating": float(row["vote_average"]),
+            "is_now_playing": movie_id in now_playing_ids,
             "recommendation_reason": build_recommendation_reason(
                 movie_id=movie_id,
                 positive_indices=positive_indices,
