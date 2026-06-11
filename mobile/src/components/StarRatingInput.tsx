@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { GestureResponderEvent, PanResponder, StyleSheet, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -26,6 +26,8 @@ export default function StarRatingInput({
   const activeColor = color ?? '#facc15';
   const inactiveColor = emptyColor ?? (theme.isDark ? '#475569' : '#d6b8c6');
   const [previewValue, setPreviewValue] = useState<number | null>(null);
+  const rowRef = useRef<View | null>(null);
+  const rowPageXRef = useRef(0);
 
   const STAR_SLOT_WIDTH = size + 8;
   const STAR_GAP = 6;
@@ -34,8 +36,20 @@ export default function StarRatingInput({
   const TRACK_WIDTH = STAR_SLOT_WIDTH * STAR_COUNT + STAR_GAP * (STAR_COUNT - 1);
   const displayedValue = previewValue ?? value;
 
+  const syncRowPosition = () => {
+    rowRef.current?.measureInWindow((pageX) => {
+      rowPageXRef.current = pageX;
+    });
+  };
+
   const getRatingFromTouch = (event: GestureResponderEvent, mode: 'start' | 'move' = 'move') => {
-    const clampedX = Math.max(0, Math.min(event.nativeEvent.locationX, TRACK_WIDTH));
+    const absoluteX = event.nativeEvent.pageX - rowPageXRef.current;
+    const fallbackX = event.nativeEvent.locationX;
+    const rawX =
+      Number.isFinite(absoluteX) && absoluteX >= -24 && absoluteX <= TRACK_WIDTH + 24
+        ? absoluteX
+        : fallbackX;
+    const clampedX = Math.max(0, Math.min(rawX, TRACK_WIDTH));
     const starIndex = Math.min(STAR_COUNT - 1, Math.floor(clampedX / STAR_UNIT));
     const offsetInUnit = clampedX - starIndex * STAR_UNIT;
     const clampedOffset = Math.min(Math.max(offsetInUnit, 0), STAR_SLOT_WIDTH);
@@ -56,6 +70,7 @@ export default function StarRatingInput({
     if (disabled) {
       return;
     }
+    syncRowPosition();
     setPreviewValue(getRatingFromTouch(event, 'move'));
   };
 
@@ -63,6 +78,7 @@ export default function StarRatingInput({
     if (disabled) {
       return;
     }
+    syncRowPosition();
     setPreviewValue(getRatingFromTouch(event, 'start'));
   };
 
@@ -95,7 +111,9 @@ export default function StarRatingInput({
 
   return (
     <View
+      ref={rowRef}
       style={[styles.row, { width: TRACK_WIDTH }]}
+      onLayout={syncRowPosition}
       {...(!disabled ? panResponder.panHandlers : {})}
     >
       {[1, 2, 3, 4, 5].map((star) => {
