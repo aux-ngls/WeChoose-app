@@ -20,9 +20,10 @@ import uuid
 from functools import lru_cache
 from email.message import EmailMessage
 from email.utils import formataddr
+from html import unescape as html_unescape
 from threading import Lock
 from typing import Any, Optional
-from urllib.parse import quote_plus
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
@@ -110,6 +111,7 @@ NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
 TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS = 60 * 60 * 6
 TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 6
 WATCHMODE_SOURCES_CACHE_TTL_SECONDS = 60 * 60 * 6
+TMDB_WATCH_PAGE_LINKS_CACHE_TTL_SECONDS = 60 * 60 * 12
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
 tmdb_watch_providers_cache: dict[int, tuple[float, dict[str, Any]]] = {}
@@ -767,6 +769,22 @@ def init_postgres_db():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_password_reset_codes_user_created ON password_reset_codes(user_id, created_at DESC)"
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS movie_provider_link_cache (
+            movie_id INTEGER NOT NULL,
+            region_code TEXT NOT NULL,
+            provider_links_json TEXT NOT NULL DEFAULT '{}',
+            source_page_url TEXT,
+            fetched_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            PRIMARY KEY (movie_id, region_code)
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_movie_provider_link_cache_expires ON movie_provider_link_cache(expires_at)"
+    )
     conn.commit()
     conn.close()
 
@@ -1007,6 +1025,19 @@ def init_sqlite_db():
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_password_reset_codes_user_created ON password_reset_codes(user_id, created_at DESC)"
+    )
+
+    # Table MOVIE_PROVIDER_LINK_CACHE
+    cursor.execute('''CREATE TABLE IF NOT EXISTS movie_provider_link_cache (
+                        movie_id INTEGER NOT NULL,
+                        region_code TEXT NOT NULL,
+                        provider_links_json TEXT NOT NULL DEFAULT '{}',
+                        source_page_url TEXT,
+                        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        expires_at TIMESTAMP,
+                        PRIMARY KEY (movie_id, region_code))''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_movie_provider_link_cache_expires ON movie_provider_link_cache(expires_at)"
     )
 
     # Table WEB_PUSH_SUBSCRIPTIONS
@@ -2576,6 +2607,194 @@ def sanitize_watchmode_url(value: Any) -> Optional[str]:
     return None
 
 
+def utcnow_naive() -> datetime.datetime:
+    return datetime.datetime.utcnow().replace(microsecond=0)
+
+
+def parse_db_timestamp(value: Any) -> Optional[datetime.datetime]:
+    if isinstance(value, datetime.datetime):
+        return value.replace(tzinfo=None)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    cleaned = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def lookup_provider_alias_match(provider_name: str, source_map: dict[str, Any]) -> Optional[Any]:
+    normalized_name = normalize_watch_provider_name(provider_name)
+    if not normalized_name:
+        return None
+
+    match = source_map.get(normalized_name)
+    if match is not None:
+        return match
+
+    alias_names = WATCHMODE_PROVIDER_ALIASES.get(normalized_name, set())
+    for alias_name in alias_names:
+        match = source_map.get(alias_name)
+        if match is not None:
+            return match
+
+    return None
+
+
+def get_cached_tmdb_page_provider_links(movie_id: int, region_code: str, *, allow_stale: bool = False) -> Optional[dict[str, Any]]:
+    conn = get_db_connection(row_factory=True)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT provider_links_json, source_page_url, fetched_at, expires_at
+            FROM movie_provider_link_cache
+            WHERE movie_id = {SQL_PARAM} AND region_code = {SQL_PARAM}
+            """,
+            (int(movie_id), (region_code or "FR").strip().upper() or "FR"),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return None
+
+    expires_at = parse_db_timestamp(row_get_value(row, "expires_at", 3))
+    if expires_at is not None and expires_at <= utcnow_naive() and not allow_stale:
+        return None
+
+    try:
+        provider_links = json.loads(str(row_get_value(row, "provider_links_json", 0) or "{}"))
+    except json.JSONDecodeError:
+        provider_links = {}
+
+    if not isinstance(provider_links, dict):
+        provider_links = {}
+
+    return {
+        "provider_links": provider_links,
+        "source_page_url": str(row_get_value(row, "source_page_url", 1) or ""),
+        "fetched_at": row_get_value(row, "fetched_at", 2),
+        "expires_at": row_get_value(row, "expires_at", 3),
+    }
+
+
+def set_cached_tmdb_page_provider_links(
+    movie_id: int,
+    region_code: str,
+    provider_links: dict[str, str],
+    source_page_url: str,
+) -> dict[str, Any]:
+    normalized_region = (region_code or "FR").strip().upper() or "FR"
+    now = utcnow_naive()
+    expires_at = now + datetime.timedelta(seconds=TMDB_WATCH_PAGE_LINKS_CACHE_TTL_SECONDS)
+    serialized_links = json.dumps(provider_links, ensure_ascii=False, separators=(",", ":"))
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            INSERT INTO movie_provider_link_cache (
+                movie_id, region_code, provider_links_json, source_page_url, fetched_at, expires_at
+            ) VALUES ({SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM})
+            ON CONFLICT (movie_id, region_code) DO UPDATE SET
+                provider_links_json = excluded.provider_links_json,
+                source_page_url = excluded.source_page_url,
+                fetched_at = excluded.fetched_at,
+                expires_at = excluded.expires_at
+            """,
+            (
+                int(movie_id),
+                normalized_region,
+                serialized_links,
+                source_page_url,
+                now.isoformat(sep=" "),
+                expires_at.isoformat(sep=" "),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "provider_links": dict(provider_links),
+        "source_page_url": source_page_url,
+        "fetched_at": now.isoformat(sep=" "),
+        "expires_at": expires_at.isoformat(sep=" "),
+    }
+
+
+def unwrap_provider_redirect_url(raw_url: str) -> Optional[str]:
+    current_url = html_unescape((raw_url or "").strip())
+    if not current_url.startswith(("http://", "https://")):
+        return None
+
+    for _ in range(4):
+        parsed = urlparse(current_url)
+        query_params = parse_qs(parsed.query)
+        next_url = None
+        for key in ("r", "u", "url", "target", "dest", "destination", "redirect", "redirect_url", "to", "next"):
+            values = query_params.get(key)
+            if not values:
+                continue
+            candidate = html_unescape(unquote(values[0] or "").strip())
+            if candidate.startswith(("http://", "https://")) and candidate != current_url:
+                next_url = candidate
+                break
+        if not next_url:
+            break
+        current_url = next_url
+
+    return current_url
+
+
+def extract_provider_name_from_offer_title(raw_title: str) -> Optional[str]:
+    title = html_unescape((raw_title or "").strip())
+    for marker in (" sur ", " on "):
+        if marker in title:
+            provider_name = title.rsplit(marker, 1)[-1].strip()
+            return provider_name or None
+    return None
+
+
+def scrape_tmdb_watch_page_provider_links(page_url: str) -> dict[str, str]:
+    if not isinstance(page_url, str) or "themoviedb.org" not in page_url:
+        return {}
+
+    try:
+        response = requests.get(
+            page_url,
+            timeout=5,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; QulteBot/1.0)"},
+        )
+        response.raise_for_status()
+        html = response.text
+    except Exception as exc:
+        logger.warning("Echec scraping TMDB watch page url=%s: %s", page_url, exc)
+        return {}
+
+    provider_links: dict[str, str] = {}
+    for match in re.finditer(r'<a[^>]+href="([^"]+)"[^>]+title="([^"]+)"', html, flags=re.IGNORECASE):
+        raw_href, raw_title = match.groups()
+        provider_name = extract_provider_name_from_offer_title(raw_title)
+        if not provider_name:
+            continue
+
+        resolved_url = unwrap_provider_redirect_url(raw_href)
+        if not resolved_url or "themoviedb.org" in resolved_url:
+            continue
+
+        normalized_name = normalize_watch_provider_name(provider_name)
+        if normalized_name and normalized_name not in provider_links:
+            provider_links[normalized_name] = resolved_url
+
+    return provider_links
+
+
 def build_provider_search_fallback_url(
     provider_name: str,
     movie_title: str,
@@ -2767,16 +2986,7 @@ def fetch_watchmode_sources_for_movie(movie_id: int, region_code: str) -> Option
 
 def attach_watchmode_links_to_provider(provider: dict[str, Any], watchmode_sources_by_name: dict[str, Any]) -> dict[str, Any]:
     enriched_provider = dict(provider)
-    normalized_name = normalize_watch_provider_name(str(provider.get("name") or ""))
-    match = watchmode_sources_by_name.get(normalized_name)
-
-    if not match:
-        alias_names = WATCHMODE_PROVIDER_ALIASES.get(normalized_name, set())
-        for alias_name in alias_names:
-            match = watchmode_sources_by_name.get(alias_name)
-            if match:
-                break
-
+    match = lookup_provider_alias_match(str(provider.get("name") or ""), watchmode_sources_by_name)
     if not isinstance(match, dict):
         return enriched_provider
 
@@ -2784,6 +2994,61 @@ def attach_watchmode_links_to_provider(provider: dict[str, Any], watchmode_sourc
     enriched_provider["ios_url"] = match.get("ios_url")
     enriched_provider["android_url"] = match.get("android_url")
     return enriched_provider
+
+
+def attach_tmdb_scraped_links_to_provider(provider: dict[str, Any], scraped_links_by_name: dict[str, str]) -> dict[str, Any]:
+    enriched_provider = dict(provider)
+    if enriched_provider.get("web_url"):
+        return enriched_provider
+
+    match = lookup_provider_alias_match(str(provider.get("name") or ""), scraped_links_by_name)
+    if isinstance(match, str) and match:
+        enriched_provider["web_url"] = match
+    return enriched_provider
+
+
+def enhance_watch_providers_with_tmdb_scrape(movie_id: int, watch_providers: dict) -> dict:
+    region_code = str(watch_providers.get("region") or "FR").strip().upper() or "FR"
+    page_url = str(watch_providers.get("link") or "").strip()
+    cached_payload = get_cached_tmdb_page_provider_links(int(movie_id), region_code)
+
+    provider_links_by_name: Optional[dict[str, str]] = None
+    if isinstance(cached_payload, dict):
+        cached_links = cached_payload.get("provider_links")
+        if isinstance(cached_links, dict):
+            provider_links_by_name = {
+                normalize_watch_provider_name(str(key)): str(value)
+                for key, value in cached_links.items()
+                if str(value or "").startswith(("http://", "https://"))
+            }
+
+    if provider_links_by_name is None:
+        scraped_links = scrape_tmdb_watch_page_provider_links(page_url)
+        if scraped_links:
+            cached_payload = set_cached_tmdb_page_provider_links(int(movie_id), region_code, scraped_links, page_url)
+            provider_links_by_name = dict(scraped_links)
+        else:
+            stale_payload = get_cached_tmdb_page_provider_links(int(movie_id), region_code, allow_stale=True)
+            stale_links = stale_payload.get("provider_links") if isinstance(stale_payload, dict) else None
+            if isinstance(stale_links, dict):
+                provider_links_by_name = {
+                    normalize_watch_provider_name(str(key)): str(value)
+                    for key, value in stale_links.items()
+                    if str(value or "").startswith(("http://", "https://"))
+                }
+            else:
+                provider_links_by_name = {}
+
+    if not provider_links_by_name:
+        return watch_providers
+
+    enriched = dict(watch_providers)
+    for key in ("subscription", "rent", "buy"):
+        items = watch_providers.get(key)
+        if not isinstance(items, list):
+            continue
+        enriched[key] = [attach_tmdb_scraped_links_to_provider(item, provider_links_by_name) for item in items]
+    return enriched
 
 
 def enhance_watch_providers_with_watchmode(movie_id: int, watch_providers: dict) -> dict:
@@ -2849,7 +3114,8 @@ def serialize_tmdb_watch_providers(data: dict) -> dict:
 def get_tmdb_watch_providers(movie_id: int) -> dict:
     cached_payload = get_cached_tmdb_payload(tmdb_watch_providers_cache, movie_id)
     if cached_payload is not None:
-        return cached_payload
+        enhanced_payload = enhance_watch_providers_with_watchmode(movie_id, cached_payload)
+        return enhance_watch_providers_with_tmdb_scrape(movie_id, enhanced_payload)
 
     provider_payload = fetch_tmdb_watch_providers_payload(movie_id)
     if provider_payload is not None:
@@ -2859,11 +3125,13 @@ def get_tmdb_watch_providers(movie_id: int) -> dict:
             serialize_tmdb_watch_providers(provider_payload),
             TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS,
         )
-        return enhance_watch_providers_with_watchmode(movie_id, tmdb_payload)
+        enhanced_payload = enhance_watch_providers_with_watchmode(movie_id, tmdb_payload)
+        return enhance_watch_providers_with_tmdb_scrape(movie_id, enhanced_payload)
 
     stale_payload = get_cached_tmdb_payload(tmdb_watch_providers_cache, movie_id, allow_stale=True)
     if stale_payload is not None:
-        return enhance_watch_providers_with_watchmode(movie_id, stale_payload)
+        enhanced_payload = enhance_watch_providers_with_watchmode(movie_id, stale_payload)
+        return enhance_watch_providers_with_tmdb_scrape(movie_id, enhanced_payload)
 
     return {
         "region": "",
