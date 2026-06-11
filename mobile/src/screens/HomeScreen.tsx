@@ -125,7 +125,6 @@ export default function HomeScreen() {
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoableAction | null>(null);
   const [showTinderHelp, setShowTinderHelp] = useState(false);
   const [showSupportPrompt, setShowSupportPrompt] = useState(false);
-  const [onlyNowPlaying, setOnlyNowPlaying] = useState(false);
   const isFetchingRef = useRef(false);
   const locallyExcludedMovieIdsRef = useRef<Set<number>>(new Set());
   const onboardingExcludedMovieIdsRef = useRef<Set<number>>(new Set());
@@ -313,7 +312,6 @@ export default function HomeScreen() {
         excludeIds: effectiveExcludeIds,
         limit: FEED_BATCH_SIZE,
         mode: 'tinder',
-        onlyNowPlaying,
       });
 
       setMovies((current) => {
@@ -334,13 +332,13 @@ export default function HomeScreen() {
         return;
       }
       if (!hasVisibleStack) {
-        setError(onlyNowPlaying ? 'Impossible de charger les films actuellement au cinéma.' : 'Impossible de charger les recommandations.');
+        setError('Impossible de charger les recommandations.');
       }
     } finally {
       isFetchingRef.current = false;
       setLoading(false);
     }
-  }, [getKnownExcludedMovieIds, onlyNowPlaying, session, signOut]);
+  }, [getKnownExcludedMovieIds, session, signOut]);
 
   useFocusEffect(
     useCallback(() => {
@@ -370,21 +368,6 @@ export default function HomeScreen() {
       })();
     }, [hydrateCachedMovies, loadFeed, loadOnboardingExcludes, loadRuntimeAlerts, session]),
   );
-
-  useEffect(() => {
-    if (!session) {
-      return;
-    }
-
-    locallyExcludedMovieIdsRef.current.clear();
-    setLastUndoableAction(null);
-    setSelectedRating(0);
-    setError('');
-    setLoading(true);
-    moviesRef.current = [];
-    setMovies([]);
-    void loadFeed([], { reset: true });
-  }, [loadFeed, onlyNowPlaying, session]);
 
   const refillIfNeeded = useCallback((nextMovies: SearchMovie[]) => {
     if (nextMovies.length < REFILL_THRESHOLD) {
@@ -741,30 +724,6 @@ export default function HomeScreen() {
                 <Text style={[styles.helpButtonLabel, { color: theme.colors.text }]}>?</Text>
               </Pressable>
               <Pressable
-                style={[
-                  styles.cinemaFilterButton,
-                  {
-                    backgroundColor: onlyNowPlaying ? theme.colors.secondaryAccent : theme.rgba.card,
-                    borderColor: onlyNowPlaying ? theme.colors.secondaryAccent : theme.rgba.border,
-                  },
-                ]}
-                onPress={() => setOnlyNowPlaying((current) => !current)}
-              >
-                <Ionicons
-                  name={onlyNowPlaying ? 'ticket' : 'ticket-outline'}
-                  size={15}
-                  color={onlyNowPlaying ? theme.colors.secondaryAccentText : theme.colors.text}
-                />
-                <Text
-                  style={[
-                    styles.cinemaFilterButtonLabel,
-                    { color: onlyNowPlaying ? theme.colors.secondaryAccentText : theme.colors.text },
-                  ]}
-                >
-                  Au cinéma
-                </Text>
-              </Pressable>
-              <Pressable
                 style={[styles.groupModeButton, { backgroundColor: theme.rgba.card, borderColor: theme.rgba.border }]}
                 onPress={() => navigation.navigate('GroupRecommendations')}
                 hitSlop={10}
@@ -818,7 +777,7 @@ export default function HomeScreen() {
           </View>
           </View>
         ) : (
-          <EmptyStateCard title={onlyNowPlaying ? 'Aucun film en salle trouvé' : 'Recharge en cours'} />
+          <EmptyStateCard title="Recharge en cours" />
         )}
       </View>
 

@@ -6070,7 +6070,6 @@ def compute_recommendation_feed(
     limit: int = 10,
     exclude_ids: Optional[str] = None,
     mode: str = "core",
-    only_now_playing: bool = False,
 ):
     normalized_mode = mode.strip().lower() if isinstance(mode, str) else "core"
     if normalized_mode == "core":
@@ -6198,7 +6197,6 @@ def compute_recommendation_feed(
         return []
 
     now_playing_ids = {int(movie["id"]) for movie in fetch_now_playing_movies(limit=60)}
-    allowed_movie_ids = set(now_playing_ids) if only_now_playing else set(int(movie_id) for movie_id in movie_ids_array.tolist())
 
     positive_signal_weights: dict[int, float] = {}
     negative_signal_weights: dict[int, float] = {}
@@ -6472,7 +6470,7 @@ def compute_recommendation_feed(
 
     for idx, movie_id in enumerate(movie_ids_array):
         movie_id = int(movie_id)
-        if movie_id in blocked_ids or movie_id not in allowed_movie_ids:
+        if movie_id in blocked_ids:
             continue
         candidate_scores[movie_id] = float(hybrid_scores[idx])
 
@@ -6481,7 +6479,7 @@ def compute_recommendation_feed(
         related_ids = get_tmdb_related_movie_ids(seed_id)
         seed_strength = positive_signal_weights.get(seed_id, 1.0)
         for rank, related_id in enumerate(related_ids):
-            if related_id in blocked_ids or related_id not in allowed_movie_ids:
+            if related_id in blocked_ids:
                 continue
             related_index = movie_index_by_id.get(int(related_id))
             related_quality_bonus = 0.0
@@ -6502,14 +6500,14 @@ def compute_recommendation_feed(
         related_ids = get_tmdb_related_movie_ids(seed_id)
         seed_penalty_strength = abs(negative_signal_weights.get(seed_id, -1.0))
         for rank, related_id in enumerate(related_ids):
-            if related_id in blocked_ids or related_id not in allowed_movie_ids:
+            if related_id in blocked_ids:
                 continue
             penalty = (1.35 if is_tinder_mode else 1.15) + min(seed_penalty_strength * 0.20, 0.45)
             penalty = penalty - (rank * 0.05) - (seed_rank * 0.12)
             candidate_scores[related_id] = candidate_scores.get(related_id, 0.0) - max(penalty, 0.10)
 
     for movie_id, score in collaborative_scores.items():
-        if movie_id in blocked_ids or movie_id not in allowed_movie_ids:
+        if movie_id in blocked_ids:
             continue
         candidate_scores[movie_id] = candidate_scores.get(movie_id, 0.0) + min(score, 0.85 if is_spotlight_mode else 0.35)
 
@@ -6648,9 +6646,7 @@ def compute_recommendation_feed(
         return payload
 
     if is_explore_mode:
-        exploration_pool = movies_df[
-            (~movies_df["id"].isin(blocked_ids)) & (movies_df["id"].isin(list(allowed_movie_ids)))
-        ].copy()
+        exploration_pool = movies_df[(~movies_df["id"].isin(blocked_ids))].copy()
         if exploration_pool.empty:
             return []
 
@@ -6707,17 +6703,13 @@ def compute_recommendation_feed(
     used_ids = blocked_ids | set(selected_ids)
 
     if len(selected_ids) < main_slots:
-        filler_pool = movies_df[
-            (~movies_df["id"].isin(used_ids)) & (movies_df["id"].isin(list(allowed_movie_ids)))
-        ]
+        filler_pool = movies_df[(~movies_df["id"].isin(used_ids))]
         filler_pool = filler_pool.sort_values("quality_score", ascending=False)
         selected_ids.extend([int(row["id"]) for _, row in filler_pool.head(main_slots - len(selected_ids)).iterrows()])
         used_ids = blocked_ids | set(selected_ids)
 
     if exploration_slots > 0:
-        exploration_pool = movies_df[
-            (~movies_df["id"].isin(used_ids)) & (movies_df["id"].isin(list(allowed_movie_ids)))
-        ].copy()
+        exploration_pool = movies_df[(~movies_df["id"].isin(used_ids))].copy()
         if not exploration_pool.empty:
             max_popularity = max(float(exploration_pool["popularity"].max()), 1.0)
             genre_distance_scores = np.array(
@@ -6764,9 +6756,7 @@ def compute_recommendation_feed(
             used_ids = blocked_ids | set(selected_ids)
 
     if len(selected_ids) < limit:
-        fallback_pool = movies_df[
-            (~movies_df["id"].isin(used_ids)) & (movies_df["id"].isin(list(allowed_movie_ids)))
-        ]
+        fallback_pool = movies_df[(~movies_df["id"].isin(used_ids))]
         fallback_pool = fallback_pool.sort_values("quality_score", ascending=False)
         selected_ids.extend([int(row["id"]) for _, row in fallback_pool.head(limit - len(selected_ids)).iterrows()])
 
@@ -6788,7 +6778,6 @@ def get_movie_feed(
     limit: int = 10,
     exclude_ids: Optional[str] = None,
     mode: str = "core",
-    only_now_playing: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
     return compute_recommendation_feed(
@@ -6796,7 +6785,6 @@ def get_movie_feed(
         limit=limit,
         exclude_ids=exclude_ids,
         mode=mode,
-        only_now_playing=only_now_playing,
     )
 
 
