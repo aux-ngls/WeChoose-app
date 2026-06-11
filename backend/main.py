@@ -2540,12 +2540,23 @@ WATCHMODE_PROVIDER_ALIASES = {
         normalize_watch_provider_name("Amazon Prime Video"),
         normalize_watch_provider_name("Amazon"),
     },
+    normalize_watch_provider_name("Amazon Prime Video"): {
+        normalize_watch_provider_name("Prime Video"),
+        normalize_watch_provider_name("Amazon"),
+    },
+    normalize_watch_provider_name("Amazon Prime Video with Ads"): {
+        normalize_watch_provider_name("Prime Video"),
+        normalize_watch_provider_name("Amazon"),
+    },
     normalize_watch_provider_name("Apple TV Store"): {
         normalize_watch_provider_name("Apple TV"),
         normalize_watch_provider_name("iTunes"),
     },
     normalize_watch_provider_name("Canal VOD"): {
         normalize_watch_provider_name("Canal+"),
+    },
+    normalize_watch_provider_name("Disney Plus"): {
+        normalize_watch_provider_name("Disney+"),
     },
     normalize_watch_provider_name("Google Play Movies"): {
         normalize_watch_provider_name("Google Play"),
