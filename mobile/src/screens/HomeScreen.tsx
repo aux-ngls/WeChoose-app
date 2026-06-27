@@ -701,6 +701,44 @@ export default function HomeScreen() {
     }),
     [pan.x, pan.y],
   );
+  const rightSwipeFeedbackStyle = useMemo(
+    () => ({
+      opacity: pan.x.interpolate({
+        inputRange: [18, SWIPE_THRESHOLD],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+      transform: [
+        {
+          scale: pan.x.interpolate({
+            inputRange: [18, SWIPE_THRESHOLD],
+            outputRange: [0.96, 1],
+            extrapolate: 'clamp',
+          }),
+        },
+      ],
+    }),
+    [pan.x],
+  );
+  const leftSwipeFeedbackStyle = useMemo(
+    () => ({
+      opacity: pan.x.interpolate({
+        inputRange: [-SWIPE_THRESHOLD, -18],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+      transform: [
+        {
+          scale: pan.x.interpolate({
+            inputRange: [-SWIPE_THRESHOLD, -18],
+            outputRange: [1, 0.96],
+            extrapolate: 'clamp',
+          }),
+        },
+      ],
+    }),
+    [pan.x],
+  );
 
   return (
     <AppScreen scroll={false} contentStyle={[styles.screen, isWideLayout && styles.tabletScreen]}>
@@ -772,6 +810,16 @@ export default function HomeScreen() {
                   </View>
                   <Text style={styles.title}>{currentMovie.title}</Text>
                 </View>
+                <Animated.View pointerEvents="none" style={[styles.swipeFeedbackBorder, styles.swipeRightBorder, rightSwipeFeedbackStyle]} />
+                <Animated.View pointerEvents="none" style={[styles.swipeFeedbackBorder, styles.swipeLeftBorder, leftSwipeFeedbackStyle]} />
+                <Animated.View pointerEvents="none" style={[styles.swipeFeedbackPill, styles.swipeRightPill, rightSwipeFeedbackStyle]}>
+                  <Ionicons name="bookmark-outline" size={16} color="#eff6ff" />
+                  <Text style={styles.swipeRightPillLabel}>À regarder plus tard</Text>
+                </Animated.View>
+                <Animated.View pointerEvents="none" style={[styles.swipeFeedbackPill, styles.swipeLeftPill, leftSwipeFeedbackStyle]}>
+                  <Ionicons name="close" size={17} color="#fff1f2" />
+                  <Text style={styles.swipeLeftPillLabel}>Passer</Text>
+                </Animated.View>
               </Pressable>
             </Animated.View>
           </View>
@@ -1073,6 +1121,57 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.34)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
+  },
+  swipeFeedbackBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+    borderWidth: 3,
+  },
+  swipeRightBorder: {
+    borderColor: 'rgba(37, 99, 235, 0.95)',
+    backgroundColor: 'rgba(37, 99, 235, 0.10)',
+  },
+  swipeLeftBorder: {
+    borderColor: 'rgba(225, 29, 72, 0.95)',
+    backgroundColor: 'rgba(225, 29, 72, 0.10)',
+  },
+  swipeFeedbackPill: {
+    position: 'absolute',
+    top: 22,
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+  },
+  swipeRightPill: {
+    right: 18,
+    backgroundColor: 'rgba(37, 99, 235, 0.92)',
+    borderColor: 'rgba(191, 219, 254, 0.56)',
+  },
+  swipeLeftPill: {
+    left: 18,
+    backgroundColor: 'rgba(225, 29, 72, 0.92)',
+    borderColor: 'rgba(255, 205, 210, 0.56)',
+  },
+  swipeRightPillLabel: {
+    color: '#eff6ff',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  swipeLeftPillLabel: {
+    color: '#fff1f2',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
   },
   bottomArea: {
     alignSelf: 'center',
