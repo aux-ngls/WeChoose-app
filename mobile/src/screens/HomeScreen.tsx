@@ -708,15 +708,6 @@ export default function HomeScreen() {
         outputRange: [0, 1],
         extrapolate: 'clamp',
       }),
-      transform: [
-        {
-          scale: pan.x.interpolate({
-            inputRange: [18, SWIPE_THRESHOLD],
-            outputRange: [0.96, 1],
-            extrapolate: 'clamp',
-          }),
-        },
-      ],
     }),
     [pan.x],
   );
@@ -727,15 +718,6 @@ export default function HomeScreen() {
         outputRange: [1, 0],
         extrapolate: 'clamp',
       }),
-      transform: [
-        {
-          scale: pan.x.interpolate({
-            inputRange: [-SWIPE_THRESHOLD, -18],
-            outputRange: [1, 0.96],
-            extrapolate: 'clamp',
-          }),
-        },
-      ],
     }),
     [pan.x],
   );
@@ -1137,7 +1119,7 @@ const styles = StyleSheet.create({
   },
   swipeFeedbackPill: {
     position: 'absolute',
-    top: 22,
+    top: '50%',
     minHeight: 42,
     borderRadius: 999,
     borderWidth: 1,
@@ -1150,14 +1132,15 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
     elevation: 4,
+    transform: [{ translateY: -21 }],
   },
   swipeRightPill: {
-    right: 18,
+    alignSelf: 'center',
     backgroundColor: 'rgba(37, 99, 235, 0.92)',
     borderColor: 'rgba(191, 219, 254, 0.56)',
   },
   swipeLeftPill: {
-    left: 18,
+    alignSelf: 'center',
     backgroundColor: 'rgba(225, 29, 72, 0.92)',
     borderColor: 'rgba(255, 205, 210, 0.56)',
   },
