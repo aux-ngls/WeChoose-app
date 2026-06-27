@@ -17,6 +17,27 @@ export function normalizeStreamingServiceName(value: string) {
     return '';
   }
 
+  const normalizedLower = normalized.toLowerCase();
+
+  const containsAliases: Array<[string[], string]> = [
+    [['prime video', 'amazon prime'], 'Prime Video'],
+    [['disney+', 'disney plus'], 'Disney+'],
+    [['netflix'], 'Netflix'],
+    [['canal+', 'canal plus'], 'Canal+'],
+    [['apple tv+', 'apple tv plus'], 'Apple TV+'],
+    [['paramount+', 'paramount plus'], 'Paramount+'],
+    [['hbo max'], 'Max'],
+    [['ocs', 'cine+ ocs'], 'OCS'],
+    [['mubi'], 'MUBI'],
+    [['arte.tv', 'arte tv', 'arte'], 'ARTE'],
+  ];
+
+  for (const [needles, canonicalName] of containsAliases) {
+    if (needles.some((needle) => normalizedLower.includes(needle))) {
+      return canonicalName;
+    }
+  }
+
   const aliases: Record<string, string> = {
     prime: 'Prime Video',
     'amazon prime': 'Prime Video',
@@ -39,7 +60,7 @@ export function normalizeStreamingServiceName(value: string) {
     'arte tv': 'ARTE',
   };
 
-  return aliases[normalized.toLowerCase()] ?? normalized;
+  return aliases[normalizedLower] ?? normalized;
 }
 
 export function matchesOwnedStreamingServices(

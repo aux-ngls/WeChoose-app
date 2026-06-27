@@ -1374,6 +1374,25 @@ def normalize_streaming_service_label(value: str) -> str:
     if not normalized:
         return ""
 
+    normalized_lower = normalized.lower()
+
+    contains_aliases = (
+        (("prime video", "amazon prime"), "Prime Video"),
+        (("disney+", "disney plus"), "Disney+"),
+        (("netflix",), "Netflix"),
+        (("canal+", "canal plus"), "Canal+"),
+        (("apple tv+", "apple tv plus"), "Apple TV+"),
+        (("paramount+", "paramount plus"), "Paramount+"),
+        (("hbo max",), "Max"),
+        (("ocs", "cine+ ocs"), "OCS"),
+        (("mubi",), "MUBI"),
+        (("arte.tv", "arte tv", "arte"), "ARTE"),
+    )
+
+    for needles, canonical_name in contains_aliases:
+        if any(needle in normalized_lower for needle in needles):
+            return canonical_name
+
     aliases = {
         "prime": "Prime Video",
         "amazon prime": "Prime Video",
@@ -1395,7 +1414,7 @@ def normalize_streaming_service_label(value: str) -> str:
         "arte.tv": "ARTE",
         "arte tv": "ARTE",
     }
-    return aliases.get(normalized.lower(), normalized)
+    return aliases.get(normalized_lower, normalized)
 
 
 def normalize_genre_token(value: str) -> str:
