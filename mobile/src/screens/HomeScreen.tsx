@@ -43,10 +43,10 @@ import { FALLBACK_POSTER, type RuntimeAlertItem, type SearchMovie, WATCH_LATER_P
 import { recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
 
 const MIN_READY_TINDER_MOVIES = 5;
-const TARGET_STACK_SIZE = 20;
-const REFILL_THRESHOLD = 10;
+const TARGET_STACK_SIZE = 12;
+const REFILL_THRESHOLD = 6;
 const FEED_BATCH_SIZE = 24;
-const CACHE_MAX_SIZE = 60;
+const CACHE_MAX_SIZE = 24;
 const CACHE_VERSION = 4;
 const SWIPE_THRESHOLD = 110;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
