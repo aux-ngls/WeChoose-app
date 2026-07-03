@@ -37,6 +37,7 @@ import {
   type SearchMovie,
   WATCH_LATER_PLAYLIST_ID,
 } from '../types';
+import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 const SORT_OPTIONS = [
   { key: 'manual', label: 'Ordre personnalisé' },
@@ -64,6 +65,7 @@ type PlaylistCacheEntry = {
 const INITIAL_PLAYLIST_PAGE_SIZE = 120;
 const PLAYLIST_PAGE_SIZE = 72;
 const SEARCH_DEBOUNCE_MS = 220;
+const PERSISTED_PLAYLIST_SCOPE = 'playlist-details-screen';
 
 const playlistMoviesCache = new Map<string, PlaylistCacheEntry>();
 
@@ -135,6 +137,10 @@ export default function PlaylistDetailsScreen({
     () => buildPlaylistCacheKey(route.params.playlistId, sortMode, debouncedQuery, onlyOwnedStreamingServices),
     [debouncedQuery, onlyOwnedStreamingServices, route.params.playlistId, sortMode],
   );
+  const persistentCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_PLAYLIST_SCOPE, session?.username, cacheKey),
+    [cacheKey, session?.username],
+  );
 
   useEffect(() => {
     moviesRef.current = movies;
@@ -175,14 +181,18 @@ export default function PlaylistDetailsScreen({
   );
 
   useEffect(() => {
-    playlistMoviesCache.set(dataCacheKey, {
+    const cacheEntry = {
       movies,
       totalCount,
       hasMore,
       nextOffset,
       bufferedPage,
-    });
-  }, [bufferedPage, dataCacheKey, hasMore, movies, nextOffset, totalCount]);
+    };
+    playlistMoviesCache.set(dataCacheKey, cacheEntry);
+    if (session && movies.length > 0) {
+      void writePersistentCache(persistentCacheKey, cacheEntry);
+    }
+  }, [bufferedPage, dataCacheKey, hasMore, movies, nextOffset, persistentCacheKey, session, totalCount]);
 
   useEffect(() => {
     if (!canReorder && reorderingMovieId) {
@@ -260,7 +270,7 @@ export default function PlaylistDetailsScreen({
   );
 
   const loadInitialPage = useCallback(
-    async (generation: number, requestCacheKey: string, options?: { silent?: boolean }) => {
+    async (generation: number, requestCacheKey: string, options?: { silent?: boolean; suppressError?: boolean }) => {
       if (!options?.silent) {
         setLoading(true);
       }
@@ -286,7 +296,7 @@ export default function PlaylistDetailsScreen({
           await signOut();
           return;
         }
-        if (generation === generationRef.current) {
+        if (generation === generationRef.current && !options?.suppressError) {
           setError('Impossible de charger cette playlist.');
         }
       } finally {
@@ -339,14 +349,39 @@ export default function PlaylistDetailsScreen({
       return;
     }
 
-    startTransition(() => setMovies([]));
-    setTotalCount(0);
-    setHasMore(false);
-    setNextOffset(0);
-    setBufferedPage(null);
-    setDataCacheKey(cacheKey);
-    void loadInitialPage(generation, cacheKey);
-  }, [cacheKey, loadInitialPage, session, startBackgroundPrefetch]);
+    let active = true;
+    void (async () => {
+      const persistedPage = await readPersistentCache<PlaylistCacheEntry>(persistentCacheKey);
+      if (!active || generation !== generationRef.current) {
+        return;
+      }
+
+      if (persistedPage?.movies?.length) {
+        startTransition(() => setMovies(persistedPage.movies));
+        setTotalCount(persistedPage.totalCount);
+        setHasMore(persistedPage.hasMore);
+        setNextOffset(persistedPage.nextOffset);
+        setBufferedPage(persistedPage.bufferedPage);
+        setDataCacheKey(cacheKey);
+        setLoading(false);
+        setLoadingMore(false);
+        void loadInitialPage(generation, cacheKey, { silent: true, suppressError: true });
+        return;
+      }
+
+      startTransition(() => setMovies([]));
+      setTotalCount(0);
+      setHasMore(false);
+      setNextOffset(0);
+      setBufferedPage(null);
+      setDataCacheKey(cacheKey);
+      void loadInitialPage(generation, cacheKey);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [cacheKey, loadInitialPage, persistentCacheKey, session, startBackgroundPrefetch]);
 
   useFocusEffect(
     useCallback(() => {

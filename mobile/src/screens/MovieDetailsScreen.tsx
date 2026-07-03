@@ -38,12 +38,20 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
-import type { MovieWatchProvider } from '../types';
+import type { MovieDetails, MovieWatchProvider } from '../types';
+import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
 const MODAL_DISMISS_THRESHOLD = 90;
 const MODAL_DISMISS_VELOCITY = 0.75;
 const MODAL_OFFSCREEN_Y = 480;
+const PERSISTED_MOVIE_DETAILS_SCOPE = 'movie-details-screen';
+
+interface PersistedMovieDetailsCache {
+  movie: MovieDetails;
+  userRating: number;
+  fetchedAt: number;
+}
 
 function extractYouTubeVideoId(url: string | null | undefined): string | null {
   if (!url) {
@@ -73,7 +81,11 @@ export default function MovieDetailsScreen({
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const [movie, setMovie] = useState<Awaited<ReturnType<typeof fetchMovieDetails>> | null>(null);
+  const persistentCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_MOVIE_DETAILS_SCOPE, session?.username, String(route.params.movieId)),
+    [route.params.movieId, session?.username],
+  );
+  const [movie, setMovie] = useState<MovieDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
@@ -120,22 +132,35 @@ export default function MovieDetailsScreen({
     setNewPlaylistName('');
 
     void (async () => {
+      const cachedDetails = await readPersistentCache<PersistedMovieDetailsCache>(persistentCacheKey);
+      if (active && cachedDetails?.movie) {
+        setMovie(cachedDetails.movie);
+        setUserRating(cachedDetails.userRating ?? 0);
+        setLoading(false);
+      }
+
       try {
         const [payload, ratingPayload] = await Promise.all([
           fetchMovieDetails(session.token, route.params.movieId),
           fetchUserMovieRating(session.token, route.params.movieId),
         ]);
         if (active) {
+          const nextRating = ratingPayload.rating ?? 0;
           setMovie(payload);
-          setUserRating(ratingPayload.rating ?? 0);
+          setUserRating(nextRating);
           setError('');
+          void writePersistentCache<PersistedMovieDetailsCache>(persistentCacheKey, {
+            movie: payload,
+            userRating: nextRating,
+            fetchedAt: Date.now(),
+          });
         }
       } catch (fetchError) {
         if (fetchError instanceof ApiError && fetchError.status === 401) {
           await signOut();
           return;
         }
-        if (active) {
+        if (active && !cachedDetails?.movie) {
           setError('Impossible de charger cette fiche film.');
         }
       } finally {
@@ -148,7 +173,7 @@ export default function MovieDetailsScreen({
     return () => {
       active = false;
     };
-  }, [route.params.movieId, session, signOut]);
+  }, [persistentCacheKey, route.params.movieId, session, signOut]);
 
   const metaLine = useMemo(() => {
     if (!movie) {

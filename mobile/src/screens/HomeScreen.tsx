@@ -42,10 +42,11 @@ import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type RuntimeAlertItem, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
 import { recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
 
-const TARGET_STACK_SIZE = 14;
-const REFILL_THRESHOLD = 8;
+const MIN_READY_TINDER_MOVIES = 5;
+const TARGET_STACK_SIZE = 20;
+const REFILL_THRESHOLD = 10;
 const FEED_BATCH_SIZE = 24;
-const CACHE_MAX_SIZE = 48;
+const CACHE_MAX_SIZE = 60;
 const CACHE_VERSION = 4;
 const SWIPE_THRESHOLD = 110;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
@@ -360,7 +361,7 @@ export default function HomeScreen() {
           return;
         }
 
-        const shouldTopUp = currentStack.length < TARGET_STACK_SIZE;
+        const shouldTopUp = currentStack.length < Math.max(TARGET_STACK_SIZE, MIN_READY_TINDER_MOVIES);
         const shouldRefreshQuietly = Date.now() - lastFetchAtRef.current > 60000;
         if (shouldTopUp || shouldRefreshQuietly) {
           void loadFeed(currentStack.map((movie) => movie.id));
