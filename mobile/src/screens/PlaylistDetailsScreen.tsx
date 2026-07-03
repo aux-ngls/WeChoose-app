@@ -65,7 +65,7 @@ type PlaylistCacheEntry = {
 const INITIAL_PLAYLIST_PAGE_SIZE = 120;
 const PLAYLIST_PAGE_SIZE = 72;
 const SEARCH_DEBOUNCE_MS = 220;
-const PERSISTED_PLAYLIST_SCOPE = 'playlist-details-screen';
+const PERSISTED_PLAYLIST_SCOPE = 'playlist-details-screen-v2';
 
 const playlistMoviesCache = new Map<string, PlaylistCacheEntry>();
 
@@ -141,6 +141,10 @@ export default function PlaylistDetailsScreen({
     () => buildUserCacheKey(PERSISTED_PLAYLIST_SCOPE, session?.username, cacheKey),
     [cacheKey, session?.username],
   );
+  const persistentDataCacheKey = useMemo(
+    () => buildUserCacheKey(PERSISTED_PLAYLIST_SCOPE, session?.username, dataCacheKey),
+    [dataCacheKey, session?.username],
+  );
 
   useEffect(() => {
     moviesRef.current = movies;
@@ -190,9 +194,9 @@ export default function PlaylistDetailsScreen({
     };
     playlistMoviesCache.set(dataCacheKey, cacheEntry);
     if (session && movies.length > 0) {
-      void writePersistentCache(persistentCacheKey, cacheEntry);
+      void writePersistentCache(persistentDataCacheKey, cacheEntry);
     }
-  }, [bufferedPage, dataCacheKey, hasMore, movies, nextOffset, persistentCacheKey, session, totalCount]);
+  }, [bufferedPage, dataCacheKey, hasMore, movies, nextOffset, persistentDataCacheKey, session, totalCount]);
 
   useEffect(() => {
     if (!canReorder && reorderingMovieId) {
