@@ -5,6 +5,11 @@ export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 type NotificationData = Record<string, unknown>;
 let pendingNotificationData: NotificationData | null = null;
+let pendingMovieNavigation:
+  | {
+      movieId: number;
+    }
+  | null = null;
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -19,6 +24,48 @@ function readNumber(value: unknown): number | undefined {
     return Number.isFinite(parsedValue) ? parsedValue : undefined;
   }
   return undefined;
+}
+
+function canOpenMovieDetails() {
+  if (!navigationRef.isReady()) {
+    return false;
+  }
+
+  const currentRoute = navigationRef.getCurrentRoute();
+  if (!currentRoute) {
+    return false;
+  }
+
+  return currentRoute.name !== 'Auth' && currentRoute.name !== 'Onboarding' && currentRoute.name !== 'Tutorial';
+}
+
+function navigateToMovieDetails(movieId: number) {
+  if (!canOpenMovieDetails()) {
+    pendingMovieNavigation = { movieId };
+    return;
+  }
+
+  pendingMovieNavigation = null;
+  navigationRef.navigate('MovieDetails', { movieId, source: 'default' });
+}
+
+function parseMovieIdFromUrl(url: string): number | null {
+  const trimmedUrl = url.trim();
+  if (!trimmedUrl) {
+    return null;
+  }
+
+  const directMovieMatch = trimmedUrl.match(/^qulte:\/\/movie\/(\d+)(?:[/?#]|$)/i);
+  if (directMovieMatch?.[1]) {
+    return readNumber(directMovieMatch[1]) ?? null;
+  }
+
+  const webMovieMatch = trimmedUrl.match(/\/movie\/(\d+)(?:[/?#]|$)/i);
+  if (webMovieMatch?.[1]) {
+    return readNumber(webMovieMatch[1]) ?? null;
+  }
+
+  return null;
 }
 
 export function navigateFromNotificationData(data: NotificationData) {
@@ -55,8 +102,20 @@ export function navigateFromNotificationData(data: NotificationData) {
   }
 }
 
+export function navigateFromExternalUrl(url: string) {
+  const movieId = parseMovieIdFromUrl(url);
+  if (!movieId) {
+    return;
+  }
+
+  navigateToMovieDetails(movieId);
+}
+
 export function flushPendingNotificationNavigation() {
   if (pendingNotificationData) {
     navigateFromNotificationData(pendingNotificationData);
+  }
+  if (pendingMovieNavigation?.movieId) {
+    navigateToMovieDetails(pendingMovieNavigation.movieId);
   }
 }

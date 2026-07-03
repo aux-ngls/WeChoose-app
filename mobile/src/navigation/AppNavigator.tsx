@@ -2,6 +2,7 @@ import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useMemo } from 'react';
+import { Linking } from 'react-native';
 import AppLoader from '../components/AppLoader';
 import { useAuth } from '../auth/AuthContext';
 import AuthScreen from '../screens/AuthScreen';
@@ -21,7 +22,12 @@ import TutorialScreen from '../screens/TutorialScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import MainTabs from './MainTabs';
 import { syncPushRegistration } from '../notifications/push';
-import { flushPendingNotificationNavigation, navigateFromNotificationData, navigationRef } from './rootNavigation';
+import {
+  flushPendingNotificationNavigation,
+  navigateFromExternalUrl,
+  navigateFromNotificationData,
+  navigationRef,
+} from './rootNavigation';
 import type { RootStackParamList } from './types';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -87,10 +93,25 @@ export default function AppNavigator() {
   }, []);
 
   useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      navigateFromExternalUrl(url);
+    });
+
+    void Linking.getInitialURL().then((url) => {
+      if (url) {
+        navigateFromExternalUrl(url);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     if (!session) {
       return;
     }
 
+    flushPendingNotificationNavigation();
     void syncPushRegistration(session.token).catch(() => undefined);
     const pushTokenSubscription = Notifications.addPushTokenListener(() => {
       void syncPushRegistration(session.token).catch(() => undefined);

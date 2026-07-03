@@ -7,6 +7,7 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  Share,
   Linking,
   Modal,
   PanResponder,
@@ -39,6 +40,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
 import type { MovieDetails, MovieWatchProvider } from '../types';
+import { buildPublicMovieShareMessage, buildPublicMovieShareUrl } from '../utils/movieShare';
 import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
@@ -368,6 +370,23 @@ export default function MovieDetailsScreen({
     setShowTrailer(true);
   };
 
+  const shareExternally = async () => {
+    if (!movie) {
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: buildPublicMovieShareMessage(movie.title, movie.id),
+        url: buildPublicMovieShareUrl(movie.id),
+        title: movie.title,
+      });
+      setError('');
+    } catch {
+      setError("Impossible d'ouvrir le partage externe.");
+    }
+  };
+
   const resetModalPosition = (translateY: Animated.Value) => {
     Animated.spring(translateY, {
       toValue: 0,
@@ -488,18 +507,27 @@ export default function MovieDetailsScreen({
                   </Pressable>
                 ) : null}
               </View>
-              <Pressable
-                style={[styles.shareButton, { backgroundColor: theme.colors.secondaryAccent }]}
-                onPress={() => navigation.navigate('ShareMovie', {
-                  movieId: movie.id,
-                  title: movie.title,
-                  posterUrl: movie.poster_url,
-                  rating: movie.rating,
-                })}
-              >
-                <Ionicons name="send" size={16} color={theme.colors.secondaryAccentText} />
-                <Text style={[styles.shareButtonLabel, { color: theme.colors.secondaryAccentText }]}>Partager</Text>
-              </Pressable>
+              <View style={styles.shareButtonsRow}>
+                <Pressable
+                  style={[styles.shareButton, styles.shareButtonHalf, { backgroundColor: theme.colors.secondaryAccent }]}
+                  onPress={() => navigation.navigate('ShareMovie', {
+                    movieId: movie.id,
+                    title: movie.title,
+                    posterUrl: movie.poster_url,
+                    rating: movie.rating,
+                  })}
+                >
+                  <Ionicons name="send" size={16} color={theme.colors.secondaryAccentText} />
+                  <Text style={[styles.shareButtonLabel, { color: theme.colors.secondaryAccentText }]}>Qulte</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.shareButton, styles.shareButtonHalf, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
+                  onPress={() => void shareExternally()}
+                >
+                  <Ionicons name="share-social-outline" size={16} color={theme.colors.text} />
+                  <Text style={[styles.shareButtonLabel, { color: theme.colors.text }]}>Lien</Text>
+                </Pressable>
+              </View>
               <Pressable
                 style={[styles.reviewButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}
                 onPress={() => navigation.navigate('CreateReview', {
@@ -861,6 +889,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#7dd3fc',
     paddingVertical: 13,
+  },
+  shareButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  shareButtonHalf: {
+    flex: 1,
+    borderWidth: 1,
   },
   shareButtonLabel: {
     color: '#08111f',
