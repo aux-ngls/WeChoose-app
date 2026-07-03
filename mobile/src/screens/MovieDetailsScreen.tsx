@@ -40,7 +40,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
 import type { MovieDetails, MovieWatchProvider } from '../types';
-import { buildPublicMovieShareMessage, buildPublicMovieShareUrl } from '../utils/movieShare';
+import { buildPublicMovieShareMessage } from '../utils/movieShare';
 import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
@@ -378,7 +378,6 @@ export default function MovieDetailsScreen({
     try {
       await Share.share({
         message: buildPublicMovieShareMessage(movie.title, movie.id),
-        url: buildPublicMovieShareUrl(movie.id),
         title: movie.title,
       });
       setError('');
