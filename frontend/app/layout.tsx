@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
 import NativeBridge from "@/components/NativeBridge";
 import PwaProvider from "@/components/PwaProvider";
 import WebPushPrompt from "@/components/WebPushPrompt";
 import AccountTheme from "@/components/AccountTheme";
 import WelcomeTutorial from "@/components/WelcomeTutorial";
+import AppChrome from "@/components/AppChrome";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -57,10 +57,7 @@ export default function RootLayout({
         <NativeBridge />
         <PwaProvider />
         <WebPushPrompt />
-        <Navbar />
-        <div className="app-shell min-h-screen pb-[calc(5.85rem+env(safe-area-inset-bottom))] pt-[calc(0.45rem+env(safe-area-inset-top))] md:pb-0 md:pt-20">
-          {children}
-        </div>
+        <AppChrome>{children}</AppChrome>
       </body>
     </html>
   );
