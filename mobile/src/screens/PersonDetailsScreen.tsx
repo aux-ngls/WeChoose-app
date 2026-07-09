@@ -5,7 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ApiError, fetchPersonDetails } from '../api/client';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
-import MovieQuickAddModal from '../components/MovieQuickAddModal';
+import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import MoviePosterTile from '../components/MoviePosterTile';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
@@ -46,7 +46,7 @@ export default function PersonDetailsScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
-  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
+  const [quickAddMovie, setQuickAddMovie] = useState<QuickAddMovieTarget | null>(null);
 
   useEffect(() => {
     if (!session) {
@@ -158,7 +158,12 @@ export default function PersonDetailsScreen({
                     <MoviePosterTile
                       movie={movie}
                       onPress={() => navigation.navigate('MovieDetails', { movieId: movie.id, title: movie.title })}
-                      onLongPress={() => setQuickAddMovie({ id: movie.id, title: movie.title })}
+                      onLongPress={(event) => setQuickAddMovie({
+                        id: movie.id,
+                        title: movie.title,
+                        anchorX: event.nativeEvent.pageX,
+                        anchorY: event.nativeEvent.pageY,
+                      })}
                     />
                     {movie.character || movie.job || movie.release_date ? (
                       <Text style={[styles.movieCredit, { color: theme.colors.textMuted }]} numberOfLines={2}>

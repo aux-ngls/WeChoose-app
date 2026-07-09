@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { addMovieToPlaylist, ApiError, fetchPlaylists } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,6 +9,8 @@ import type { PlaylistSummary } from '../types';
 export interface QuickAddMovieTarget {
   id: number;
   title: string;
+  anchorX?: number;
+  anchorY?: number;
 }
 
 interface MovieQuickAddModalProps {
@@ -32,10 +34,27 @@ function sortPlaylists(playlists: PlaylistSummary[]) {
 export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQuickAddModalProps) {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [activePlaylistId, setActivePlaylistId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const panelWidth = Math.min(286, screenWidth - 24);
+  const estimatedPanelHeight = Math.min(screenHeight * 0.58, 340);
+  const horizontalPadding = 12;
+  const verticalPadding = 10;
+  const left = movie?.anchorX == null
+    ? (screenWidth - panelWidth) / 2
+    : Math.min(
+        Math.max(horizontalPadding, movie.anchorX + 12),
+        screenWidth - panelWidth - horizontalPadding,
+      );
+  const top = movie?.anchorY == null
+    ? (screenHeight - estimatedPanelHeight) / 2
+    : Math.min(
+        Math.max(verticalPadding + 40, movie.anchorY < screenHeight * 0.52 ? movie.anchorY + 10 : movie.anchorY - estimatedPanelHeight + 18),
+        screenHeight - estimatedPanelHeight - verticalPadding,
+      );
 
   useEffect(() => {
     if (!movie || !session) {
@@ -104,20 +123,27 @@ export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQui
     <Modal visible={Boolean(movie)} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.sheet, { borderColor: theme.rgba.border, backgroundColor: theme.colors.surface }]}>
+        <View
+          style={[
+            styles.sheet,
+            {
+              left,
+              top,
+              width: panelWidth,
+              maxHeight: estimatedPanelHeight,
+              borderColor: theme.rgba.border,
+              backgroundColor: theme.colors.surface,
+              shadowColor: '#000000',
+            },
+          ]}
+        >
           <View style={styles.headerRow}>
             <View style={styles.headerCopy}>
-              <Text style={[styles.kicker, { color: theme.colors.secondaryAccent }]}>Ajout rapide</Text>
+              <Text style={[styles.kicker, { color: theme.colors.secondaryAccent }]}>Ajouter à une playlist</Text>
               <Text style={[styles.title, { color: theme.colors.text }]} numberOfLines={2}>
                 {movie?.title ?? 'Choisir une playlist'}
               </Text>
             </View>
-            <Pressable
-              style={[styles.closeButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
-              onPress={onClose}
-            >
-              <Ionicons name="close" size={18} color={theme.colors.text} />
-            </Pressable>
           </View>
 
           {error ? <Text style={[styles.errorText, { color: '#fca5a5' }]}>{error}</Text> : null}
@@ -183,47 +209,41 @@ export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQui
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 22,
-    backgroundColor: 'rgba(3, 6, 12, 0.72)',
+    backgroundColor: 'transparent',
   },
   sheet: {
-    maxHeight: '72%',
-    borderRadius: 28,
+    position: 'absolute',
+    borderRadius: 24,
     borderWidth: 1,
-    padding: 18,
-    gap: 14,
+    padding: 14,
+    gap: 12,
+    shadowOffset: {
+      width: 0,
+      height: 14,
+    },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    elevation: 16,
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
+    alignItems: 'center',
   },
   headerCopy: {
     flex: 1,
-    gap: 6,
+    gap: 4,
   },
   kicker: {
-    fontSize: 12,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    fontSize: 11,
+    fontWeight: '800',
   },
   title: {
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: '900',
-    lineHeight: 24,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    lineHeight: 19,
   },
   errorText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   stateWrap: {
@@ -233,24 +253,25 @@ const styles = StyleSheet.create({
     paddingVertical: 26,
   },
   stateText: {
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
   },
   listContent: {
-    gap: 10,
+    gap: 8,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    borderRadius: 18,
+    gap: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
   },
   rowIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -259,11 +280,11 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   rowTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
   },
   rowMeta: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   emptyState: {

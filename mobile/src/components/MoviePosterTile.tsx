@@ -1,12 +1,12 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { FALLBACK_POSTER, type SearchMovie } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 
 interface MoviePosterTileProps {
   movie: SearchMovie;
   onPress?: () => void;
-  onLongPress?: () => void;
+  onLongPress?: (event: GestureResponderEvent) => void;
 }
 
 export default function MoviePosterTile({ movie, onPress, onLongPress }: MoviePosterTileProps) {

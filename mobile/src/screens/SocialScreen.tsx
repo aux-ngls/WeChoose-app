@@ -6,7 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
-import MovieQuickAddModal from '../components/MovieQuickAddModal';
+import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import ScreenHeader from '../components/ScreenHeader';
 import {
   ApiError,
@@ -47,7 +47,7 @@ export default function SocialScreen() {
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
+  const [quickAddMovie, setQuickAddMovie] = useState<QuickAddMovieTarget | null>(null);
   const reviewsRef = useRef(reviews);
 
   useEffect(() => {
@@ -257,7 +257,12 @@ export default function SocialScreen() {
                   event.stopPropagation();
                   navigation.navigate('MovieDetails', { movieId: item.movie_id, title: item.title });
                 }}
-                onLongPress={() => setQuickAddMovie({ id: item.movie_id, title: item.title })}
+                onLongPress={(event) => setQuickAddMovie({
+                  id: item.movie_id,
+                  title: item.title,
+                  anchorX: event.nativeEvent.pageX,
+                  anchorY: event.nativeEvent.pageY,
+                })}
                 delayLongPress={220}
               >
                 <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />

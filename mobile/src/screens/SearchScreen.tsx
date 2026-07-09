@@ -8,7 +8,7 @@ import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
-import MovieQuickAddModal from '../components/MovieQuickAddModal';
+import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import ScreenHeader from '../components/ScreenHeader';
 import SearchField from '../components/SearchField';
 import { ApiError, searchMovies, searchSocialUsers } from '../api/client';
@@ -111,7 +111,7 @@ export default function SearchScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
-  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
+  const [quickAddMovie, setQuickAddMovie] = useState<QuickAddMovieTarget | null>(null);
 
   useEffect(() => {
     if (!session) {
@@ -351,7 +351,12 @@ export default function SearchScreen() {
                   void rememberRecentMovie(item.movie);
                   navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title });
                 }}
-                onLongPress={() => setQuickAddMovie({ id: item.movie.id, title: item.movie.title })}
+                onLongPress={(event) => setQuickAddMovie({
+                  id: item.movie.id,
+                  title: item.movie.title,
+                  anchorX: event.nativeEvent.pageX,
+                  anchorY: event.nativeEvent.pageY,
+                })}
                 delayLongPress={220}
               >
                 <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />

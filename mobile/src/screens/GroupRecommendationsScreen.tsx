@@ -6,7 +6,7 @@ import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
-import MovieQuickAddModal from '../components/MovieQuickAddModal';
+import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import SearchField from '../components/SearchField';
 import {
   ApiError,
@@ -43,7 +43,7 @@ export default function GroupRecommendationsScreen({
   const [includeSeen, setIncludeSeen] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
-  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
+  const [quickAddMovie, setQuickAddMovie] = useState<QuickAddMovieTarget | null>(null);
 
   useEffect(() => {
     if (!session) {
@@ -293,7 +293,12 @@ export default function GroupRecommendationsScreen({
           >
             <Pressable
               onPress={() => navigation.navigate('MovieDetails', { movieId: item.id, title: item.title })}
-              onLongPress={() => setQuickAddMovie({ id: item.id, title: item.title })}
+              onLongPress={(event) => setQuickAddMovie({
+                id: item.id,
+                title: item.title,
+                anchorX: event.nativeEvent.pageX,
+                anchorY: event.nativeEvent.pageY,
+              })}
               delayLongPress={220}
             >
               <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />

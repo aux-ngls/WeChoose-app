@@ -10,7 +10,7 @@ import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
-import MovieQuickAddModal from '../components/MovieQuickAddModal';
+import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import MoviePosterTile from '../components/MoviePosterTile';
 import {
   ApiError,
@@ -114,7 +114,7 @@ export default function ProfileScreen() {
   const [showAllPlaylists, setShowAllPlaylists] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(() => initialCache?.unreadNotifications ?? 0);
-  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
+  const [quickAddMovie, setQuickAddMovie] = useState<QuickAddMovieTarget | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const profileRef = useRef(profile);
   const playlistsRef = useRef(playlists);
@@ -866,7 +866,12 @@ export default function ProfileScreen() {
                       <MoviePosterTile
                         movie={movie}
                         onPress={() => navigation.navigate('MovieDetails', { movieId: movie.id, title: movie.title })}
-                        onLongPress={() => setQuickAddMovie({ id: movie.id, title: movie.title })}
+                        onLongPress={(event) => setQuickAddMovie({
+                          id: movie.id,
+                          title: movie.title,
+                          anchorX: event.nativeEvent.pageX,
+                          anchorY: event.nativeEvent.pageY,
+                        })}
                       />
                     </View>
                   ))}
@@ -1020,7 +1025,12 @@ export default function ProfileScreen() {
                         event.stopPropagation();
                         navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title });
                       }}
-                      onLongPress={() => setQuickAddMovie({ id: review.movie_id, title: review.title })}
+                      onLongPress={(event) => setQuickAddMovie({
+                        id: review.movie_id,
+                        title: review.title,
+                        anchorX: event.nativeEvent.pageX,
+                        anchorY: event.nativeEvent.pageY,
+                      })}
                       delayLongPress={220}
                     >
                       <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
