@@ -93,8 +93,10 @@ export default function MovieDetailsScreen({
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
-  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
   const [playlistPickerError, setPlaylistPickerError] = useState('');
+  const [playlistSearch, setPlaylistSearch] = useState('');
   const [newPlaylistName, setNewPlaylistName] = useState('');
 
   useEffect(() => {
@@ -123,6 +125,8 @@ export default function MovieDetailsScreen({
     setFeedback('');
     setShowPlaylistPicker(false);
     setPlaylistPickerError('');
+    setPlaylistSearch('');
+    setIsCreatingPlaylist(false);
     setNewPlaylistName('');
 
     void (async () => {
@@ -191,6 +195,15 @@ export default function MovieDetailsScreen({
     return `${API_URL}/mobile-trailer-player.html?videoId=${encodeURIComponent(videoId)}`;
   }, [movie?.trailer_url]);
 
+  const visiblePlaylists = useMemo(() => {
+    const normalizedQuery = playlistSearch.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return playlists;
+    }
+
+    return playlists.filter((playlist) => playlist.name.toLowerCase().includes(normalizedQuery));
+  }, [playlistSearch, playlists]);
+
   const handleWatchLater = async () => {
     if (!session || !movie) {
       return;
@@ -242,6 +255,9 @@ export default function MovieDetailsScreen({
 
     setShowPlaylistPicker(true);
     setPlaylistPickerError('');
+    setPlaylistSearch('');
+    setIsCreatingPlaylist(false);
+    setNewPlaylistName('');
     await loadPlaylists(session.token);
   };
 
@@ -279,10 +295,11 @@ export default function MovieDetailsScreen({
     }
 
     Keyboard.dismiss();
-    setCreatingPlaylist(true);
+    setSavingPlaylist(true);
     try {
       await createPlaylist(session.token, newPlaylistName.trim());
       setNewPlaylistName('');
+      setIsCreatingPlaylist(false);
       await loadPlaylists(session.token);
       setFeedback('Playlist créée.');
       setPlaylistPickerError('');
@@ -294,7 +311,7 @@ export default function MovieDetailsScreen({
       }
       setPlaylistPickerError(createError instanceof ApiError ? createError.message : 'Impossible de créer cette playlist.');
     } finally {
-      setCreatingPlaylist(false);
+      setSavingPlaylist(false);
     }
   };
 
@@ -643,40 +660,59 @@ export default function MovieDetailsScreen({
           </View>
 
           <View style={styles.playlistModalContent}>
-            <View style={styles.createRow}>
+            <View style={styles.playlistSearchRow}>
               <TextInput
-                value={newPlaylistName}
-                onChangeText={setNewPlaylistName}
-                placeholder="Nouvelle playlist"
+                value={isCreatingPlaylist ? newPlaylistName : playlistSearch}
+                onChangeText={isCreatingPlaylist ? setNewPlaylistName : setPlaylistSearch}
+                placeholder={isCreatingPlaylist ? 'Nom de la playlist' : 'Rechercher une playlist'}
                 placeholderTextColor={theme.colors.textMuted}
-                returnKeyType="done"
+                returnKeyType={isCreatingPlaylist ? 'done' : 'search'}
                 blurOnSubmit={false}
-                onSubmitEditing={() => void handleCreatePlaylist()}
+                onSubmitEditing={isCreatingPlaylist ? () => void handleCreatePlaylist() : undefined}
                 style={[styles.createInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
               />
               <Pressable
                 style={[
                   styles.createButton,
                   { backgroundColor: theme.colors.secondaryAccent },
-                  (loadingPlaylists || creatingPlaylist || !newPlaylistName.trim()) && styles.createButtonDisabled,
                 ]}
-                onPress={() => void handleCreatePlaylist()}
-                disabled={loadingPlaylists || creatingPlaylist || !newPlaylistName.trim()}
+                onPress={() => {
+                  setIsCreatingPlaylist((current) => !current);
+                  setPlaylistPickerError('');
+                  setPlaylistSearch('');
+                  setNewPlaylistName('');
+                }}
                 hitSlop={8}
               >
-                {creatingPlaylist ? (
-                  <ActivityIndicator size="small" color={theme.colors.secondaryAccentText} />
-                ) : (
-                  <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
-                )}
+                <Ionicons
+                  name={isCreatingPlaylist ? 'close' : 'add'}
+                  size={20}
+                  color={theme.colors.secondaryAccentText}
+                />
               </Pressable>
             </View>
+
+            {isCreatingPlaylist ? (
+              <Pressable
+                style={[
+                  styles.createPlaylistButton,
+                  { backgroundColor: theme.colors.accent },
+                  (!newPlaylistName.trim() || savingPlaylist) && styles.createButtonDisabled,
+                ]}
+                onPress={() => void handleCreatePlaylist()}
+                disabled={!newPlaylistName.trim() || savingPlaylist}
+              >
+                <Text style={[styles.createPlaylistButtonLabel, { color: theme.colors.accentText }]}>
+                  {savingPlaylist ? '...' : 'Créer'}
+                </Text>
+              </Pressable>
+            ) : null}
 
             {playlistPickerError ? <InlineBanner message={playlistPickerError} tone="error" /> : null}
             {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement…</Text> : null}
 
             <FlatList
-              data={playlists}
+              data={visiblePlaylists}
               keyExtractor={(playlist) => String(playlist.id)}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -684,8 +720,14 @@ export default function MovieDetailsScreen({
               ListEmptyComponent={
                 loadingPlaylists ? null : (
                   <View style={[styles.emptyPlaylistState, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-                    <Text style={[styles.emptyPlaylistTitle, { color: theme.colors.text }]}>Aucune playlist disponible</Text>
-                    <Text style={[styles.emptyPlaylistText, { color: theme.colors.textMuted }]}>Crée une playlist pour y ajouter ce film.</Text>
+                    <Text style={[styles.emptyPlaylistTitle, { color: theme.colors.text }]}>
+                      {playlistSearch.trim() ? 'Aucune playlist trouvée' : 'Aucune playlist disponible'}
+                    </Text>
+                    <Text style={[styles.emptyPlaylistText, { color: theme.colors.textMuted }]}>
+                      {playlistSearch.trim()
+                        ? 'Essaie un autre nom ou crée une nouvelle playlist.'
+                        : 'Crée une playlist pour y ajouter ce film.'}
+                    </Text>
                   </View>
                 )
               }
@@ -1045,7 +1087,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingTop: 18,
   },
-  createRow: {
+  playlistSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -1071,6 +1113,17 @@ const styles = StyleSheet.create({
   },
   createButtonDisabled: {
     opacity: 0.45,
+  },
+  createPlaylistButton: {
+    minHeight: 46,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  createPlaylistButtonLabel: {
+    fontSize: 14,
+    fontWeight: '900',
   },
   sheetHelper: {
     color: '#94a3b8',
