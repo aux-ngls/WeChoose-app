@@ -3,16 +3,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   DeviceEventEmitter,
   FlatList,
   Image,
   Share,
   Linking,
   Modal,
-  PanResponder,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -45,9 +42,6 @@ import { buildPublicMovieShareMessage } from '../utils/movieShare';
 import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 const TINDER_MOVIE_ACTION_EVENT = 'qulte:tinder-movie-action';
-const MODAL_DISMISS_THRESHOLD = 90;
-const MODAL_DISMISS_VELOCITY = 0.75;
-const MODAL_OFFSCREEN_Y = 480;
 const PERSISTED_MOVIE_DETAILS_SCOPE = 'movie-details-screen';
 
 interface PersistedMovieDetailsCache {
@@ -99,7 +93,6 @@ export default function MovieDetailsScreen({
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
-  const playlistTranslateY = useState(() => new Animated.Value(0))[0];
 
   useEffect(() => {
     if (!feedback) {
@@ -112,12 +105,6 @@ export default function MovieDetailsScreen({
   useEffect(() => {
     setShowTrailer(false);
   }, [route.params.movieId]);
-
-  useEffect(() => {
-    if (showPlaylistPicker) {
-      playlistTranslateY.setValue(0);
-    }
-  }, [playlistTranslateY, showPlaylistPicker]);
 
   useEffect(() => {
     if (!session) {
@@ -387,46 +374,6 @@ export default function MovieDetailsScreen({
     }
   };
 
-  const resetModalPosition = (translateY: Animated.Value) => {
-    Animated.spring(translateY, {
-      toValue: 0,
-      useNativeDriver: true,
-      friction: 8,
-      tension: 90,
-    }).start();
-  };
-
-  const dismissModal = (translateY: Animated.Value, onHidden: () => void) => {
-    Animated.timing(translateY, {
-      toValue: MODAL_OFFSCREEN_Y,
-      duration: 170,
-      useNativeDriver: true,
-    }).start(() => {
-      translateY.setValue(0);
-      onHidden();
-    });
-  };
-
-  const playlistPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dy) > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && gestureState.dy > 0,
-        onPanResponderMove: (_, gestureState) => {
-          playlistTranslateY.setValue(Math.max(0, gestureState.dy));
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dy > MODAL_DISMISS_THRESHOLD || gestureState.vy > MODAL_DISMISS_VELOCITY) {
-            dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false));
-            return;
-          }
-          resetModalPosition(playlistTranslateY);
-        },
-        onPanResponderTerminate: () => resetModalPosition(playlistTranslateY),
-      }),
-    [playlistTranslateY],
-  );
-
   const providers = movie
     ? [
         { label: 'Abonnement', items: movie.watch_providers.subscription },
@@ -659,71 +606,81 @@ export default function MovieDetailsScreen({
         </View>
       </Modal>
 
-      <Modal visible={showPlaylistPicker} animationType="slide" transparent statusBarTranslucent>
-        <View style={styles.sheetBackdrop}>
-          <Pressable
-            style={styles.sheetBackdropClose}
-            onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}
-          />
-          <Animated.View style={[styles.sheetWrap, { transform: [{ translateY: playlistTranslateY }] }]}>
-            <View
-              style={[
-                styles.sheet,
-                {
-                  borderColor: theme.rgba.border,
-                  backgroundColor: theme.colors.surface,
-                  paddingBottom: Math.max(insets.bottom, 12) + 10,
-                },
-              ]}
+      <Modal visible={showPlaylistPicker} animationType="slide" presentationStyle="fullScreen">
+        <View
+          style={[
+            styles.playlistModal,
+            {
+              backgroundColor: theme.colors.background,
+              paddingTop: Math.max(insets.top, 12) + 10,
+              paddingBottom: Math.max(insets.bottom, 12) + 12,
+            },
+          ]}
+        >
+          <View style={styles.playlistModalHeader}>
+            <Pressable
+              style={[styles.iconButton, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+              onPress={() => setShowPlaylistPicker(false)}
             >
-              <View style={styles.modalHandleZone} {...playlistPanResponder.panHandlers}>
-                <View style={[styles.modalHandle, { backgroundColor: theme.rgba.border }]} />
-              </View>
-              <View style={styles.sheetHeader}>
-                <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Ajouter à une playlist</Text>
-                <Pressable style={[styles.sheetCloseButton, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}>
-                  <Ionicons name="close" size={20} color={theme.colors.text} />
-                </Pressable>
-              </View>
-
-              <View style={styles.createRow}>
-                <TextInput
-                  value={newPlaylistName}
-                  onChangeText={setNewPlaylistName}
-                  placeholder="Nouvelle playlist"
-                  placeholderTextColor={theme.colors.textMuted}
-                  style={[styles.createInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
-                />
-                <Pressable style={[styles.createButton, { backgroundColor: theme.colors.secondaryAccent }]} onPress={() => void handleCreatePlaylist()}>
-                  <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
-                </Pressable>
-              </View>
-
-              {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement…</Text> : null}
-              <ScrollView
-                style={styles.playlistScroller}
-                contentContainerStyle={styles.playlistList}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                {playlists.map((playlist) => (
-                  <Pressable
-                    key={playlist.id}
-                    style={[styles.playlistRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-                    onPress={() => void handleAddToPlaylist(playlist)}
-                    disabled={actionLoading}
-                  >
-                    <Ionicons name={playlist.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'} size={19} color={theme.colors.secondaryAccent} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
-                      <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste système'}</Text>
-                    </View>
-                    <Ionicons name="add-circle" size={21} color={theme.colors.accent} />
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <Ionicons name="chevron-down" size={22} color={theme.colors.text} />
+            </Pressable>
+            <View style={styles.playlistModalTitleWrap}>
+              <Text style={[styles.playlistModalTitle, { color: theme.colors.text }]}>Ajouter à une playlist</Text>
+              {movie ? <Text style={[styles.playlistModalSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>{movie.title}</Text> : null}
             </View>
-          </Animated.View>
+            <View style={styles.iconSpacer} />
+          </View>
+
+          <View style={styles.playlistModalContent}>
+            <View style={styles.createRow}>
+              <TextInput
+                value={newPlaylistName}
+                onChangeText={setNewPlaylistName}
+                placeholder="Nouvelle playlist"
+                placeholderTextColor={theme.colors.textMuted}
+                style={[styles.createInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
+              />
+              <Pressable
+                style={[styles.createButton, { backgroundColor: theme.colors.secondaryAccent }]}
+                onPress={() => void handleCreatePlaylist()}
+                disabled={loadingPlaylists || !newPlaylistName.trim()}
+              >
+                <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
+              </Pressable>
+            </View>
+
+            {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement…</Text> : null}
+
+            <FlatList
+              data={playlists}
+              keyExtractor={(playlist) => String(playlist.id)}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.playlistModalList}
+              ListEmptyComponent={
+                loadingPlaylists ? null : (
+                  <View style={[styles.emptyPlaylistState, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+                    <Text style={[styles.emptyPlaylistTitle, { color: theme.colors.text }]}>Aucune playlist disponible</Text>
+                    <Text style={[styles.emptyPlaylistText, { color: theme.colors.textMuted }]}>Crée une playlist pour y ajouter ce film.</Text>
+                  </View>
+                )
+              }
+              renderItem={({ item: playlist }) => (
+                <Pressable
+                  style={[styles.playlistRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                  onPress={() => void handleAddToPlaylist(playlist)}
+                  disabled={actionLoading}
+                >
+                  <Ionicons name={playlist.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'} size={19} color={theme.colors.secondaryAccent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
+                    <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste système'}</Text>
+                  </View>
+                  <Ionicons name="add-circle" size={21} color={theme.colors.accent} />
+                </Pressable>
+              )}
+            />
+          </View>
         </View>
       </Modal>
     </>
@@ -1015,18 +972,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#050507',
   },
-  modalHandleZone: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  modalHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-  },
   trailerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1046,50 +991,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  sheetBackdrop: {
+  playlistModal: {
     flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.68)',
+    paddingHorizontal: 20,
   },
-  sheetBackdropClose: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sheetWrap: {
-    justifyContent: 'flex-end',
-    width: '100%',
-  },
-  sheet: {
-    maxHeight: '78%',
-    gap: 14,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: '#09090b',
-    padding: 18,
-    width: '100%',
-  },
-  playlistScroller: {
-    flexShrink: 1,
-  },
-  sheetHeader: {
+  playlistModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-  sheetTitle: {
+  playlistModalTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  playlistModalTitle: {
     color: '#ffffff',
     fontSize: 18,
     fontWeight: '900',
   },
-  sheetCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  playlistModalSubtitle: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  playlistModalContent: {
+    flex: 1,
+    gap: 14,
+    paddingTop: 18,
   },
   createRow: {
     flexDirection: 'row',
@@ -1119,9 +1049,9 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 13,
   },
-  playlistList: {
+  playlistModalList: {
     gap: 10,
-    paddingBottom: 4,
+    paddingBottom: 18,
   },
   playlistRow: {
     flexDirection: 'row',
@@ -1142,5 +1072,23 @@ const styles = StyleSheet.create({
     marginTop: 3,
     color: '#94a3b8',
     fontSize: 12,
+  },
+  emptyPlaylistState: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 18,
+    gap: 6,
+  },
+  emptyPlaylistTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  emptyPlaylistText: {
+    color: '#94a3b8',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
   },
 });
