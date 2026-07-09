@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { addMovieToPlaylist, ApiError, fetchPlaylists } from '../api/client';
@@ -39,8 +38,8 @@ export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQui
   const [loading, setLoading] = useState(false);
   const [activePlaylistId, setActivePlaylistId] = useState<number | null>(null);
   const [error, setError] = useState('');
-  const panelWidth = Math.min(286, screenWidth - 24);
-  const estimatedPanelHeight = Math.min(screenHeight * 0.58, 340);
+  const panelWidth = Math.min(252, screenWidth - 20);
+  const estimatedPanelHeight = Math.min(screenHeight * 0.5, 280);
   const horizontalPadding = 12;
   const verticalPadding = 10;
   const left = movie?.anchorX == null
@@ -137,20 +136,10 @@ export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQui
             },
           ]}
         >
-          <View style={styles.headerRow}>
-            <View style={styles.headerCopy}>
-              <Text style={[styles.kicker, { color: theme.colors.secondaryAccent }]}>Ajouter à une playlist</Text>
-              <Text style={[styles.title, { color: theme.colors.text }]} numberOfLines={2}>
-                {movie?.title ?? 'Choisir une playlist'}
-              </Text>
-            </View>
-          </View>
-
           {error ? <Text style={[styles.errorText, { color: '#fca5a5' }]}>{error}</Text> : null}
           {loading ? (
             <View style={styles.stateWrap}>
               <ActivityIndicator color={theme.colors.text} />
-              <Text style={[styles.stateText, { color: theme.colors.textMuted }]}>Chargement des playlists...</Text>
             </View>
           ) : (
             <FlatList
@@ -167,26 +156,14 @@ export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQui
                     onPress={() => void handleAdd(item)}
                     disabled={Boolean(activePlaylistId)}
                   >
-                    <View style={[styles.rowIcon, { backgroundColor: theme.rgba.cardStrong }]}>
-                      <Ionicons
-                        name={item.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'}
-                        size={18}
-                        color={theme.colors.secondaryAccent}
-                      />
-                    </View>
                     <View style={styles.rowBody}>
                       <Text style={[styles.rowTitle, { color: theme.colors.text }]} numberOfLines={1}>
                         {item.name}
                       </Text>
-                      <Text style={[styles.rowMeta, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                        {item.type === 'custom' ? 'Playlist perso' : 'Liste système'}
-                      </Text>
                     </View>
-                    {isActive ? (
-                      <ActivityIndicator size="small" color={theme.colors.secondaryAccent} />
-                    ) : (
-                      <Ionicons name="add-circle" size={20} color={theme.colors.secondaryAccent} />
-                    )}
+                    <View style={[styles.rowDot, { backgroundColor: item.system_key === 'watch-later' ? theme.colors.secondaryAccent : theme.rgba.cardStrong }]}>
+                      {isActive ? <ActivityIndicator size="small" color={theme.colors.secondaryAccentText} /> : null}
+                    </View>
                   </Pressable>
                 );
               }}
@@ -213,10 +190,10 @@ const styles = StyleSheet.create({
   },
   sheet: {
     position: 'absolute',
-    borderRadius: 24,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 14,
-    gap: 12,
+    padding: 10,
+    gap: 8,
     shadowOffset: {
       width: 0,
       height: 14,
@@ -225,82 +202,55 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 16,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  kicker: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: '900',
-    lineHeight: 19,
-  },
   errorText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   stateWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 26,
-  },
-  stateText: {
-    fontSize: 12,
-    textAlign: 'center',
+    paddingVertical: 18,
   },
   listContent: {
-    gap: 8,
+    gap: 6,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderRadius: 16,
+    gap: 8,
+    borderRadius: 14,
     borderWidth: 1,
-    paddingHorizontal: 11,
-    paddingVertical: 10,
-  },
-  rowIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
   rowBody: {
     flex: 1,
-    gap: 3,
   },
   rowTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
   },
-  rowMeta: {
-    fontSize: 11,
-    fontWeight: '600',
+  rowDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyState: {
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 18,
-    gap: 6,
+    padding: 14,
+    gap: 5,
   },
   emptyTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     textAlign: 'center',
   },
   emptyText: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: 'center',
   },
 });
