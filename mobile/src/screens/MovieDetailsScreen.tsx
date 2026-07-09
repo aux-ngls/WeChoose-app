@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
@@ -79,6 +79,7 @@ export default function MovieDetailsScreen({
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const playlistInputRef = useRef<TextInput | null>(null);
   const persistentCacheKey = useMemo(
     () => buildUserCacheKey(PERSISTED_MOVIE_DETAILS_SCOPE, session?.username, String(route.params.movieId)),
     [route.params.movieId, session?.username],
@@ -662,6 +663,7 @@ export default function MovieDetailsScreen({
           <View style={styles.playlistModalContent}>
             <View style={styles.playlistSearchRow}>
               <TextInput
+                ref={playlistInputRef}
                 value={isCreatingPlaylist ? newPlaylistName : playlistSearch}
                 onChangeText={isCreatingPlaylist ? setNewPlaylistName : setPlaylistSearch}
                 placeholder={isCreatingPlaylist ? 'Nom de la playlist' : 'Rechercher une playlist'}
@@ -677,10 +679,18 @@ export default function MovieDetailsScreen({
                   { backgroundColor: theme.colors.secondaryAccent },
                 ]}
                 onPress={() => {
-                  setIsCreatingPlaylist((current) => !current);
+                  const nextIsCreating = !isCreatingPlaylist;
+                  setIsCreatingPlaylist(nextIsCreating);
                   setPlaylistPickerError('');
                   setPlaylistSearch('');
                   setNewPlaylistName('');
+                  if (nextIsCreating) {
+                    setTimeout(() => {
+                      playlistInputRef.current?.focus();
+                    }, 0);
+                  } else {
+                    Keyboard.dismiss();
+                  }
                 }}
                 hitSlop={8}
               >
