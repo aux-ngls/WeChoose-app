@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { ApiError, blockUser, fetchSocialProfile, followUser, reportUser, startC
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
+import MovieQuickAddModal from '../components/MovieQuickAddModal';
 import MoviePosterTile from '../components/MoviePosterTile';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
@@ -37,6 +38,8 @@ export default function UserProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
 
   const loadProfile = useCallback(async () => {
     if (!session) {
@@ -64,6 +67,14 @@ export default function UserProfileScreen() {
       void loadProfile();
     }, [loadProfile]),
   );
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+    const timeout = setTimeout(() => setFeedback(''), 2200);
+    return () => clearTimeout(timeout);
+  }, [feedback]);
 
   const refreshProfile = useCallback(async () => {
     setRefreshing(true);
@@ -214,6 +225,7 @@ export default function UserProfileScreen() {
       </Pressable>
 
       {error ? <InlineBanner message={error} tone="error" /> : null}
+      {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
       {loading ? <ActivityIndicator color={theme.colors.text} /> : null}
 
       {!loading && !profile ? (
@@ -288,7 +300,11 @@ export default function UserProfileScreen() {
               <View style={styles.posterGrid}>
                 {profile.profile_movies.slice(0, 6).map((movie) => (
                   <View key={movie.id} style={styles.posterCell}>
-                    <MoviePosterTile movie={movie} onPress={() => navigation.navigate('MovieDetails', { movieId: movie.id, title: movie.title })} />
+                    <MoviePosterTile
+                      movie={movie}
+                      onPress={() => navigation.navigate('MovieDetails', { movieId: movie.id, title: movie.title })}
+                      onLongPress={() => setQuickAddMovie({ id: movie.id, title: movie.title })}
+                    />
                   </View>
                 ))}
               </View>
@@ -333,7 +349,11 @@ export default function UserProfileScreen() {
                     key={review.id}
                     style={[styles.reviewCard, { backgroundColor: theme.rgba.cardStrong }]}
                   >
-                    <Pressable onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}>
+                    <Pressable
+                      onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}
+                      onLongPress={() => setQuickAddMovie({ id: review.movie_id, title: review.title })}
+                      delayLongPress={220}
+                    >
                       <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
                     </Pressable>
                     <View style={styles.reviewBody}>
@@ -352,6 +372,11 @@ export default function UserProfileScreen() {
           </View>
         </>
       ) : null}
+      <MovieQuickAddModal
+        movie={quickAddMovie}
+        onClose={() => setQuickAddMovie(null)}
+        onAdded={(playlistName) => setFeedback(`Ajouté à ${playlistName}.`)}
+      />
     </AppScreen>
   );
 }

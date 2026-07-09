@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ApiError, fetchPersonDetails } from '../api/client';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
+import MovieQuickAddModal from '../components/MovieQuickAddModal';
 import MoviePosterTile from '../components/MoviePosterTile';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
@@ -44,6 +45,8 @@ export default function PersonDetailsScreen({
   const [person, setPerson] = useState<PersonDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
 
   useEffect(() => {
     if (!session) {
@@ -79,6 +82,14 @@ export default function PersonDetailsScreen({
       active = false;
     };
   }, [route.params.personId, session, signOut]);
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+    const timeout = setTimeout(() => setFeedback(''), 2200);
+    return () => clearTimeout(timeout);
+  }, [feedback]);
 
   const metaItems = useMemo(() => {
     if (!person) {
@@ -129,6 +140,7 @@ export default function PersonDetailsScreen({
           </View>
 
           {error ? <InlineBanner message={error} tone="error" /> : null}
+          {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
 
           {person.biography ? (
             <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -146,6 +158,7 @@ export default function PersonDetailsScreen({
                     <MoviePosterTile
                       movie={movie}
                       onPress={() => navigation.navigate('MovieDetails', { movieId: movie.id, title: movie.title })}
+                      onLongPress={() => setQuickAddMovie({ id: movie.id, title: movie.title })}
                     />
                     {movie.character || movie.job || movie.release_date ? (
                       <Text style={[styles.movieCredit, { color: theme.colors.textMuted }]} numberOfLines={2}>
@@ -164,6 +177,11 @@ export default function PersonDetailsScreen({
           <Text style={[styles.stateText, { color: theme.colors.textSoft }]}>Fiche indisponible.</Text>
         </View>
       )}
+      <MovieQuickAddModal
+        movie={quickAddMovie}
+        onClose={() => setQuickAddMovie(null)}
+        onAdded={(playlistName) => setFeedback(`Ajouté à ${playlistName}.`)}
+      />
     </AppScreen>
   );
 }

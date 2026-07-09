@@ -6,15 +6,18 @@ import { useTheme } from '../theme/ThemeContext';
 interface MoviePosterTileProps {
   movie: SearchMovie;
   onPress?: () => void;
+  onLongPress?: () => void;
 }
 
-export default function MoviePosterTile({ movie, onPress }: MoviePosterTileProps) {
+export default function MoviePosterTile({ movie, onPress, onLongPress }: MoviePosterTileProps) {
   const { theme } = useTheme();
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={!onPress}
+      onLongPress={onLongPress}
+      delayLongPress={220}
+      disabled={!onPress && !onLongPress}
       style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
     >
       <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />

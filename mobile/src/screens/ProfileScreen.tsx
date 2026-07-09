@@ -10,6 +10,7 @@ import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
+import MovieQuickAddModal from '../components/MovieQuickAddModal';
 import MoviePosterTile from '../components/MoviePosterTile';
 import {
   ApiError,
@@ -89,6 +90,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(() => !initialCache);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
   const [playerMessage, setPlayerMessage] = useState('');
   const [isSoundtrackPlaying, setIsSoundtrackPlaying] = useState(false);
   const [activeSoundtrackUrl, setActiveSoundtrackUrl] = useState<string | null>(null);
@@ -112,6 +114,7 @@ export default function ProfileScreen() {
   const [showAllPlaylists, setShowAllPlaylists] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(() => initialCache?.unreadNotifications ?? 0);
+  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const profileRef = useRef(profile);
   const playlistsRef = useRef(playlists);
@@ -150,6 +153,14 @@ export default function ProfileScreen() {
     const timeout = setTimeout(() => setPlayerMessage(''), 2200);
     return () => clearTimeout(timeout);
   }, [playerMessage]);
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+    const timeout = setTimeout(() => setFeedback(''), 2200);
+    return () => clearTimeout(timeout);
+  }, [feedback]);
 
   useEffect(() => {
     if (!session) {
@@ -574,6 +585,7 @@ export default function ProfileScreen() {
   return (
     <AppScreen refreshing={refreshing} onRefresh={() => void refreshProfile()}>
       {error ? <InlineBanner message={error} tone="error" /> : null}
+      {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
       {playerMessage ? <InlineBanner message={playerMessage} tone="error" /> : null}
       {loading && !profile ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de ton profil...</Text> : null}
 
@@ -854,6 +866,7 @@ export default function ProfileScreen() {
                       <MoviePosterTile
                         movie={movie}
                         onPress={() => navigation.navigate('MovieDetails', { movieId: movie.id, title: movie.title })}
+                        onLongPress={() => setQuickAddMovie({ id: movie.id, title: movie.title })}
                       />
                     </View>
                   ))}
@@ -1007,6 +1020,8 @@ export default function ProfileScreen() {
                         event.stopPropagation();
                         navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title });
                       }}
+                      onLongPress={() => setQuickAddMovie({ id: review.movie_id, title: review.title })}
+                      delayLongPress={220}
                     >
                       <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
                     </Pressable>
@@ -1098,6 +1113,11 @@ export default function ProfileScreen() {
           </Pressable>
         </>
       ) : null}
+      <MovieQuickAddModal
+        movie={quickAddMovie}
+        onClose={() => setQuickAddMovie(null)}
+        onAdded={(playlistName) => setFeedback(`Ajouté à ${playlistName}.`)}
+      />
     </AppScreen>
   );
 }

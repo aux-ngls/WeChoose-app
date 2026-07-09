@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
+import MovieQuickAddModal from '../components/MovieQuickAddModal';
 import ScreenHeader from '../components/ScreenHeader';
 import {
   ApiError,
@@ -46,6 +47,7 @@ export default function SocialScreen() {
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
   const reviewsRef = useRef(reviews);
 
   useEffect(() => {
@@ -255,6 +257,8 @@ export default function SocialScreen() {
                   event.stopPropagation();
                   navigation.navigate('MovieDetails', { movieId: item.movie_id, title: item.title });
                 }}
+                onLongPress={() => setQuickAddMovie({ id: item.movie_id, title: item.title })}
+                delayLongPress={220}
               >
                 <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
               </Pressable>
@@ -312,6 +316,11 @@ export default function SocialScreen() {
           ))}
         </View>
       )}
+      <MovieQuickAddModal
+        movie={quickAddMovie}
+        onClose={() => setQuickAddMovie(null)}
+        onAdded={(playlistName) => setFeedback(`Ajouté à ${playlistName}.`)}
+      />
     </AppScreen>
   );
 }

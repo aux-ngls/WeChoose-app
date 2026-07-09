@@ -8,6 +8,7 @@ import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
+import MovieQuickAddModal from '../components/MovieQuickAddModal';
 import ScreenHeader from '../components/ScreenHeader';
 import SearchField from '../components/SearchField';
 import { ApiError, searchMovies, searchSocialUsers } from '../api/client';
@@ -109,6 +110,8 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
 
   useEffect(() => {
     if (!session) {
@@ -149,6 +152,14 @@ export default function SearchScreen() {
       return () => interaction.cancel();
     }, []),
   );
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+    const timeout = setTimeout(() => setFeedback(''), 2200);
+    return () => clearTimeout(timeout);
+  }, [feedback]);
 
   const performSearch = useCallback(async (nextQuery: string, mode: SearchMode, options?: { forceRefresh?: boolean }) => {
     if (!session) {
@@ -318,6 +329,7 @@ export default function SearchScreen() {
               </View>
             ) : null}
             {error ? <InlineBanner message={error} tone="error" /> : null}
+            {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
             {loading ? (
               <View style={styles.loadingWrap}>
                 <ActivityIndicator color={theme.colors.text} />
@@ -334,7 +346,16 @@ export default function SearchScreen() {
                 navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title });
               }}
             >
-              <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+              <Pressable
+                onPress={() => {
+                  void rememberRecentMovie(item.movie);
+                  navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title });
+                }}
+                onLongPress={() => setQuickAddMovie({ id: item.movie.id, title: item.movie.title })}
+                delayLongPress={220}
+              >
+                <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+              </Pressable>
               <View style={styles.itemBody}>
                 <Text style={[styles.itemTitle, { color: theme.colors.text }]}>{item.movie.title}</Text>
                 <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
@@ -379,6 +400,11 @@ export default function SearchScreen() {
             )
           ) : null
         }
+      />
+      <MovieQuickAddModal
+        movie={quickAddMovie}
+        onClose={() => setQuickAddMovie(null)}
+        onAdded={(playlistName) => setFeedback(`Ajouté à ${playlistName}.`)}
       />
     </AppScreen>
   );

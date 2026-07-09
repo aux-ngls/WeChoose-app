@@ -6,6 +6,7 @@ import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
+import MovieQuickAddModal from '../components/MovieQuickAddModal';
 import SearchField from '../components/SearchField';
 import {
   ApiError,
@@ -41,6 +42,8 @@ export default function GroupRecommendationsScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [includeSeen, setIncludeSeen] = useState(false);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [quickAddMovie, setQuickAddMovie] = useState<{ id: number; title: string } | null>(null);
 
   useEffect(() => {
     if (!session) {
@@ -75,6 +78,14 @@ export default function GroupRecommendationsScreen({
 
     return () => clearTimeout(handle);
   }, [query, selectedUsers, session, signOut]);
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+    const timeout = setTimeout(() => setFeedback(''), 2200);
+    return () => clearTimeout(timeout);
+  }, [feedback]);
 
   const loadRecommendations = useCallback(async () => {
     if (!session || selectedUsers.length === 0) {
@@ -228,6 +239,7 @@ export default function GroupRecommendationsScreen({
             </View>
 
             {error ? <InlineBanner message={error} tone="error" /> : null}
+            {feedback ? <InlineBanner message={feedback} tone="success" /> : null}
 
             {searchLoading ? (
               <View style={styles.loadingWrap}>
@@ -279,7 +291,13 @@ export default function GroupRecommendationsScreen({
             style={[styles.movieCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
             onPress={() => navigation.navigate('MovieDetails', { movieId: item.id, title: item.title })}
           >
-            <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+            <Pressable
+              onPress={() => navigation.navigate('MovieDetails', { movieId: item.id, title: item.title })}
+              onLongPress={() => setQuickAddMovie({ id: item.id, title: item.title })}
+              delayLongPress={220}
+            >
+              <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+            </Pressable>
             <View style={styles.movieBody}>
               <Text style={[styles.movieTitle, { color: theme.colors.text }]} numberOfLines={2}>
                 {item.title}
@@ -326,6 +344,11 @@ export default function GroupRecommendationsScreen({
             />
           ) : null
         }
+      />
+      <MovieQuickAddModal
+        movie={quickAddMovie}
+        onClose={() => setQuickAddMovie(null)}
+        onAdded={(playlistName) => setFeedback(`Ajouté à ${playlistName}.`)}
       />
     </AppScreen>
   );
