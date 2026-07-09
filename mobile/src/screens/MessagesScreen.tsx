@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DeviceEventEmitter, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { DeviceEventEmitter, InteractionManager, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -393,9 +393,9 @@ export default function MessagesScreen() {
             setUserQuery('');
             setUserResults([]);
             if (nextIsOpen) {
-              setTimeout(() => {
+              InteractionManager.runAfterInteractions(() => {
                 newMessageInputRef.current?.focus();
-              }, 0);
+              });
             }
           }}
         >

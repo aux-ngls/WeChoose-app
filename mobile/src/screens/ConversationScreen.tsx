@@ -7,6 +7,7 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -575,14 +576,14 @@ export default function ConversationScreen({
       messageCountRef.current = 0;
       hasMoreOlderMessagesRef.current = true;
       void loadConversation();
-      const focusTimeout = setTimeout(() => {
+      const interaction = InteractionManager.runAfterInteractions(() => {
         composerInputRef.current?.focus();
-      }, 0);
+      });
       const interval = setInterval(() => {
         void loadConversation();
       }, 45000);
       return () => {
-        clearTimeout(focusTimeout);
+        interaction.cancel();
         clearInterval(interval);
       };
     }, [loadConversation]),

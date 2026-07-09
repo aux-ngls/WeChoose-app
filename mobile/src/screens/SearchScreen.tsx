@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, InteractionManager, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
@@ -142,11 +142,11 @@ export default function SearchScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const timeout = setTimeout(() => {
+      const interaction = InteractionManager.runAfterInteractions(() => {
         searchInputRef.current?.focus();
-      }, 0);
+      });
 
-      return () => clearTimeout(timeout);
+      return () => interaction.cancel();
     }, []),
   );
 
