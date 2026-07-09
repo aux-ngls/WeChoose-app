@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
+import { DeviceEventEmitter, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -134,6 +134,7 @@ export default function MessagesScreen() {
   const [startingUserIds, setStartingUserIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const conversationsRef = useRef(conversations);
+  const newMessageInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
     conversationsRef.current = conversations;
@@ -387,9 +388,15 @@ export default function MessagesScreen() {
         <Pressable
           style={styles.newMessageButton}
           onPress={() => {
-            setIsNewMessageOpen((current) => !current);
+            const nextIsOpen = !isNewMessageOpen;
+            setIsNewMessageOpen(nextIsOpen);
             setUserQuery('');
             setUserResults([]);
+            if (nextIsOpen) {
+              setTimeout(() => {
+                newMessageInputRef.current?.focus();
+              }, 0);
+            }
           }}
         >
           <Ionicons name={isNewMessageOpen ? 'close' : 'create-outline'} size={18} color={theme.colors.secondaryAccentText} />
@@ -399,6 +406,7 @@ export default function MessagesScreen() {
       {isNewMessageOpen ? (
         <View style={[styles.newMessagePanel, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
           <SearchField
+            ref={newMessageInputRef}
             value={userQuery}
             onChangeText={setUserQuery}
             placeholder="Chercher quelqu'un"
