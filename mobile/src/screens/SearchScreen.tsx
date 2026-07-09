@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
@@ -99,6 +99,7 @@ export default function SearchScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const searchInputRef = useRef<TextInput | null>(null);
   const [searchMode, setSearchMode] = useState<SearchMode>('movies');
   const [query, setQuery] = useState('');
   const [movieResults, setMovieResults] = useState<SearchMovie[]>([]);
@@ -138,6 +139,16 @@ export default function SearchScreen() {
       cancelled = true;
     };
   }, [session]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const timeout = setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 0);
+
+      return () => clearTimeout(timeout);
+    }, []),
+  );
 
   const performSearch = useCallback(async (nextQuery: string, mode: SearchMode, options?: { forceRefresh?: boolean }) => {
     if (!session) {
@@ -294,6 +305,7 @@ export default function SearchScreen() {
               })}
             </View>
             <SearchField
+              ref={searchInputRef}
               value={query}
               onChangeText={setQuery}
               placeholder={searchMode === 'movies' ? 'Chercher un film' : 'Chercher un utilisateur'}

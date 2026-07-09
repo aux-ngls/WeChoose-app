@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { forwardRef } from 'react';
 import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -6,7 +7,7 @@ interface SearchFieldProps extends TextInputProps {
   icon?: keyof typeof Ionicons.glyphMap;
 }
 
-export default function SearchField({ icon = 'search', ...props }: SearchFieldProps) {
+const SearchField = forwardRef<TextInput, SearchFieldProps>(function SearchField({ icon = 'search', ...props }, ref) {
   const { theme } = useTheme();
   const canClear = typeof props.value === 'string' && props.value.length > 0 && typeof props.onChangeText === 'function';
 
@@ -14,6 +15,7 @@ export default function SearchField({ icon = 'search', ...props }: SearchFieldPr
     <View style={[styles.wrapper, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
       <Ionicons name={icon} size={18} color={theme.colors.textMuted} />
       <TextInput
+        ref={ref}
         {...props}
         placeholderTextColor={theme.colors.textMuted}
         style={[styles.input, { color: theme.colors.text }, props.style]}
@@ -29,7 +31,9 @@ export default function SearchField({ icon = 'search', ...props }: SearchFieldPr
       ) : null}
     </View>
   );
-}
+});
+
+export default SearchField;
 
 const styles = StyleSheet.create({
   wrapper: {
