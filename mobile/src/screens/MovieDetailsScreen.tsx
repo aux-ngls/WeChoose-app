@@ -12,6 +12,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -658,54 +659,72 @@ export default function MovieDetailsScreen({
         </View>
       </Modal>
 
-      <Modal visible={showPlaylistPicker} animationType="slide" transparent>
-        <Pressable style={styles.sheetBackdrop} onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}>
+      <Modal visible={showPlaylistPicker} animationType="slide" transparent statusBarTranslucent>
+        <View style={styles.sheetBackdrop}>
+          <Pressable
+            style={styles.sheetBackdropClose}
+            onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}
+          />
           <Animated.View style={[styles.sheetWrap, { transform: [{ translateY: playlistTranslateY }] }]}>
-            <Pressable style={[styles.sheet, { borderColor: theme.rgba.border, backgroundColor: theme.colors.surface }]} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.modalHandleZone} {...playlistPanResponder.panHandlers}>
-              <View style={[styles.modalHandle, { backgroundColor: theme.rgba.border }]} />
-            </View>
-            <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Ajouter à une playlist</Text>
-              <Pressable style={[styles.sheetCloseButton, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}>
-                <Ionicons name="close" size={20} color={theme.colors.text} />
-              </Pressable>
-            </View>
-
-            <View style={styles.createRow}>
-              <TextInput
-                value={newPlaylistName}
-                onChangeText={setNewPlaylistName}
-                placeholder="Nouvelle playlist"
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.createInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
-              />
-              <Pressable style={[styles.createButton, { backgroundColor: theme.colors.secondaryAccent }]} onPress={() => void handleCreatePlaylist()}>
-                <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
-              </Pressable>
-            </View>
-
-            {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement…</Text> : null}
-            <View style={styles.playlistList}>
-              {playlists.map((playlist) => (
-                <Pressable
-                  key={playlist.id}
-                  style={[styles.playlistRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-                  onPress={() => void handleAddToPlaylist(playlist)}
-                  disabled={actionLoading}
-                >
-                  <Ionicons name={playlist.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'} size={19} color={theme.colors.secondaryAccent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
-                    <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste système'}</Text>
-                  </View>
-                  <Ionicons name="add-circle" size={21} color={theme.colors.accent} />
+            <View
+              style={[
+                styles.sheet,
+                {
+                  borderColor: theme.rgba.border,
+                  backgroundColor: theme.colors.surface,
+                  paddingBottom: Math.max(insets.bottom, 12) + 10,
+                },
+              ]}
+            >
+              <View style={styles.modalHandleZone} {...playlistPanResponder.panHandlers}>
+                <View style={[styles.modalHandle, { backgroundColor: theme.rgba.border }]} />
+              </View>
+              <View style={styles.sheetHeader}>
+                <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Ajouter à une playlist</Text>
+                <Pressable style={[styles.sheetCloseButton, { backgroundColor: theme.rgba.cardStrong }]} onPress={() => dismissModal(playlistTranslateY, () => setShowPlaylistPicker(false))}>
+                  <Ionicons name="close" size={20} color={theme.colors.text} />
                 </Pressable>
-              ))}
+              </View>
+
+              <View style={styles.createRow}>
+                <TextInput
+                  value={newPlaylistName}
+                  onChangeText={setNewPlaylistName}
+                  placeholder="Nouvelle playlist"
+                  placeholderTextColor={theme.colors.textMuted}
+                  style={[styles.createInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
+                />
+                <Pressable style={[styles.createButton, { backgroundColor: theme.colors.secondaryAccent }]} onPress={() => void handleCreatePlaylist()}>
+                  <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
+                </Pressable>
+              </View>
+
+              {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement…</Text> : null}
+              <ScrollView
+                style={styles.playlistScroller}
+                contentContainerStyle={styles.playlistList}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {playlists.map((playlist) => (
+                  <Pressable
+                    key={playlist.id}
+                    style={[styles.playlistRow, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                    onPress={() => void handleAddToPlaylist(playlist)}
+                    disabled={actionLoading}
+                  >
+                    <Ionicons name={playlist.system_key === 'watch-later' ? 'time-outline' : 'albums-outline'} size={19} color={theme.colors.secondaryAccent} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.playlistName, { color: theme.colors.text }]}>{playlist.name}</Text>
+                      <Text style={[styles.playlistMeta, { color: theme.colors.textMuted }]}>{playlist.type === 'custom' ? 'Playlist perso' : 'Liste système'}</Text>
+                    </View>
+                    <Ionicons name="add-circle" size={21} color={theme.colors.accent} />
+                  </Pressable>
+                ))}
+              </ScrollView>
             </View>
-            </Pressable>
           </Animated.View>
-        </Pressable>
+        </View>
       </Modal>
     </>
   );
@@ -1032,8 +1051,12 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.68)',
   },
+  sheetBackdropClose: {
+    ...StyleSheet.absoluteFillObject,
+  },
   sheetWrap: {
     justifyContent: 'flex-end',
+    width: '100%',
   },
   sheet: {
     maxHeight: '78%',
@@ -1044,6 +1067,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: '#09090b',
     padding: 18,
+    width: '100%',
+  },
+  playlistScroller: {
+    flexShrink: 1,
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -1094,6 +1121,7 @@ const styles = StyleSheet.create({
   },
   playlistList: {
     gap: 10,
+    paddingBottom: 4,
   },
   playlistRow: {
     flexDirection: 'row',
