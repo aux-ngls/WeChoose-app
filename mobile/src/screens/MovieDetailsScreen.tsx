@@ -6,6 +6,7 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  Keyboard,
   Share,
   Linking,
   Modal,
@@ -92,6 +93,8 @@ export default function MovieDetailsScreen({
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
+  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const [playlistPickerError, setPlaylistPickerError] = useState('');
   const [newPlaylistName, setNewPlaylistName] = useState('');
 
   useEffect(() => {
@@ -119,6 +122,7 @@ export default function MovieDetailsScreen({
     setError('');
     setFeedback('');
     setShowPlaylistPicker(false);
+    setPlaylistPickerError('');
     setNewPlaylistName('');
 
     void (async () => {
@@ -214,26 +218,31 @@ export default function MovieDetailsScreen({
     }
   };
 
+  const loadPlaylists = async (token: string) => {
+    setLoadingPlaylists(true);
+    try {
+      const payload = await fetchPlaylists(token);
+      setPlaylists(payload.filter((playlist) => !playlist.readonly));
+      setPlaylistPickerError('');
+    } catch (playlistError) {
+      if (playlistError instanceof ApiError && playlistError.status === 401) {
+        await signOut();
+        return;
+      }
+      setPlaylistPickerError('Impossible de charger les playlists.');
+    } finally {
+      setLoadingPlaylists(false);
+    }
+  };
+
   const openPlaylistPicker = async () => {
     if (!session) {
       return;
     }
 
     setShowPlaylistPicker(true);
-    setLoadingPlaylists(true);
-    try {
-      const payload = await fetchPlaylists(session.token);
-      setPlaylists(payload.filter((playlist) => !playlist.readonly));
-      setError('');
-    } catch (playlistError) {
-      if (playlistError instanceof ApiError && playlistError.status === 401) {
-        await signOut();
-        return;
-      }
-      setError('Impossible de charger les playlists.');
-    } finally {
-      setLoadingPlaylists(false);
-    }
+    setPlaylistPickerError('');
+    await loadPlaylists(session.token);
   };
 
   const handleAddToPlaylist = async (playlist: PlaylistSummary) => {
@@ -269,21 +278,23 @@ export default function MovieDetailsScreen({
       return;
     }
 
-    setLoadingPlaylists(true);
+    Keyboard.dismiss();
+    setCreatingPlaylist(true);
     try {
-      const created = await createPlaylist(session.token, newPlaylistName.trim());
-      setPlaylists((current) => [created, ...current]);
+      await createPlaylist(session.token, newPlaylistName.trim());
       setNewPlaylistName('');
+      await loadPlaylists(session.token);
       setFeedback('Playlist créée.');
+      setPlaylistPickerError('');
       setError('');
     } catch (createError) {
       if (createError instanceof ApiError && createError.status === 401) {
         await signOut();
         return;
       }
-      setError('Impossible de créer cette playlist.');
+      setPlaylistPickerError(createError instanceof ApiError ? createError.message : 'Impossible de créer cette playlist.');
     } finally {
-      setLoadingPlaylists(false);
+      setCreatingPlaylist(false);
     }
   };
 
@@ -638,17 +649,30 @@ export default function MovieDetailsScreen({
                 onChangeText={setNewPlaylistName}
                 placeholder="Nouvelle playlist"
                 placeholderTextColor={theme.colors.textMuted}
+                returnKeyType="done"
+                blurOnSubmit={false}
+                onSubmitEditing={() => void handleCreatePlaylist()}
                 style={[styles.createInput, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong, color: theme.colors.text }]}
               />
               <Pressable
-                style={[styles.createButton, { backgroundColor: theme.colors.secondaryAccent }]}
+                style={[
+                  styles.createButton,
+                  { backgroundColor: theme.colors.secondaryAccent },
+                  (loadingPlaylists || creatingPlaylist || !newPlaylistName.trim()) && styles.createButtonDisabled,
+                ]}
                 onPress={() => void handleCreatePlaylist()}
-                disabled={loadingPlaylists || !newPlaylistName.trim()}
+                disabled={loadingPlaylists || creatingPlaylist || !newPlaylistName.trim()}
+                hitSlop={8}
               >
-                <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
+                {creatingPlaylist ? (
+                  <ActivityIndicator size="small" color={theme.colors.secondaryAccentText} />
+                ) : (
+                  <Ionicons name="add" size={20} color={theme.colors.secondaryAccentText} />
+                )}
               </Pressable>
             </View>
 
+            {playlistPickerError ? <InlineBanner message={playlistPickerError} tone="error" /> : null}
             {loadingPlaylists ? <Text style={[styles.sheetHelper, { color: theme.colors.textMuted }]}>Chargement…</Text> : null}
 
             <FlatList
@@ -1044,6 +1068,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#7dd3fc',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  createButtonDisabled: {
+    opacity: 0.45,
   },
   sheetHelper: {
     color: '#94a3b8',
