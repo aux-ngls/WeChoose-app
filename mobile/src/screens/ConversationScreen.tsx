@@ -7,7 +7,6 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
-  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -284,7 +283,6 @@ export default function ConversationScreen({
   const loadingOlderMessagesRef = useRef(false);
   const hasMoreOlderMessagesRef = useRef(true);
   const participantSnapshotRef = useRef({ participantId, participantUsername });
-  const composerInputRef = useRef<TextInput | null>(null);
   const composerBottomGap = keyboardLift > 0 ? keyboardLift : Math.max(insets.bottom, 10);
   const replyBannerOpacity = useRef(new Animated.Value(0)).current;
   const replyBannerTranslateY = useRef(new Animated.Value(10)).current;
@@ -576,16 +574,10 @@ export default function ConversationScreen({
       messageCountRef.current = 0;
       hasMoreOlderMessagesRef.current = true;
       void loadConversation();
-      const interaction = InteractionManager.runAfterInteractions(() => {
-        composerInputRef.current?.focus();
-      });
       const interval = setInterval(() => {
         void loadConversation();
       }, 45000);
-      return () => {
-        interaction.cancel();
-        clearInterval(interval);
-      };
+      return () => clearInterval(interval);
     }, [loadConversation]),
   );
 
@@ -1039,7 +1031,6 @@ export default function ConversationScreen({
             <Ionicons name="film-outline" size={18} color={theme.colors.text} />
           </Pressable>
           <TextInput
-            ref={composerInputRef}
             value={draft}
             onChangeText={setDraft}
             placeholder={replyTarget ? `Répondre à @${replyTarget.sender.username}` : 'Écrire un message'}
