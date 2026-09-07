@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
+import CachedPoster from '../components/CachedPoster';
 import InlineBanner from '../components/InlineBanner';
 import StarRatingInput from '../components/StarRatingInput';
 import {
@@ -432,7 +433,7 @@ export default function MovieDetailsScreen({
         ) : movie ? (
           <>
             <View style={[styles.heroCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+              <CachedPoster uri={movie.poster_url} style={styles.heroPoster} />
               <LinearGradient
                 colors={['rgba(7,10,18,0.02)', 'rgba(7,10,18,0.18)', 'rgba(7,10,18,0.68)', 'rgba(7,10,18,0.96)']}
                 locations={[0, 0.38, 0.72, 1]}

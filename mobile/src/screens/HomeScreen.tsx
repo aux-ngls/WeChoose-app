@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Animated,
   DeviceEventEmitter,
-  Image,
   PanResponder,
   Platform,
   Pressable,
@@ -18,6 +17,7 @@ import {
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import StarRatingInput from '../components/StarRatingInput';
@@ -39,7 +39,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTipJar } from '../support/TipJarContext';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type RuntimeAlertItem, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
+import { type RuntimeAlertItem, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
 import { recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
 
 const MIN_READY_TINDER_MOVIES = 5;
@@ -100,11 +100,7 @@ function parseCachedMovies(rawValue: string | null, username: string): SearchMov
 }
 
 function prefetchMoviePosters(movies: SearchMovie[]) {
-  movies.slice(0, 16).forEach((movie) => {
-    if (movie.poster_url) {
-      void Image.prefetch(movie.poster_url);
-    }
-  });
+  void prefetchPosterUrls(movies.map((movie) => movie.poster_url), 16);
 }
 
 export default function HomeScreen() {
@@ -755,7 +751,7 @@ export default function HomeScreen() {
             <View style={[styles.cardFrame, { width: tinderCardWidth }]}>
             {secondMovie ? (
               <View style={styles.backCard}>
-                <Image source={{ uri: secondMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+                <CachedPoster uri={secondMovie.poster_url} style={styles.heroPoster} />
                 <View style={styles.backOverlay} />
               </View>
             ) : null}
@@ -766,7 +762,7 @@ export default function HomeScreen() {
                 onPress={() => navigation.navigate('MovieDetails', { movieId: currentMovie.id, title: currentMovie.title, source: 'tinder' })}
                 disabled={submitting}
               >
-                <Image source={{ uri: currentMovie.poster_url || FALLBACK_POSTER }} style={styles.heroPoster} />
+                <CachedPoster uri={currentMovie.poster_url} style={styles.heroPoster} />
                 <LinearGradient
                   pointerEvents="none"
                   colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}

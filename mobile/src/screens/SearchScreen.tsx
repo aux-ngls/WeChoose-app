@@ -6,6 +6,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
@@ -15,7 +16,7 @@ import { ApiError, searchMovies, searchSocialUsers } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SearchMovie, type SocialUser } from '../types';
+import { type SearchMovie, type SocialUser } from '../types';
 
 type SearchMode = 'movies' | 'users';
 type SearchResult =
@@ -234,6 +235,13 @@ export default function SearchScreen() {
     : recentUsers.map((user) => ({ kind: 'user', id: `recent-user-${user.id}`, user }));
   const displayedResults = query.trim().length >= 2 ? results : recentResults;
 
+  useEffect(() => {
+    const moviesToPrefetch = searchMode === 'movies'
+      ? (query.trim().length >= 2 ? movieResults : recentMovies)
+      : [];
+    void prefetchPosterUrls(moviesToPrefetch.map((movie) => movie.poster_url), 12);
+  }, [movieResults, query, recentMovies, searchMode]);
+
   const rememberRecentMovie = useCallback(async (movie: SearchMovie) => {
     if (!session) {
       return;
@@ -359,7 +367,7 @@ export default function SearchScreen() {
                 })}
                 delayLongPress={220}
               >
-                <Image source={{ uri: item.movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+                <CachedPoster uri={item.movie.poster_url} style={styles.poster} />
               </Pressable>
               <View style={styles.itemBody}>
                 <Text style={[styles.itemTitle, { color: theme.colors.text }]}>{item.movie.title}</Text>

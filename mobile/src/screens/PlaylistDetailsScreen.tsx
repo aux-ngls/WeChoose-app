@@ -5,7 +5,6 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -17,6 +16,7 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
@@ -31,7 +31,6 @@ import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
 import {
-  FALLBACK_POSTER,
   FAVORITES_PLAYLIST_ID,
   HISTORY_PLAYLIST_ID,
   type SearchMovie,
@@ -148,6 +147,7 @@ export default function PlaylistDetailsScreen({
 
   useEffect(() => {
     moviesRef.current = movies;
+    void prefetchPosterUrls(movies.map((movie) => movie.poster_url), 30);
   }, [movies]);
 
   useEffect(() => {
@@ -695,7 +695,7 @@ export default function PlaylistDetailsScreen({
                 isReordering && styles.movieCardActive,
               ]}
             >
-              <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+              <CachedPoster uri={item.poster_url} style={styles.poster} />
               {canReorder ? (
                 <View style={styles.dragBadge}>
                   <Ionicons name={isReordering ? 'checkmark' : 'reorder-three'} size={14} color="#ffffff" />

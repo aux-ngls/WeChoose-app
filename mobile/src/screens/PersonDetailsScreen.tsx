@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ApiError, fetchPersonDetails } from '../api/client';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
+import { prefetchPosterUrls } from '../components/CachedPoster';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import MoviePosterTile from '../components/MoviePosterTile';
 import { useAuth } from '../auth/AuthContext';
@@ -90,6 +91,10 @@ export default function PersonDetailsScreen({
     const timeout = setTimeout(() => setFeedback(''), 2200);
     return () => clearTimeout(timeout);
   }, [feedback]);
+
+  useEffect(() => {
+    void prefetchPosterUrls((person?.known_for_movies ?? []).map((movie) => movie.poster_url), 12);
+  }, [person]);
 
   const metaItems = useMemo(() => {
     if (!person) {

@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
@@ -17,7 +18,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SocialReview } from '../types';
+import { type SocialReview } from '../types';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
 import { formatDate } from '../utils/format';
 import { SOCIAL_REFRESH_EVENT } from '../utils/events';
@@ -52,6 +53,7 @@ export default function SocialScreen() {
 
   useEffect(() => {
     reviewsRef.current = reviews;
+    void prefetchPosterUrls(reviews.map((review) => review.poster_url), 18);
   }, [reviews]);
 
   useEffect(() => {
@@ -265,7 +267,7 @@ export default function SocialScreen() {
                 })}
                 delayLongPress={220}
               >
-                <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+                <CachedPoster uri={item.poster_url} style={styles.poster} />
               </Pressable>
               <View style={styles.reviewBody}>
                 <View style={styles.reviewHeader}>

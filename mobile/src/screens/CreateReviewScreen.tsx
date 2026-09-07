@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
@@ -81,6 +81,10 @@ export default function CreateReviewScreen({
 
     return () => clearTimeout(handle);
   }, [query, session, signOut]);
+
+  useEffect(() => {
+    void prefetchPosterUrls(results.map((movie) => movie.poster_url), 10);
+  }, [results]);
 
   const canPublish = useMemo(
     () => Boolean(selectedMovie) && reviewRating >= 0.5 && reviewContent.trim().length > 0 && !publishing,
@@ -184,10 +188,7 @@ export default function CreateReviewScreen({
 
         {selectedMovie ? (
           <View style={[styles.selectedMovieCard, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}>
-            <Image
-              source={{ uri: selectedMovie.poster_url || FALLBACK_POSTER }}
-              style={styles.selectedMoviePoster}
-            />
+            <CachedPoster uri={selectedMovie.poster_url} style={styles.selectedMoviePoster} />
             <View style={styles.selectedMovieBody}>
               <Text style={[styles.selectedMovieTitle, { color: theme.colors.text }]}>{selectedMovie.title}</Text>
               {!isEditMode ? (
@@ -225,7 +226,7 @@ export default function CreateReviewScreen({
                 style={[styles.resultCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
                 onPress={() => selectMovie(movie)}
               >
-                <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
+                <CachedPoster uri={movie.poster_url} style={styles.resultPoster} />
                 <View style={styles.resultBody}>
                   <Text style={[styles.resultTitle, { color: theme.colors.text }]}>{movie.title}</Text>
                   <Text style={[styles.resultHint, { color: theme.colors.textMuted }]}>Sélectionner pour critiquer</Text>

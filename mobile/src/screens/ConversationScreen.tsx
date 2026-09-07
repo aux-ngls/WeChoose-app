@@ -6,7 +6,6 @@ import {
   Alert,
   DeviceEventEmitter,
   FlatList,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -20,6 +19,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppScreen from '../components/AppScreen';
+import CachedPoster from '../components/CachedPoster';
 import {
   ApiError,
   blockUser,
@@ -31,7 +31,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type DirectMessage } from '../types';
+import { type DirectMessage } from '../types';
 import {
   CONVERSATION_MESSAGE_EVENT,
   INBOX_CONVERSATION_EVENT,
@@ -953,7 +953,7 @@ export default function ConversationScreen({
                       ]}
                       onPress={() => navigation.navigate('MovieDetails', { movieId: message.movie!.id, title: message.movie!.title })}
                     >
-                      <Image source={{ uri: message.movie.poster_url || FALLBACK_POSTER }} style={styles.sharedMoviePoster} />
+                      <CachedPoster uri={message.movie.poster_url} style={styles.sharedMoviePoster} />
                       <View style={styles.sharedMovieBody}>
                         <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partagé</Text>
                         <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{message.movie.title}</Text>

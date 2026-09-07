@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, DeviceEventEmitter, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, DeviceEventEmitter, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
+import CachedPoster from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import {
@@ -16,7 +17,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SocialComment, type SocialReview } from '../types';
+import { type SocialComment, type SocialReview } from '../types';
 import { formatDate } from '../utils/format';
 import { SOCIAL_REFRESH_EVENT } from '../utils/events';
 
@@ -172,7 +173,7 @@ export default function ReviewDetailsScreen({
           <View style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <View style={styles.reviewTopRow}>
               <Pressable onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}>
-                <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+                <CachedPoster uri={review.poster_url} style={styles.poster} />
               </Pressable>
               <View style={styles.reviewBody}>
                 <View style={styles.reviewHeader}>

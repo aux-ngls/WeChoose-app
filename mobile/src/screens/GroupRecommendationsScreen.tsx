@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Pressable, RefreshControl, S
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
@@ -16,7 +17,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SearchMovie, type SocialUser } from '../types';
+import { type SearchMovie, type SocialUser } from '../types';
 
 function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) {
@@ -86,6 +87,10 @@ export default function GroupRecommendationsScreen({
     const timeout = setTimeout(() => setFeedback(''), 2200);
     return () => clearTimeout(timeout);
   }, [feedback]);
+
+  useEffect(() => {
+    void prefetchPosterUrls(recommendations.map((movie) => movie.poster_url), 14);
+  }, [recommendations]);
 
   const loadRecommendations = useCallback(async () => {
     if (!session || selectedUsers.length === 0) {
@@ -301,7 +306,7 @@ export default function GroupRecommendationsScreen({
               })}
               delayLongPress={220}
             >
-              <Image source={{ uri: item.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+              <CachedPoster uri={item.poster_url} style={styles.poster} />
             </Pressable>
             <View style={styles.movieBody}>
               <Text style={[styles.movieTitle, { color: theme.colors.text }]} numberOfLines={2}>

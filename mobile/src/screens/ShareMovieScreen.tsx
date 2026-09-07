@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DeviceEventEmitter, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
 import {
@@ -16,7 +17,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type SearchMovie, type SocialUser } from '../types';
+import { type SearchMovie, type SocialUser } from '../types';
 import { CONVERSATION_MESSAGE_EVENT, INBOX_CONVERSATION_EVENT } from '../utils/events';
 import { playMovieSentHapticSignature } from '../utils/haptics';
 
@@ -146,6 +147,10 @@ export default function ShareMovieScreen({
     return () => clearTimeout(handle);
   }, [isConversationShare, session, signOut, trimmedQuery]);
 
+  useEffect(() => {
+    void prefetchPosterUrls(movieResults.map((movie) => movie.poster_url), 10);
+  }, [movieResults]);
+
   const rememberRecentShareUser = useCallback(
     async (user: SocialUser) => {
       if (!session || isConversationShare) {
@@ -271,7 +276,7 @@ export default function ShareMovieScreen({
 
       {movieToShare ? (
         <View style={[styles.movieCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-          <Image source={{ uri: movieToShare.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+          <CachedPoster uri={movieToShare.poster_url} style={styles.poster} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.movieTitle, { color: theme.colors.text }]} numberOfLines={2}>
               {movieToShare.title}
@@ -331,7 +336,7 @@ export default function ShareMovieScreen({
                 style={[styles.userCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
                 onPress={() => selectMovie(movie)}
               >
-                <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
+                <CachedPoster uri={movie.poster_url} style={styles.resultPoster} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.username, { color: theme.colors.text }]} numberOfLines={2}>
                     {movie.title}

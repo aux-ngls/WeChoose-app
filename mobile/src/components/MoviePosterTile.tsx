@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
-import { FALLBACK_POSTER, type SearchMovie } from '../types';
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import CachedPoster from './CachedPoster';
+import { type SearchMovie } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 
 interface MoviePosterTileProps {
@@ -20,7 +21,7 @@ export default function MoviePosterTile({ movie, onPress, onLongPress }: MoviePo
       disabled={!onPress && !onLongPress}
       style={[styles.card, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
     >
-      <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.poster} />
+      <CachedPoster uri={movie.poster_url} style={styles.poster} />
       <LinearGradient
         pointerEvents="none"
         colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}

@@ -8,6 +8,7 @@ import { Alert, DeviceEventEmitter, FlatList, Image, Pressable, StyleSheet, Text
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { API_URL } from '../api/config';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
@@ -126,6 +127,15 @@ export default function ProfileScreen() {
   useEffect(() => {
     playlistsRef.current = playlists;
   }, [playlists]);
+
+  useEffect(() => {
+    const posterUrls = [
+      ...(profile?.profile_movies ?? []).map((movie) => movie.poster_url),
+      ...(profile?.reviews ?? []).map((review) => review.poster_url),
+      ...playlists.flatMap((playlist) => playlist.preview_movies.map((movie) => movie.poster_url)),
+    ];
+    void prefetchPosterUrls(posterUrls, 30);
+  }, [playlists, profile]);
 
   useEffect(() => {
     void Audio.setAudioModeAsync({
@@ -741,7 +751,7 @@ export default function ProfileScreen() {
                         style={styles.selectedPoster}
                         onPress={() => setDraftMovies((current) => current.filter((entry) => entry.id !== movie.id))}
                       >
-                        <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.selectedPosterImage} />
+                        <CachedPoster uri={movie.poster_url} style={styles.selectedPosterImage} />
                         <Ionicons name="close-circle" size={18} color="#ffffff" style={styles.removeIcon} />
                       </Pressable>
                     ))}
@@ -762,7 +772,7 @@ export default function ProfileScreen() {
                     <View style={styles.resultsGrid}>
                       {movieResults.map((movie) => (
                         <Pressable key={movie.id} style={styles.resultPoster} onPress={() => addDraftMovie(movie)}>
-                          <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPosterImage} />
+                          <CachedPoster uri={movie.poster_url} style={styles.resultPosterImage} />
                         </Pressable>
                       ))}
                     </View>
@@ -982,7 +992,7 @@ export default function ProfileScreen() {
                   {playlist.preview_movies.length > 0 ? (
                     <View style={styles.previewRow}>
                       {playlist.preview_movies.map((movie) => (
-                        <Image key={movie.id} source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.previewPoster} />
+                        <CachedPoster key={movie.id} uri={movie.poster_url} style={styles.previewPoster} />
                       ))}
                     </View>
                   ) : null}
@@ -1033,7 +1043,7 @@ export default function ProfileScreen() {
                       })}
                       delayLongPress={220}
                     >
-                      <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
+                      <CachedPoster uri={review.poster_url} style={styles.reviewPoster} />
                     </Pressable>
                     <View style={styles.reviewBody}>
                       <View style={styles.reviewHeaderRow}>

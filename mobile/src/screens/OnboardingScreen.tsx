@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import ScreenHeader from '../components/ScreenHeader';
@@ -306,6 +307,10 @@ export default function OnboardingScreen() {
 
     return () => clearTimeout(handle);
   }, [movieQuery, selectedMovieIds, session, signOut]);
+
+  useEffect(() => {
+    void prefetchPosterUrls(movieResults.map((movie) => movie.poster_url), 10);
+  }, [movieResults]);
 
   useEffect(() => {
     if (!session) {
@@ -616,7 +621,7 @@ export default function OnboardingScreen() {
                 onPress={() => addMovie(movie)}
                 style={[styles.resultItem, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
               >
-                <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.resultPoster} />
+                <CachedPoster uri={movie.poster_url} style={styles.resultPoster} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.resultTitle, { color: theme.colors.text }]} numberOfLines={1}>{movie.title}</Text>
                   <Text style={[styles.resultMeta, { color: theme.colors.ratingText }]}>{movie.rating.toFixed(1)} / 10</Text>
@@ -631,7 +636,7 @@ export default function OnboardingScreen() {
           <View style={styles.selectedMoviesGrid}>
             {movies.map((movie) => (
               <Pressable key={movie.id} onPress={() => setMovies((current) => current.filter((entry) => entry.id !== movie.id))} style={styles.selectedMovie}>
-                <Image source={{ uri: movie.poster_url || FALLBACK_POSTER }} style={styles.selectedPoster} />
+                <CachedPoster uri={movie.poster_url} style={styles.selectedPoster} />
                 <View style={styles.removeBubble}>
                   <Ionicons name="close" size={13} color="#ffffff" />
                 </View>

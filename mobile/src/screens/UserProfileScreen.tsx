@@ -7,6 +7,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { API_URL } from '../api/config';
 import { ApiError, blockUser, fetchSocialProfile, followUser, reportUser, startConversation, unfollowUser } from '../api/client';
 import AppScreen from '../components/AppScreen';
+import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
@@ -75,6 +76,14 @@ export default function UserProfileScreen() {
     const timeout = setTimeout(() => setFeedback(''), 2200);
     return () => clearTimeout(timeout);
   }, [feedback]);
+
+  useEffect(() => {
+    const posterUrls = [
+      ...(profile?.profile_movies ?? []).map((movie) => movie.poster_url),
+      ...(profile?.reviews ?? []).map((review) => review.poster_url),
+    ];
+    void prefetchPosterUrls(posterUrls, 18);
+  }, [profile]);
 
   const refreshProfile = useCallback(async () => {
     setRefreshing(true);
@@ -364,7 +373,7 @@ export default function UserProfileScreen() {
                       })}
                       delayLongPress={220}
                     >
-                      <Image source={{ uri: review.poster_url || FALLBACK_POSTER }} style={styles.reviewPoster} />
+                      <CachedPoster uri={review.poster_url} style={styles.reviewPoster} />
                     </Pressable>
                     <View style={styles.reviewBody}>
                       <Text style={[styles.reviewTitle, { color: theme.colors.text }]} numberOfLines={1}>{review.title}</Text>
