@@ -17,7 +17,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import type { DirectConversationSummary, SocialUser } from '../types';
+import type { DirectConversationSummary, MediaType, SocialUser } from '../types';
 import { formatDate } from '../utils/format';
 import { INBOX_CONVERSATION_EVENT, NOTIFICATIONS_REFRESH_EVENT } from '../utils/events';
 import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
@@ -48,11 +48,16 @@ interface RealtimeConversationPayload {
     };
     movie: {
       id: number;
+      media_type?: MediaType;
       title: string;
       poster_url: string;
       rating: number;
     } | null;
   };
+}
+
+function getSharedMediaPreview(mediaType?: MediaType) {
+  return mediaType === 'tv' ? 'Série partagée' : 'Film partagé';
 }
 
 function buildConversationPreview(payload: RealtimeConversationPayload) {
@@ -63,7 +68,7 @@ function buildConversationPreview(payload: RealtimeConversationPayload) {
 
   const messageMovieTitle = payload.message?.movie?.title?.trim();
   if (messageMovieTitle) {
-    return `Film partage : ${messageMovieTitle}`;
+    return `${getSharedMediaPreview(payload.message?.movie?.media_type)} : ${messageMovieTitle}`;
   }
 
   const messageContent = payload.message?.content?.trim();

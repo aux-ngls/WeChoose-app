@@ -558,7 +558,7 @@ export default function PlaylistDetailsScreen({
 
   const headerComponent = (
     <View style={styles.headerContent}>
-      <SearchField value={query} onChangeText={setQuery} placeholder="Rechercher un film" />
+      <SearchField value={query} onChangeText={setQuery} placeholder="Rechercher un film ou une série" />
       <View style={styles.filtersRow}>
         <Pressable
           onPress={() => setIsSortMenuOpen((current) => !current)}

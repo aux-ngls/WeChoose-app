@@ -16,9 +16,9 @@ const SECTIONS: Array<{
     icon: 'sparkles-outline',
     title: '1. Les recommandations',
     lines: [
-      'Qulte te propose des films selon tes goûts.',
-      'Si tu as déjà vu un film, note-le avec les étoiles sous l’affiche.',
-      'Si tu ne l’as pas vu, swipe à droite pour l’ajouter à “À regarder plus tard”, ou à gauche pour passer.',
+      'Qulte te propose des films et des séries selon tes goûts.',
+      'Si tu connais déjà le contenu proposé, note-le avec les étoiles sous l’affiche.',
+      'Si tu ne l’as pas encore vu, swipe à droite pour l’ajouter à “À regarder plus tard”, ou à gauche pour passer.',
       'Tu peux aussi toucher l’affiche pour ouvrir sa fiche complète : résumé, trailer, casting et plus.',
       'À chaque action, l’algorithme apprend et améliore ses prochaines recommandations.',
     ],
@@ -27,7 +27,7 @@ const SECTIONS: Array<{
     icon: 'search-outline',
     title: '2. La recherche',
     lines: [
-      'Tu peux rechercher des films pour consulter leur fiche, les noter, les ajouter à une playlist ou les partager.',
+      'Tu peux rechercher des films et des séries pour consulter leur fiche, les noter, les ajouter à une playlist ou les partager.',
       'Tu peux aussi rechercher des utilisateurs pour découvrir leur profil, leurs critiques et leurs goûts.',
     ],
   },
@@ -35,8 +35,8 @@ const SECTIONS: Array<{
     icon: 'people-outline',
     title: '3. Le social',
     lines: [
-      'La partie sociale te permet d’écrire des critiques de films et de lire celles de tes amis.',
-      'Tu peux suivre d’autres utilisateurs, découvrir leurs avis et échanger autour des films.',
+      'La partie sociale te permet d’écrire des critiques de films et de séries, puis de lire celles de tes amis.',
+      'Tu peux suivre d’autres utilisateurs, découvrir leurs avis et échanger autour de ce que vous regardez.',
     ],
   },
   {
@@ -44,7 +44,7 @@ const SECTIONS: Array<{
     title: '4. Les messages privés',
     lines: [
       'Tu peux discuter en privé avec d’autres utilisateurs.',
-      'Les messages permettent de parler d’un film, de réagir à une critique ou de partager directement un film dans une conversation.',
+      'Les messages permettent de parler d’un film ou d’une série, de réagir à une critique ou de partager directement une fiche dans une conversation.',
     ],
   },
   {
@@ -52,7 +52,7 @@ const SECTIONS: Array<{
     title: '5. Ton profil',
     lines: [
       'Ton profil rassemble tes goûts, tes critiques et ton activité.',
-      'C’est l’endroit où les autres peuvent découvrir ton univers cinéma.',
+      'C’est l’endroit où les autres peuvent découvrir ton univers cinéma et séries.',
     ],
   },
 ];

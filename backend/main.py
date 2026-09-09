@@ -4715,7 +4715,7 @@ def serialize_comment_row(row: Any) -> dict:
 
 def build_notification_message(row: Any) -> str:
     actor_username = row["actor_username"]
-    review_title = row["review_title"] or "ce film"
+    review_title = row["review_title"] or "ce contenu"
     notification_type = row["type"]
 
     if notification_type == "follow":
@@ -6385,7 +6385,7 @@ def reorder_playlist(
     existing_items = {(str(row[0] or "movie"), int(row[1])) for row in cursor.fetchall()}
     if existing_items != set(ordered_items):
         conn.close()
-        raise HTTPException(status_code=400, detail="La liste des films ne correspond pas à la playlist")
+        raise HTTPException(status_code=400, detail="La liste des contenus ne correspond pas à la playlist")
 
     for index, (media_type, movie_id) in enumerate(ordered_items, start=1):
         cursor.execute(
@@ -6421,7 +6421,7 @@ def move_playlist_movie(
     target_item = (normalize_media_type(payload.target_media_type), payload.target_movie_id)
     if source_item not in ordered_items or target_item not in ordered_items:
         conn.close()
-        raise HTTPException(status_code=400, detail="Film introuvable dans cette playlist")
+        raise HTTPException(status_code=400, detail="Contenu introuvable dans cette playlist")
 
     source_index = ordered_items.index(source_item)
     target_index = ordered_items.index(target_item)
@@ -8978,7 +8978,7 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
         conn.close()
         raise HTTPException(status_code=404, detail="Critique introuvable")
     review_owner_id = int(review_row["user_id"])
-    review_title = str(review_row["title"] or "ce film")
+    review_title = str(review_row["title"] or "ce contenu")
     ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
 
     cursor.execute(

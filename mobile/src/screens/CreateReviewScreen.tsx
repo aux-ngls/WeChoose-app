@@ -241,7 +241,7 @@ export default function CreateReviewScreen({
             ))}
           </View>
         ) : !loading && !selectedMovie && query.trim().length >= 2 ? (
-          <EmptyStateCard title="Aucun film" />
+          <EmptyStateCard title="Aucun film ou série" />
         ) : null}
       </View>
 

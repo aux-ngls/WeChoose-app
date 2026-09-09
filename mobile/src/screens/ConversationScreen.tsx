@@ -31,7 +31,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { type DirectMessage } from '../types';
+import { type DirectMessage, type MediaType } from '../types';
 import {
   CONVERSATION_MESSAGE_EVENT,
   INBOX_CONVERSATION_EVENT,
@@ -110,6 +110,17 @@ function formatDayLabel(value: string): string {
     day: 'numeric',
     month: 'long',
   }).format(date);
+}
+
+function getSharedMediaLabel(mediaType?: MediaType) {
+  return mediaType === 'tv' ? 'Série partagée' : 'Film partagé';
+}
+
+function getMessagePreview(source: {
+  content?: string | null;
+  movie?: { title: string; media_type?: MediaType } | null;
+}) {
+  return source.content || source.movie?.title || getSharedMediaLabel(source.movie?.media_type);
 }
 
 function findConfirmedServerMessageIndex(pendingMessage: LocalDirectMessage, serverMessages: LocalDirectMessage[]) {
@@ -233,7 +244,7 @@ function buildInboxConversationEventPayload(
   conversationId: number,
   message: DirectMessage,
 ): InboxConversationEventPayload {
-  const movieTitle = message.movie?.title?.trim();
+  const sharedMediaTitle = message.movie?.title?.trim();
   const textPreview = message.content.trim();
 
   return {
@@ -242,7 +253,7 @@ function buildInboxConversationEventPayload(
     message_id: message.id,
     sender_id: message.sender.id,
     sender_username: message.sender.username,
-    preview: movieTitle ? `Film partage : ${movieTitle}` : textPreview || 'Nouveau message',
+    preview: sharedMediaTitle ? `${getSharedMediaLabel(message.movie?.media_type)} : ${sharedMediaTitle}` : textPreview || 'Nouveau message',
     message,
   };
 }
@@ -939,7 +950,7 @@ export default function ConversationScreen({
                         @{message.reply_to_message.sender.username}
                       </Text>
                       <Text style={[styles.replyBubblePreview, { color: theme.colors.textSoft }]} numberOfLines={2}>
-                        {message.reply_to_message.content || message.reply_to_message.movie?.title || 'Film partagé'}
+                        {getMessagePreview(message.reply_to_message)}
                       </Text>
                     </View>
                   ) : null}
@@ -959,7 +970,7 @@ export default function ConversationScreen({
                     >
                       <CachedPoster uri={message.movie.poster_url} style={styles.sharedMoviePoster} />
                       <View style={styles.sharedMovieBody}>
-                        <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>Film partagé</Text>
+                        <Text style={[styles.sharedMovieLabel, { color: theme.colors.accent }]}>{getSharedMediaLabel(message.movie.media_type)}</Text>
                         <Text style={[styles.sharedMovieTitle, { color: theme.colors.text }]} numberOfLines={2}>{message.movie.title}</Text>
                         {message.movie.rating > 0 ? (
                           <Text style={[styles.sharedMovieRating, { color: theme.colors.ratingText }]}>{message.movie.rating.toFixed(1)} / 10</Text>
@@ -1008,7 +1019,7 @@ export default function ConversationScreen({
             <View style={styles.replyComposerBody}>
               <Text style={[styles.replyComposerTitle, { color: theme.colors.secondaryAccent }]}>Réponse à @{activeReplyTarget.sender.username}</Text>
               <Text style={[styles.replyComposerPreview, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                {activeReplyTarget.content || activeReplyTarget.movie?.title || 'Film partagé'}
+                {getMessagePreview(activeReplyTarget)}
               </Text>
             </View>
             <Pressable onPress={() => {

@@ -34,6 +34,10 @@ function getRecentShareUsersKey(username: string) {
   return `qulte:recent-share-users:${username}:v${RECENT_SHARE_USERS_VERSION}`;
 }
 
+function getSharedMediaPreview(mediaType?: SearchMovie['media_type']) {
+  return mediaType === 'tv' ? 'Série partagée' : 'Film partagé';
+}
+
 function parseRecentShareUsers(rawValue: string | null): SocialUser[] {
   if (!rawValue) {
     return [];
@@ -201,7 +205,7 @@ export default function ShareMovieScreen({
         message_id: createdMessage.id,
         sender_id: createdMessage.sender.id,
         sender_username: createdMessage.sender.username,
-        preview: `${(movieToShare.media_type ?? 'movie') === 'tv' ? 'Série' : 'Film'} partagé : ${movieToShare.title}`,
+        preview: `${getSharedMediaPreview(movieToShare.media_type)} : ${movieToShare.title}`,
         message: createdMessage,
       });
       DeviceEventEmitter.emit(CONVERSATION_MESSAGE_EVENT, {
@@ -314,8 +318,8 @@ export default function ShareMovieScreen({
         placeholder={
           isConversationShare
             ? movieToShare
-              ? 'Choisir un autre film'
-              : 'Chercher un film'
+              ? 'Choisir un autre contenu'
+              : 'Chercher un film ou une série'
             : 'Chercher une personne'
         }
         icon={isConversationShare ? 'film-outline' : 'person-add'}
