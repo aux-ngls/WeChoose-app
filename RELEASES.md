@@ -31,7 +31,7 @@ Summary:
 
 ## Feature Branch Checkpoints
 
-- `feature/tv-series`: series now flow through search, Tinder mode switching, details, ratings, reviews, playlists, private messages, and public share links using `media_type + TMDB id`; Postgres migration has been validated in rollback transactions but not permanently applied here.
+- `feature/tv-series`: series now flow through search, Tinder mode switching, details, ratings, reviews, playlists, private messages, and public share links using `media_type + TMDB id`; the Postgres migration was validated in rollback transactions, then applied by restarting the backend on 2026-09-09.
 
 ## Latest Workspace Changes
 
@@ -160,3 +160,4 @@ npx eas submit --platform ios
 - Profile loading now uses a lightweight playlist preview endpoint, fixing slow or blocked profile screens for accounts with very large playlists.
 - Playlist details now page large movie lists progressively instead of loading every movie up front, which fixes heavy watchlists like `@random`'s account.
 - TV-series work now uses the composite identity `media_type + TMDB id` across backend and mobile contracts to avoid movie/series id collisions.
+- Production backend smoke after the TV-series migration returned healthy Postgres status, a TV detail payload for Breaking Bad, media search results, and an authenticated `/series/feed` with TV-only items.
