@@ -5,6 +5,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import {
   ActivityIndicator,
   FlatList,
+  InteractionManager,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -25,7 +26,6 @@ import {
   fetchProfilePreferences,
   fetchPlaylistMoviesPage,
   movePlaylistMovie,
-  preloadMovieDetails,
   removeMovieFromPlaylist,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -148,11 +148,16 @@ export default function PlaylistDetailsScreen({
 
   useEffect(() => {
     moviesRef.current = movies;
-    void prefetchPosterUrls(movies.map((movie) => movie.poster_url), 30);
-    if (session) {
-      preloadMovieDetails(session.token, movies.slice(0, 8).map((movie) => movie.id));
+    if (movies.length === 0) {
+      return undefined;
     }
-  }, [movies, session]);
+
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void prefetchPosterUrls(movies.map((movie) => movie.poster_url), 18);
+    });
+
+    return () => interaction.cancel();
+  }, [movies]);
 
   useEffect(() => {
     totalCountRef.current = totalCount;
