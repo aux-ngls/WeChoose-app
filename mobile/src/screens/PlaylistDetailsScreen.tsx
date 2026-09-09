@@ -84,12 +84,13 @@ function buildPlaylistCacheKey(
 
 function mergeUniqueMovies(currentMovies: SearchMovie[], nextMovies: SearchMovie[]) {
   const mergedMovies = [...currentMovies];
-  const knownMovieIds = new Set(currentMovies.map((movie) => movie.id));
+  const knownMovieIds = new Set(currentMovies.map(getMediaKey));
   for (const movie of nextMovies) {
-    if (knownMovieIds.has(movie.id)) {
+    const mediaKey = getMediaKey(movie);
+    if (knownMovieIds.has(mediaKey)) {
       continue;
     }
-    knownMovieIds.add(movie.id);
+    knownMovieIds.add(mediaKey);
     mergedMovies.push(movie);
   }
   return mergedMovies;

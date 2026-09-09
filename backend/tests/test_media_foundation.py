@@ -69,6 +69,10 @@ class MediaFoundationTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 422)
 
+    def test_media_type_accepts_database_bytes(self):
+        self.assertEqual(main.normalize_media_type(b"movie"), "movie")
+        self.assertEqual(main.normalize_media_type(b"tv"), "tv")
+
     def test_tv_recommendations_skip_rated_watch_later_and_excluded_series(self):
         class FakeCursor:
             def __init__(self):

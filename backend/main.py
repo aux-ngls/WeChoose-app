@@ -727,6 +727,11 @@ def normalize_tmdb_movie(movie: dict) -> Optional[dict]:
 
 
 def normalize_media_type(value: str) -> str:
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8")
+        except UnicodeDecodeError:
+            value = value.decode("utf-8", errors="ignore")
     normalized = str(value or "").strip().lower()
     if normalized not in MEDIA_TYPES:
         raise HTTPException(status_code=422, detail="Type de contenu invalide.")
@@ -3788,6 +3793,15 @@ def build_media_subscription_provider_names(media_id: int, media_type: str) -> l
     )
 
 
+def normalize_playlist_storage_row(row) -> dict:
+    payload = dict(row)
+    for key in ("media_type", "title", "poster_url", "primary_genre", "subscription_provider_names"):
+        if key in payload:
+            payload[key] = decode_db_text(payload[key]) if isinstance(payload[key], bytes) else payload[key]
+    payload["media_type"] = normalize_media_type(payload.get("media_type") or "movie")
+    return payload
+
+
 def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[list[dict], bool, Optional[int]]:
     if playlist_id == WATCH_LATER_SYSTEM_ID:
         target_id = get_or_create_watch_later_id(cursor, user_id)
@@ -3809,7 +3823,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
             """,
             (target_id,),
         )
-        return [dict(row) for row in cursor.fetchall()], True, target_id
+        return [normalize_playlist_storage_row(row) for row in cursor.fetchall()], True, target_id
 
     if playlist_id == FAVORITES_SYSTEM_ID:
         cursor.execute(
@@ -3828,7 +3842,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
             """,
             (user_id,),
         )
-        return [dict(row) for row in cursor.fetchall()], False, None
+        return [normalize_playlist_storage_row(row) for row in cursor.fetchall()], False, None
 
     if playlist_id == HISTORY_SYSTEM_ID:
         cursor.execute(
@@ -3847,7 +3861,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
             """,
             (user_id,),
         )
-        return [dict(row) for row in cursor.fetchall()], False, None
+        return [normalize_playlist_storage_row(row) for row in cursor.fetchall()], False, None
 
     target_id = get_custom_playlist_id(cursor, playlist_id, user_id)
     cursor.execute(
@@ -3868,7 +3882,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
         """,
         (target_id,),
     )
-    return [dict(row) for row in cursor.fetchall()], False, target_id
+    return [normalize_playlist_storage_row(row) for row in cursor.fetchall()], False, target_id
 
 
 def hydrate_playlist_row_metadata(
@@ -4018,34 +4032,47 @@ def browse_playlist_rows(
         owned_services = set(get_user_owned_streaming_services(cursor, user_id))
         if owned_services:
             page_rows: list[dict] = []
-            matched_count = 0
-            for row in ordered_rows:
+            provider_hydration_count = 0
+            max_provider_hydrations = max(12, min(30, limit))
+            for row_index, row in enumerate(ordered_rows[offset:], start=offset):
                 hydrated_row = hydrate_playlist_row_metadata(
                     cursor,
                     playlist_db_id,
                     row,
-                    include_watch_providers=True,
+                    include_watch_providers=False,
                 )
+                if not hydrated_row.get("subscription_provider_names") and provider_hydration_count < max_provider_hydrations:
+                    provider_hydration_count += 1
+                    hydrated_row = hydrate_playlist_row_metadata(
+                        cursor,
+                        playlist_db_id,
+                        hydrated_row,
+                        include_watch_providers=True,
+                    )
+                elif not hydrated_row.get("subscription_provider_names"):
+                    return {
+                        "items": page_rows,
+                        "playlist_total_count": playlist_total_count,
+                        "next_offset": row_index,
+                        "has_more": True,
+                    }
+
                 if not owned_services.intersection(hydrated_row.get("subscription_provider_names") or []):
-                    continue
-                if matched_count < offset:
-                    matched_count += 1
                     continue
                 if len(page_rows) < limit:
                     page_rows.append(hydrated_row)
-                    matched_count += 1
                     continue
                 return {
                     "items": page_rows,
                     "playlist_total_count": playlist_total_count,
-                    "next_offset": offset + len(page_rows),
-                    "has_more": True,
+                    "next_offset": row_index + 1,
+                    "has_more": row_index + 1 < len(ordered_rows),
                 }
 
             return {
                 "items": page_rows,
                 "playlist_total_count": playlist_total_count,
-                "next_offset": offset + len(page_rows),
+                "next_offset": len(ordered_rows),
                 "has_more": False,
             }
 
@@ -6033,7 +6060,7 @@ def get_playlist_previews(current_user: dict = Depends(get_current_user)):
                 (current_user["id"],),
             )
 
-        preview_movies = [dict(row) for row in cursor.fetchall()]
+        preview_movies = [normalize_playlist_storage_row(row) for row in cursor.fetchall()]
         previews.append({
             "id": playlist["id"],
             "name": playlist["name"],
@@ -6104,7 +6131,7 @@ def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_curr
             (target_id,),
         )
 
-    movies = [dict(row) for row in cursor.fetchall()]
+    movies = [normalize_playlist_storage_row(row) for row in cursor.fetchall()]
     conn.close()
 
     for movie in movies:
@@ -6157,22 +6184,24 @@ def get_playlist_content_paged(
     resolved_sort = normalize_playlist_sort(playlist_id, sort)
 
     conn = get_db_connection(row_factory=True)
-    cursor = conn.cursor()
-    if playlist_id == WATCH_LATER_SYSTEM_ID:
-        conn.commit()
+    try:
+        cursor = conn.cursor()
+        if playlist_id == WATCH_LATER_SYSTEM_ID:
+            conn.commit()
 
-    payload = browse_playlist_rows(
-        cursor,
-        playlist_id,
-        current_user["id"],
-        offset=safe_offset,
-        limit=safe_limit,
-        sort_mode=resolved_sort,
-        query=query,
-        only_owned_streaming_services=only_owned_streaming_services,
-    )
-    conn.commit()
-    conn.close()
+        payload = browse_playlist_rows(
+            cursor,
+            playlist_id,
+            current_user["id"],
+            offset=safe_offset,
+            limit=safe_limit,
+            sort_mode=resolved_sort,
+            query=query,
+            only_owned_streaming_services=only_owned_streaming_services,
+        )
+        conn.commit()
+    finally:
+        conn.close()
     payload["resolved_sort"] = resolved_sort
     return payload
 
