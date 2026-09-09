@@ -22,25 +22,25 @@ import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import StarRatingInput from '../components/StarRatingInput';
 import {
-  addToWatchLater,
+  addMediaToPlaylist,
   ApiError,
-  dislikeMovie,
-  fetchMovieFeed,
+  dislikeMedia,
+  fetchMediaFeed,
   fetchRuntimeAlerts,
-  fetchUserMovieRating,
+  fetchUserMediaRating,
   getOnboardingPreferences,
-  preloadMovieDetails,
-  rateMovie,
+  preloadMediaDetails,
+  rateMedia,
   recordRecommendationImpression,
-  undoDislikeMovie,
-  removeMovieFromPlaylist,
-  removeMovieRating,
+  undoDislikeMedia,
+  removeMediaFromPlaylist,
+  removeMediaRating,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTipJar } from '../support/TipJarContext';
 import { useTheme } from '../theme/ThemeContext';
-import { type RuntimeAlertItem, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
+import { type MediaType, type RuntimeAlertItem, type SearchMovie, WATCH_LATER_PLAYLIST_ID } from '../types';
 import { recordAppreciationInteraction, requestInAppReview } from '../utils/appSupport';
 
 const MIN_READY_TINDER_MOVIES = 5;
@@ -66,14 +66,15 @@ interface UndoableAction {
 interface TinderMovieCache {
   version: number;
   username: string;
+  mediaType: MediaType;
   movies: SearchMovie[];
   fetchedAt: number;
 }
 
-let tinderMovieCache: TinderMovieCache | null = null;
+const tinderMovieCaches: Partial<Record<MediaType, TinderMovieCache>> = {};
 
-function getTinderCacheKey(username: string) {
-  return `qulte:tinder-stack:${username}:v${CACHE_VERSION}`;
+function getTinderCacheKey(username: string, mediaType: MediaType) {
+  return `qulte:tinder-stack:${mediaType}:${username}:v${CACHE_VERSION}`;
 }
 
 function isSearchMovie(value: unknown): value is SearchMovie {
@@ -84,14 +85,19 @@ function isSearchMovie(value: unknown): value is SearchMovie {
   return typeof movie.id === 'number' && typeof movie.title === 'string' && typeof movie.rating === 'number';
 }
 
-function parseCachedMovies(rawValue: string | null, username: string): SearchMovie[] {
+function parseCachedMovies(rawValue: string | null, username: string, mediaType: MediaType): SearchMovie[] {
   if (!rawValue) {
     return [];
   }
 
   try {
     const payload = JSON.parse(rawValue) as Partial<TinderMovieCache>;
-    if (payload.version !== CACHE_VERSION || payload.username !== username || !Array.isArray(payload.movies)) {
+    if (
+      payload.version !== CACHE_VERSION
+      || payload.username !== username
+      || payload.mediaType !== mediaType
+      || !Array.isArray(payload.movies)
+    ) {
       return [];
     }
     return payload.movies.filter(isSearchMovie).slice(0, CACHE_MAX_SIZE);
@@ -110,9 +116,11 @@ export default function HomeScreen() {
   const { openTipJar } = useTipJar();
   const { width, height } = useWindowDimensions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [mediaType, setMediaType] = useState<MediaType>('movie');
+  const initialMovieCache = tinderMovieCaches.movie;
   const initialCache =
-    tinderMovieCache && tinderMovieCache.username === session?.username && tinderMovieCache.version === CACHE_VERSION
-      ? tinderMovieCache
+    initialMovieCache && initialMovieCache.username === session?.username && initialMovieCache.version === CACHE_VERSION
+      ? initialMovieCache
       : null;
   const [movies, setMovies] = useState<SearchMovie[]>(() => initialCache?.movies ?? []);
   const [loading, setLoading] = useState(() => !initialCache || initialCache.movies.length === 0);
@@ -152,7 +160,7 @@ export default function HomeScreen() {
     onboardingExcludedMovieIdsRef.current.clear();
     hasLoadedOnboardingExcludesRef.current = false;
     lastRecordedImpressionMovieIdRef.current = null;
-  }, [session?.username]);
+  }, [session?.username, mediaType]);
 
   useEffect(() => {
     pan.setValue({ x: 0, y: 0 });
@@ -180,7 +188,7 @@ export default function HomeScreen() {
     moviesRef.current = movies;
     prefetchMoviePosters(movies, isWideLayout);
     if (session) {
-      preloadMovieDetails(session.token, movies.slice(0, MIN_READY_TINDER_MOVIES).map((movie) => movie.id));
+      preloadMediaDetails(session.token, movies.slice(0, MIN_READY_TINDER_MOVIES));
     }
 
     if (!session || movies.length === 0) {
@@ -190,12 +198,13 @@ export default function HomeScreen() {
     const payload: TinderMovieCache = {
       version: CACHE_VERSION,
       username: session.username,
+      mediaType,
       movies: movies.slice(0, CACHE_MAX_SIZE),
       fetchedAt: lastFetchAtRef.current || Date.now(),
     };
-    tinderMovieCache = payload;
-    void AsyncStorage.setItem(getTinderCacheKey(session.username), JSON.stringify(payload));
-  }, [isWideLayout, movies, session]);
+    tinderMovieCaches[mediaType] = payload;
+    void AsyncStorage.setItem(getTinderCacheKey(session.username, mediaType), JSON.stringify(payload));
+  }, [isWideLayout, mediaType, movies, session]);
 
   const rememberExcludedMovieIds = useCallback((movieIds: number[]) => {
     const excludedMovieIds = locallyExcludedMovieIdsRef.current;
@@ -229,6 +238,11 @@ export default function HomeScreen() {
       return;
     }
 
+    if (mediaType === 'tv') {
+      hasLoadedOnboardingExcludesRef.current = true;
+      return;
+    }
+
     try {
       const preferences = await getOnboardingPreferences(session.token);
       const onboardingMovieIds = preferences.favorite_movie_ids.filter((movieId) => typeof movieId === 'number');
@@ -249,7 +263,7 @@ export default function HomeScreen() {
         await signOut();
       }
     }
-  }, [filterExcludedMovies, session, signOut]);
+  }, [filterExcludedMovies, mediaType, session, signOut]);
 
   const loadRuntimeAlerts = useCallback(async () => {
     if (!session) {
@@ -273,16 +287,18 @@ export default function HomeScreen() {
     }
 
     const cachedMovies = filterExcludedMovies(parseCachedMovies(
-      await AsyncStorage.getItem(getTinderCacheKey(session.username)),
+      await AsyncStorage.getItem(getTinderCacheKey(session.username, mediaType)),
       session.username,
+      mediaType,
     ));
     if (cachedMovies.length === 0) {
       return false;
     }
 
-    tinderMovieCache = {
+    tinderMovieCaches[mediaType] = {
       version: CACHE_VERSION,
       username: session.username,
+      mediaType,
       movies: cachedMovies,
       fetchedAt: Date.now(),
     };
@@ -293,7 +309,7 @@ export default function HomeScreen() {
     setError('');
     setLoading(false);
     return true;
-  }, [filterExcludedMovies, isWideLayout, session]);
+  }, [filterExcludedMovies, isWideLayout, mediaType, session]);
 
   const loadFeed = useCallback(async (excludeIds: number[] = [], options?: { reset?: boolean }) => {
     if (!session || isFetchingRef.current) {
@@ -309,7 +325,7 @@ export default function HomeScreen() {
     isFetchingRef.current = true;
     try {
       const effectiveExcludeIds = Array.from(new Set([...excludeIds, ...getKnownExcludedMovieIds()]));
-      const payload = await fetchMovieFeed(session.token, {
+      const payload = await fetchMediaFeed(session.token, mediaType, {
         excludeIds: effectiveExcludeIds,
         limit: FEED_BATCH_SIZE,
         mode: 'tinder',
@@ -339,7 +355,31 @@ export default function HomeScreen() {
       isFetchingRef.current = false;
       setLoading(false);
     }
-  }, [getKnownExcludedMovieIds, isWideLayout, session, signOut]);
+  }, [getKnownExcludedMovieIds, isWideLayout, mediaType, session, signOut]);
+
+  const selectMediaType = useCallback((nextMediaType: MediaType) => {
+    if (nextMediaType === mediaType || !session) {
+      return;
+    }
+
+    const cached = tinderMovieCaches[nextMediaType];
+    const cachedMovies = cached?.username === session.username && cached.version === CACHE_VERSION
+      ? cached.movies
+      : [];
+    locallyExcludedMovieIdsRef.current.clear();
+    onboardingExcludedMovieIdsRef.current.clear();
+    hasLoadedOnboardingExcludesRef.current = false;
+    lastRecordedImpressionMovieIdRef.current = null;
+    lastFetchAtRef.current = cached?.fetchedAt ?? 0;
+    moviesRef.current = cachedMovies;
+    setMovies(cachedMovies);
+    setSelectedRating(0);
+    setLastUndoableAction(null);
+    setError('');
+    setLoading(cachedMovies.length === 0);
+    pan.setValue({ x: 0, y: 0 });
+    setMediaType(nextMediaType);
+  }, [mediaType, pan, session]);
 
   useFocusEffect(
     useCallback(() => {
@@ -399,7 +439,7 @@ export default function HomeScreen() {
 
     void (async () => {
       try {
-        const payload = await fetchUserMovieRating(session.token, movieId);
+        const payload = await fetchUserMediaRating(session.token, mediaType, movieId);
         if (!active || moviesRef.current[0]?.id !== movieId) {
           return;
         }
@@ -426,12 +466,15 @@ export default function HomeScreen() {
     return () => {
       active = false;
     };
-  }, [currentMovie?.id, rememberExcludedMovieIds, removeMovieFromTinderStack, session, signOut]);
+  }, [currentMovie?.id, mediaType, rememberExcludedMovieIds, removeMovieFromTinderStack, session, signOut]);
 
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener(
       TINDER_MOVIE_ACTION_EVENT,
-      (event: { type: 'rated' | 'watch-later'; movieId: number; rating?: number }) => {
+      (event: { type: 'rated' | 'watch-later'; movieId: number; mediaType?: MediaType; rating?: number }) => {
+        if ((event.mediaType ?? 'movie') !== mediaType) {
+          return;
+        }
         rememberExcludedMovieIds([event.movieId]);
         if (event.type === 'rated') {
           const rating = event.rating ?? 0;
@@ -458,7 +501,7 @@ export default function HomeScreen() {
     );
 
     return () => subscription.remove();
-  }, [refillIfNeeded, rememberExcludedMovieIds, removeMovieFromTinderStack]);
+  }, [mediaType, refillIfNeeded, rememberExcludedMovieIds, removeMovieFromTinderStack]);
 
   const consumeMovie = useCallback(() => {
     setMovies((current) => {
@@ -510,15 +553,15 @@ export default function HomeScreen() {
       return direction === 'right' ? 'swipe-right' : 'skip-left';
     }
     if (direction === 'right') {
-      await addToWatchLater(session.token, movie.id);
+      await addMediaToPlaylist(session.token, WATCH_LATER_PLAYLIST_ID, mediaType, movie.id);
       return 'swipe-right';
     }
     if (selectedRating > 0) {
       return 'skip-left';
     }
-    const response = await dislikeMovie(session.token, movie.id);
+    const response = await dislikeMedia(session.token, mediaType, movie.id);
     return response.status === 'skipped_rated' ? 'skip-left' : 'swipe-left';
-  }, [selectedRating, session]);
+  }, [mediaType, selectedRating, session]);
 
   const undoSwipeAction = useCallback(async (action: UndoableAction) => {
     if (!session) {
@@ -526,12 +569,17 @@ export default function HomeScreen() {
     }
 
     if (action.type === 'swipe-right') {
-      await removeMovieFromPlaylist(session.token, WATCH_LATER_PLAYLIST_ID, action.movie.id);
+      await removeMediaFromPlaylist(
+        session.token,
+        WATCH_LATER_PLAYLIST_ID,
+        action.movie.media_type ?? mediaType,
+        action.movie.id,
+      );
       return;
     }
 
     if (action.type === 'swipe-left') {
-      await undoDislikeMovie(session.token, action.movie.id);
+      await undoDislikeMedia(session.token, action.movie.media_type ?? mediaType, action.movie.id);
       return;
     }
 
@@ -539,8 +587,8 @@ export default function HomeScreen() {
       return;
     }
 
-    await removeMovieRating(session.token, action.movie.id);
-  }, [session]);
+    await removeMediaRating(session.token, action.movie.media_type ?? mediaType, action.movie.id);
+  }, [mediaType, session]);
 
   const triggerSwipe = useCallback(async (direction: SwipeDirection, movie: SearchMovie) => {
     if (!session || submitting) {
@@ -609,7 +657,7 @@ export default function HomeScreen() {
     }, 140);
 
     try {
-      await rateMovie(session.token, movie.id, rating);
+      await rateMedia(session.token, movie.media_type ?? mediaType, movie.id, rating);
       setLastUndoableAction({ type: 'rating', movie, rating });
       const shouldPrompt = await recordAppreciationInteraction(session.username);
       if (shouldPrompt) {
@@ -632,7 +680,7 @@ export default function HomeScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [animateCardOut, consumeMovie, forgetExcludedMovieId, rememberExcludedMovieIds, restoreMovieToFront, session, signOut, submitting]);
+  }, [animateCardOut, consumeMovie, forgetExcludedMovieId, mediaType, rememberExcludedMovieIds, restoreMovieToFront, session, signOut, submitting]);
 
   const handleUndo = useCallback(async () => {
     if (!lastUndoableAction || !session || submitting) {
@@ -744,13 +792,31 @@ export default function HomeScreen() {
               >
                 <Text style={[styles.helpButtonLabel, { color: theme.colors.text }]}>?</Text>
               </Pressable>
-              <Pressable
-                style={[styles.groupModeButton, { backgroundColor: theme.rgba.card, borderColor: theme.rgba.border }]}
-                onPress={() => navigation.navigate('GroupRecommendations')}
-                hitSlop={10}
-              >
-                <Ionicons name="people-outline" size={16} color={theme.colors.text} />
-              </Pressable>
+              <View style={[styles.mediaSwitcher, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+                {(['movie', 'tv'] as const).map((option) => {
+                  const isActive = mediaType === option;
+                  return (
+                    <Pressable
+                      key={option}
+                      style={[styles.mediaSwitcherButton, isActive && { backgroundColor: theme.colors.accent }]}
+                      onPress={() => selectMediaType(option)}
+                    >
+                      <Text style={[styles.mediaSwitcherLabel, { color: isActive ? theme.colors.accentText : theme.colors.textSoft }]}>
+                        {option === 'movie' ? 'Films' : 'Séries'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {mediaType === 'movie' ? (
+                <Pressable
+                  style={[styles.groupModeButton, { backgroundColor: theme.rgba.card, borderColor: theme.rgba.border }]}
+                  onPress={() => navigation.navigate('GroupRecommendations')}
+                  hitSlop={10}
+                >
+                  <Ionicons name="people-outline" size={16} color={theme.colors.text} />
+                </Pressable>
+              ) : <View style={styles.groupModeButtonSpacer} />}
             </View>
             <View style={[styles.cardFrame, { width: tinderCardWidth }]}>
             {secondMovie ? (
@@ -763,7 +829,12 @@ export default function HomeScreen() {
             <Animated.View style={[styles.frontCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }, cardStyle]} {...panResponder.panHandlers}>
               <Pressable
                 style={styles.pressableFill}
-                onPress={() => navigation.navigate('MovieDetails', { movieId: currentMovie.id, title: currentMovie.title, source: 'tinder' })}
+                onPress={() => navigation.navigate('MovieDetails', {
+                  movieId: currentMovie.id,
+                  mediaType: currentMovie.media_type ?? mediaType,
+                  title: currentMovie.title,
+                  source: 'tinder',
+                })}
                 disabled={submitting}
               >
                 <CachedPoster uri={currentMovie.poster_url} size={isWideLayout ? 'w780' : 'w500'} style={styles.heroPoster} />
@@ -847,13 +918,13 @@ export default function HomeScreen() {
               </Pressable>
             </View>
             <Text style={[styles.helpText, { color: theme.colors.textMuted }]}>
-              Si tu as déjà vu le film, note-le avec les étoiles.
+              Si tu as déjà vu {mediaType === 'tv' ? 'la série' : 'le film'}, note-le avec les étoiles.
             </Text>
             <Text style={[styles.helpText, { color: theme.colors.textMuted }]}>
               Si tu ne l’as pas vu, swipe à droite pour l’ajouter à “À regarder plus tard”.
             </Text>
             <Text style={[styles.helpText, { color: theme.colors.textMuted }]}>
-              Swipe à gauche si le film ne t’intéresse pas.
+              Swipe à gauche si {mediaType === 'tv' ? 'la série' : 'le film'} ne t’intéresse pas.
             </Text>
             <Text style={[styles.helpText, { color: theme.colors.textMuted }]}>
               Tu peux aussi toucher l’affiche pour voir le résumé, le trailer, le casting et plus.
@@ -974,6 +1045,28 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+  },
+  groupModeButtonSpacer: {
+    width: 34,
+    height: 34,
+  },
+  mediaSwitcher: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 3,
+  },
+  mediaSwitcherButton: {
+    minWidth: 72,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    paddingHorizontal: 10,
+  },
+  mediaSwitcherLabel: {
+    fontSize: 12,
+    fontWeight: '900',
   },
   helpButtonLabel: {
     fontSize: 18,

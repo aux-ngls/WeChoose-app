@@ -1,4 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { MediaType } from '../types';
 
 export type MainTabParamList = {
   Home: undefined;
@@ -13,11 +14,12 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Tutorial: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
-  MovieDetails: { movieId: number; title?: string; source?: 'tinder' | 'default' };
+  MovieDetails: { movieId: number; mediaType?: MediaType; title?: string; source?: 'tinder' | 'default' };
   PersonDetails: { personId: number; name?: string; photoUrl?: string | null };
   PlaylistDetails: { playlistId: number; name?: string };
   ShareMovie: {
     movieId?: number;
+    mediaType?: MediaType;
     title?: string;
     posterUrl?: string;
     rating?: number;
@@ -39,6 +41,7 @@ export type RootStackParamList = {
   CreateReview: {
     reviewId?: number;
     movieId?: number;
+    mediaType?: MediaType;
     title?: string;
     posterUrl?: string;
     rating?: number;

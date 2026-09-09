@@ -25,21 +25,20 @@ import CachedPoster from '../components/CachedPoster';
 import InlineBanner from '../components/InlineBanner';
 import StarRatingInput from '../components/StarRatingInput';
 import {
-  addMovieToPlaylist,
-  addToWatchLater,
+  addMediaToPlaylist,
   ApiError,
   createPlaylist,
-  fetchMovieDetails,
+  fetchMediaDetails,
   fetchPlaylists,
-  fetchUserMovieRating,
+  fetchUserMediaRating,
   getCachedMovieDetails,
-  rateMovie,
-  removeMovieRating,
+  rateMedia,
+  removeMediaRating,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { FALLBACK_POSTER, type PlaylistSummary } from '../types';
+import { FALLBACK_POSTER, type MediaType, type PlaylistSummary } from '../types';
 import type { MovieDetails, MovieWatchProvider } from '../types';
 import { buildPublicMovieShareMessage } from '../utils/movieShare';
 import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
@@ -81,12 +80,16 @@ export default function MovieDetailsScreen({
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const mediaType: MediaType = route.params.mediaType ?? 'movie';
   const playlistInputRef = useRef<TextInput | null>(null);
   const persistentCacheKey = useMemo(
-    () => buildUserCacheKey(PERSISTED_MOVIE_DETAILS_SCOPE, session?.username, String(route.params.movieId)),
-    [route.params.movieId, session?.username],
+    () => buildUserCacheKey(PERSISTED_MOVIE_DETAILS_SCOPE, session?.username, `${mediaType}:${route.params.movieId}`),
+    [mediaType, route.params.movieId, session?.username],
   );
-  const initialMemoryMovie = useMemo(() => getCachedMovieDetails(route.params.movieId), [route.params.movieId]);
+  const initialMemoryMovie = useMemo(
+    () => getCachedMovieDetails(route.params.movieId, mediaType),
+    [mediaType, route.params.movieId],
+  );
   const [movie, setMovie] = useState<MovieDetails | null>(() => initialMemoryMovie);
   const [loading, setLoading] = useState(() => !initialMemoryMovie);
   const [actionLoading, setActionLoading] = useState(false);
@@ -113,7 +116,7 @@ export default function MovieDetailsScreen({
 
   useEffect(() => {
     setShowTrailer(false);
-  }, [route.params.movieId]);
+  }, [mediaType, route.params.movieId]);
 
   useEffect(() => {
     if (!session) {
@@ -121,7 +124,7 @@ export default function MovieDetailsScreen({
     }
 
     let active = true;
-    const memoryMovie = getCachedMovieDetails(route.params.movieId);
+    const memoryMovie = getCachedMovieDetails(route.params.movieId, mediaType);
     setLoading(!memoryMovie);
     setActionLoading(false);
     setMovie(memoryMovie);
@@ -144,8 +147,8 @@ export default function MovieDetailsScreen({
 
       try {
         const [payload, ratingPayload] = await Promise.all([
-          fetchMovieDetails(session.token, route.params.movieId),
-          fetchUserMovieRating(session.token, route.params.movieId),
+          fetchMediaDetails(session.token, mediaType, route.params.movieId),
+          fetchUserMediaRating(session.token, mediaType, route.params.movieId),
         ]);
         if (active) {
           const nextRating = ratingPayload.rating ?? 0;
@@ -164,7 +167,7 @@ export default function MovieDetailsScreen({
           return;
         }
         if (active && !memoryMovie && !cachedDetails?.movie) {
-          setError('Impossible de charger cette fiche film.');
+          setError('Impossible de charger cette fiche.');
         }
       } finally {
         if (active) {
@@ -176,7 +179,7 @@ export default function MovieDetailsScreen({
     return () => {
       active = false;
     };
-  }, [persistentCacheKey, route.params.movieId, session, signOut]);
+  }, [mediaType, persistentCacheKey, route.params.movieId, session, signOut]);
 
   const metaLine = useMemo(() => {
     if (!movie) {
@@ -184,6 +187,9 @@ export default function MovieDetailsScreen({
     }
     const parts = [
       movie.release_date,
+      movie.media_type === 'tv' && movie.number_of_seasons
+        ? `${movie.number_of_seasons} saison${movie.number_of_seasons > 1 ? 's' : ''}`
+        : '',
       movie.runtime ? `${movie.runtime} min` : '',
       movie.rating ? `${movie.rating.toFixed(1)} / 10` : '',
     ]
@@ -216,11 +222,12 @@ export default function MovieDetailsScreen({
 
     setActionLoading(true);
     try {
-      await addToWatchLater(session.token, movie.id);
+      await addMediaToPlaylist(session.token, -1, movie.media_type, movie.id);
       if (route.params.source === 'tinder') {
         DeviceEventEmitter.emit(TINDER_MOVIE_ACTION_EVENT, {
           type: 'watch-later',
           movieId: movie.id,
+          mediaType: movie.media_type,
         });
       }
       setFeedback('Ajouté à regarder plus tard.');
@@ -230,7 +237,7 @@ export default function MovieDetailsScreen({
         await signOut();
         return;
       }
-      setError("Impossible d'ajouter ce film à ta liste.");
+      setError("Impossible d'ajouter ce contenu à ta liste.");
     } finally {
       setActionLoading(false);
     }
@@ -273,11 +280,12 @@ export default function MovieDetailsScreen({
 
     setActionLoading(true);
     try {
-      await addMovieToPlaylist(session.token, playlist.id, movie.id);
+      await addMediaToPlaylist(session.token, playlist.id, movie.media_type, movie.id);
       if (route.params.source === 'tinder' && playlist.system_key === 'watch-later') {
         DeviceEventEmitter.emit(TINDER_MOVIE_ACTION_EVENT, {
           type: 'watch-later',
           movieId: movie.id,
+          mediaType: movie.media_type,
         });
       }
       setShowPlaylistPicker(false);
@@ -288,7 +296,7 @@ export default function MovieDetailsScreen({
         await signOut();
         return;
       }
-      setError("Impossible d'ajouter ce film à cette playlist.");
+      setError("Impossible d'ajouter ce contenu à cette playlist.");
     } finally {
       setActionLoading(false);
     }
@@ -331,14 +339,15 @@ export default function MovieDetailsScreen({
     setUserRating(nextRating);
     try {
       if (nextRating === 0) {
-        await removeMovieRating(session.token, movie.id);
+        await removeMediaRating(session.token, movie.media_type, movie.id);
       } else {
-        await rateMovie(session.token, movie.id, nextRating);
+        await rateMedia(session.token, movie.media_type, movie.id, nextRating);
       }
       if (route.params.source === 'tinder') {
         DeviceEventEmitter.emit(TINDER_MOVIE_ACTION_EVENT, {
           type: 'rated',
           movieId: movie.id,
+          mediaType: movie.media_type,
           rating: nextRating,
         });
       }
@@ -398,7 +407,7 @@ export default function MovieDetailsScreen({
 
     try {
       await Share.share({
-        message: buildPublicMovieShareMessage(movie.title, movie.id),
+        message: buildPublicMovieShareMessage(movie.title, movie.id, movie.media_type),
         title: movie.title,
       });
       setError('');
@@ -423,7 +432,7 @@ export default function MovieDetailsScreen({
             <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
-            {movie?.title ?? route.params.title ?? 'Fiche film'}
+            {movie?.title ?? route.params.title ?? (mediaType === 'tv' ? 'Fiche série' : 'Fiche film')}
           </Text>
           <View style={styles.iconSpacer} />
         </View>
@@ -492,6 +501,7 @@ export default function MovieDetailsScreen({
                   style={[styles.shareButton, styles.shareButtonHalf, { backgroundColor: theme.colors.secondaryAccent }]}
                   onPress={() => navigation.navigate('ShareMovie', {
                     movieId: movie.id,
+                    mediaType: movie.media_type,
                     title: movie.title,
                     posterUrl: movie.poster_url,
                     rating: movie.rating,
@@ -512,6 +522,7 @@ export default function MovieDetailsScreen({
                 style={[styles.reviewButton, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]}
                 onPress={() => navigation.navigate('CreateReview', {
                   movieId: movie.id,
+                  mediaType: movie.media_type,
                   title: movie.title,
                   posterUrl: movie.poster_url,
                   rating: movie.rating,
@@ -540,8 +551,24 @@ export default function MovieDetailsScreen({
 
             {movie.directors.length > 0 ? (
               <View style={styles.sectionCard}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Réalisation</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  {movie.media_type === 'tv' ? 'Création' : 'Réalisation'}
+                </Text>
                 <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>{movie.directors.join(', ')}</Text>
+              </View>
+            ) : null}
+
+            {movie.media_type === 'tv' && (movie.number_of_episodes || movie.status) ? (
+              <View style={styles.sectionCard}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Série</Text>
+                <Text style={[styles.bodyText, { color: theme.colors.textSoft }]}>
+                  {[
+                    movie.number_of_episodes
+                      ? `${movie.number_of_episodes} épisode${movie.number_of_episodes > 1 ? 's' : ''}`
+                      : '',
+                    movie.status ?? '',
+                  ].filter(Boolean).join(' • ')}
+                </Text>
               </View>
             ) : null}
 
@@ -740,7 +767,7 @@ export default function MovieDetailsScreen({
                     <Text style={[styles.emptyPlaylistText, { color: theme.colors.textMuted }]}>
                       {playlistSearch.trim()
                         ? 'Essaie un autre nom ou crée une nouvelle playlist.'
-                        : 'Crée une playlist pour y ajouter ce film.'}
+                        : 'Crée une playlist pour y ajouter ce contenu.'}
                     </Text>
                   </View>
                 )

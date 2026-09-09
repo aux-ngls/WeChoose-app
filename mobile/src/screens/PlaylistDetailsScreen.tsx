@@ -25,8 +25,8 @@ import {
   ApiError,
   fetchProfilePreferences,
   fetchPlaylistMoviesPage,
-  movePlaylistMovie,
-  removeMovieFromPlaylist,
+  movePlaylistMedia,
+  removeMediaFromPlaylist,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
@@ -68,6 +68,10 @@ const SEARCH_DEBOUNCE_MS = 220;
 const PERSISTED_PLAYLIST_SCOPE = 'playlist-details-screen-v2';
 
 const playlistMoviesCache = new Map<string, PlaylistCacheEntry>();
+
+function getMediaKey(item: Pick<SearchMovie, 'id' | 'media_type'>) {
+  return `${item.media_type ?? 'movie'}:${item.id}`;
+}
 
 function buildPlaylistCacheKey(
   playlistId: number,
@@ -119,7 +123,7 @@ export default function PlaylistDetailsScreen({
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [onlyOwnedStreamingServices, setOnlyOwnedStreamingServices] = useState(false);
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
-  const [reorderingMovieId, setReorderingMovieId] = useState<number | null>(null);
+  const [reorderingMovieId, setReorderingMovieId] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(() => initialCache?.totalCount ?? 0);
   const [hasMore, setHasMore] = useState(() => initialCache?.hasMore ?? false);
   const [nextOffset, setNextOffset] = useState(() => initialCache?.nextOffset ?? 0);
@@ -418,15 +422,15 @@ export default function PlaylistDetailsScreen({
     }
   }, [cacheKey, loadInitialPage]);
 
-  const handleRemove = useCallback(async (movieId: number) => {
+  const handleRemove = useCallback(async (item: SearchMovie) => {
     if (!session || !canRemove) {
       return;
     }
 
     try {
-      await removeMovieFromPlaylist(session.token, route.params.playlistId, movieId);
+      await removeMediaFromPlaylist(session.token, route.params.playlistId, item.media_type ?? 'movie', item.id);
       setMovies((current) => {
-        const nextMovies = current.filter((movie) => movie.id !== movieId);
+        const nextMovies = current.filter((movie) => getMediaKey(movie) !== getMediaKey(item));
         const nextTotalCount = Math.max(0, totalCountRef.current - 1);
         setTotalCount(nextTotalCount);
         setNextOffset((currentOffset) => Math.max(nextMovies.length, currentOffset - 1));
@@ -439,12 +443,12 @@ export default function PlaylistDetailsScreen({
         await signOut();
         return;
       }
-      setError('Impossible de retirer ce film.');
+      setError('Impossible de retirer ce contenu.');
     }
   }, [canRemove, route.params.playlistId, session, signOut]);
 
   const persistManualMove = useCallback(
-    async (sourceMovieId: number, targetMovieId: number, orderedMovies: SearchMovie[]) => {
+    async (source: SearchMovie, target: SearchMovie, orderedMovies: SearchMovie[]) => {
       if (!session) {
         return;
       }
@@ -455,7 +459,7 @@ export default function PlaylistDetailsScreen({
       setBufferedPage(null);
 
       try {
-        await movePlaylistMovie(session.token, route.params.playlistId, sourceMovieId, targetMovieId);
+        await movePlaylistMedia(session.token, route.params.playlistId, source, target);
         setError('');
         if (hasMoreRef.current) {
           void startBackgroundPrefetch(generationRef.current, cacheKey, nextOffsetRef.current, hasMoreRef.current);
@@ -474,20 +478,20 @@ export default function PlaylistDetailsScreen({
   );
 
   const handleReorderPress = useCallback(
-    (targetMovieId: number) => {
+    (target: SearchMovie) => {
       if (!canReorder || !reorderingMovieId) {
         return false;
       }
 
-      if (reorderingMovieId === targetMovieId) {
+      if (reorderingMovieId === getMediaKey(target)) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setReorderingMovieId(null);
         return true;
       }
 
       const orderedMovies = [...moviesRef.current];
-      const sourceIndex = orderedMovies.findIndex((movie) => movie.id === reorderingMovieId);
-      const targetIndex = orderedMovies.findIndex((movie) => movie.id === targetMovieId);
+      const sourceIndex = orderedMovies.findIndex((movie) => getMediaKey(movie) === reorderingMovieId);
+      const targetIndex = orderedMovies.findIndex((movie) => getMediaKey(movie) === getMediaKey(target));
       if (sourceIndex < 0 || targetIndex < 0) {
         setReorderingMovieId(null);
         return true;
@@ -496,7 +500,7 @@ export default function PlaylistDetailsScreen({
       const [movedMovie] = orderedMovies.splice(sourceIndex, 1);
       orderedMovies.splice(targetIndex, 0, movedMovie);
       setReorderingMovieId(null);
-      void persistManualMove(reorderingMovieId, targetMovieId, orderedMovies);
+      void persistManualMove(movedMovie, target, orderedMovies);
       return true;
     },
     [cacheKey, canReorder, persistManualMove, reorderingMovieId],
@@ -647,7 +651,7 @@ export default function PlaylistDetailsScreen({
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>{route.params.name ?? 'Playlist'}</Text>
           <Text style={[styles.headerMeta, { color: theme.colors.textMuted }]}>
-            {`${totalCount || movies.length} film(s)`}
+            {`${totalCount || movies.length} contenu(s)`}
           </Text>
         </View>
         <View style={styles.iconSpacer} />
@@ -661,7 +665,7 @@ export default function PlaylistDetailsScreen({
         key={`playlist-${route.params.playlistId}-grid`}
         numColumns={3}
         columnWrapperStyle={styles.columns}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={getMediaKey}
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
@@ -684,18 +688,22 @@ export default function PlaylistDetailsScreen({
           />
         }
         renderItem={({ item }) => {
-          const isReordering = reorderingMovieId === item.id;
+          const isReordering = reorderingMovieId === getMediaKey(item);
           return (
             <Pressable
               onPress={() => {
-                if (handleReorderPress(item.id)) {
+                if (handleReorderPress(item)) {
                   return;
                 }
-                navigation.navigate('MovieDetails', { movieId: item.id, title: item.title });
+                navigation.navigate('MovieDetails', {
+                  movieId: item.id,
+                  mediaType: item.media_type ?? 'movie',
+                  title: item.title,
+                });
               }}
               onLongPress={canReorder ? () => {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setReorderingMovieId(item.id);
+                setReorderingMovieId(getMediaKey(item));
               } : undefined}
               delayLongPress={220}
               style={[
@@ -715,7 +723,7 @@ export default function PlaylistDetailsScreen({
                   style={styles.removeBadge}
                   onPress={(event) => {
                     event.stopPropagation();
-                    void handleRemove(item.id);
+                    void handleRemove(item);
                   }}
                 >
                   <Ionicons name="close" size={12} color="#ffffff" />
@@ -738,7 +746,7 @@ export default function PlaylistDetailsScreen({
         }}
         ListEmptyComponent={
           !loading ? (
-            <EmptyStateCard title="Aucun film" />
+            <EmptyStateCard title="Aucun contenu" />
           ) : null
         }
         ListFooterComponent={

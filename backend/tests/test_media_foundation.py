@@ -1,6 +1,15 @@
 import unittest
+import os
+import sys
+import tempfile
+from unittest.mock import patch
 
 from fastapi import HTTPException
+
+os.environ.pop("DATABASE_URL", None)
+os.environ.pop("POSTGRES_URL", None)
+os.environ["SQLITE_PATH"] = tempfile.NamedTemporaryFile(prefix="qulte-media-tests-", suffix=".db").name
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import main
 
@@ -59,6 +68,61 @@ class MediaFoundationTests(unittest.TestCase):
             main.normalize_media_type("book")
 
         self.assertEqual(context.exception.status_code, 422)
+
+    def test_tv_recommendations_skip_rated_watch_later_and_excluded_series(self):
+        class FakeCursor:
+            def __init__(self):
+                self.last_query = ""
+
+            def execute(self, query, params=None):
+                self.last_query = query
+
+            def fetchone(self):
+                if "FROM playlists" in self.last_query:
+                    return (100,)
+                return None
+
+            def fetchall(self):
+                if "FROM user_preferences" in self.last_query:
+                    return []
+                if "FROM user_ratings" in self.last_query:
+                    return [(1, 5.0)]
+                if "FROM playlist_items" in self.last_query:
+                    return [(2,)]
+                if "FROM recommendation_impressions" in self.last_query:
+                    return [(3, "pass", "2099-01-01 00:00:00", "2099-01-01 00:00:00")]
+                return []
+
+        class FakeConnection:
+            def cursor(self):
+                return FakeCursor()
+
+            def commit(self):
+                return None
+
+            def close(self):
+                return None
+
+        candidates = [
+            {"id": 1, "name": "Rated", "vote_average": 8.0, "vote_count": 200, "popularity": 80},
+            {"id": 2, "name": "Watch Later", "vote_average": 8.0, "vote_count": 200, "popularity": 80},
+            {"id": 3, "name": "Passed", "vote_average": 8.0, "vote_count": 200, "popularity": 80},
+            {"id": 4, "name": "Excluded by client", "vote_average": 8.0, "vote_count": 200, "popularity": 80},
+            {"id": 5, "name": "Candidate", "vote_average": 8.2, "vote_count": 260, "popularity": 120},
+        ]
+
+        with patch.object(main, "get_db_connection", return_value=FakeConnection()), \
+            patch.object(main, "get_user_preferences", return_value={"favorite_genres": []}), \
+            patch.object(main, "get_tmdb_tv_genre_ids", return_value={}), \
+            patch.object(main, "fetch_tmdb_tv_candidates", return_value=candidates):
+            payload = main.compute_tv_recommendation_feed(
+                current_user_id=12,
+                limit=10,
+                exclude_ids="4",
+            )
+
+        self.assertEqual([item["id"] for item in payload], [5])
+        self.assertEqual(payload[0]["media_type"], "tv")
 
 
 if __name__ == "__main__":

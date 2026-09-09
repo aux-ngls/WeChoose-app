@@ -8,6 +8,7 @@ import importlib.util
 import json
 import hashlib
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -840,12 +841,13 @@ def init_postgres_db():
         """
         CREATE TABLE IF NOT EXISTS movie_provider_link_cache (
             movie_id INTEGER NOT NULL,
+            media_type TEXT NOT NULL DEFAULT 'movie',
             region_code TEXT NOT NULL,
             provider_links_json TEXT NOT NULL DEFAULT '{}',
             source_page_url TEXT,
             fetched_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             expires_at TIMESTAMP NOT NULL,
-            PRIMARY KEY (movie_id, region_code)
+            CONSTRAINT movie_provider_link_cache_media_pkey PRIMARY KEY (media_type, movie_id, region_code)
         )
         """
     )
@@ -878,11 +880,11 @@ def init_sqlite_db():
         "recommendation_impressions",
         "movie_provider_link_cache",
     )
-    
+
     # Table USERS
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                        username TEXT UNIQUE, 
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE,
                         password_hash TEXT)''')
     ensure_column("users", "avatar_url", "TEXT")
     ensure_column("users", "email", "TEXT")
@@ -907,20 +909,21 @@ def init_sqlite_db():
     ensure_column("user_preferences", "profile_description", "TEXT DEFAULT ''")
     ensure_column("user_preferences", "owned_streaming_services", "TEXT DEFAULT '[]'")
     ensure_column("user_preferences", "tutorial_completed_at", "TIMESTAMP")
-    
+
     # Table USER_RATINGS (PK composite)
     cursor.execute('''CREATE TABLE IF NOT EXISTS user_ratings (
                         user_id INTEGER,
-                        movie_id INTEGER, 
-                        rating INTEGER, 
-                        title TEXT, 
-                        poster_url TEXT, 
+                        movie_id INTEGER,
+                        media_type TEXT NOT NULL DEFAULT 'movie',
+                        rating INTEGER,
+                        title TEXT,
+                        poster_url TEXT,
                         added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY (user_id, movie_id))''')
+                        PRIMARY KEY (user_id, media_type, movie_id))''')
 
     # Table PLAYLISTS
     cursor.execute('''CREATE TABLE IF NOT EXISTS playlists (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         user_id INTEGER,
                         name TEXT)''')
     cursor.execute(
@@ -929,13 +932,14 @@ def init_sqlite_db():
 
     # Table PLAYLIST_ITEMS
     cursor.execute('''CREATE TABLE IF NOT EXISTS playlist_items (
-                        playlist_id INTEGER, 
-                        movie_id INTEGER, 
-                        title TEXT, 
-                        poster_url TEXT, 
+                        playlist_id INTEGER,
+                        movie_id INTEGER,
+                        media_type TEXT NOT NULL DEFAULT 'movie',
+                        title TEXT,
+                        poster_url TEXT,
                         rating REAL,
                         added_at TIMESTAMP,
-                        UNIQUE(playlist_id, movie_id))''')
+                        UNIQUE(playlist_id, media_type, movie_id))''')
 
     cursor.execute("PRAGMA table_info(playlist_items)")
     playlist_item_columns = {row[1] for row in cursor.fetchall()}
@@ -984,6 +988,7 @@ def init_sqlite_db():
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         user_id INTEGER,
                         movie_id INTEGER,
+                        media_type TEXT NOT NULL DEFAULT 'movie',
                         title TEXT,
                         poster_url TEXT,
                         rating INTEGER,
@@ -1064,6 +1069,7 @@ def init_sqlite_db():
                         sender_id INTEGER,
                         content TEXT,
                         movie_id INTEGER,
+                        media_type TEXT NOT NULL DEFAULT 'movie',
                         movie_title TEXT,
                         movie_poster_url TEXT,
                         movie_rating REAL,
@@ -1108,12 +1114,13 @@ def init_sqlite_db():
     # Table MOVIE_PROVIDER_LINK_CACHE
     cursor.execute('''CREATE TABLE IF NOT EXISTS movie_provider_link_cache (
                         movie_id INTEGER NOT NULL,
+                        media_type TEXT NOT NULL DEFAULT 'movie',
                         region_code TEXT NOT NULL,
                         provider_links_json TEXT NOT NULL DEFAULT '{}',
                         source_page_url TEXT,
                         fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         expires_at TIMESTAMP,
-                        PRIMARY KEY (movie_id, region_code))''')
+                        PRIMARY KEY (media_type, movie_id, region_code))''')
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_movie_provider_link_cache_expires ON movie_provider_link_cache(expires_at)"
     )
@@ -1144,6 +1151,7 @@ def init_sqlite_db():
                         request_id TEXT,
                         user_id INTEGER,
                         movie_id INTEGER,
+                        media_type TEXT NOT NULL DEFAULT 'movie',
                         mode TEXT,
                         algorithm_variant TEXT,
                         rank INTEGER,
@@ -1198,7 +1206,7 @@ def init_sqlite_db():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_movie_provider_link_cache_media ON movie_provider_link_cache(media_type, movie_id, region_code)"
     )
-    
+
     conn.commit()
     conn.close()
 
@@ -1332,6 +1340,7 @@ class ModerationReportPayload(BaseModel):
 
 class RecommendationImpressionPayload(BaseModel):
     movie_id: int
+    media_type: str = "movie"
     mode: str = "tinder"
     rank: int = 1
     reason: str = ""
@@ -1988,7 +1997,7 @@ def get_user_from_token(token: str) -> dict:
         username: str = payload.get("sub")
         if username is None: raise credentials_exception
     except JWTError: raise credentials_exception
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(f"SELECT id, username, avatar_url FROM users WHERE username = {SQL_PARAM}", (username,))
@@ -2064,7 +2073,7 @@ def signup(user: UserCreate):
         conn.rollback()
         conn.close()
         raise HTTPException(status_code=400, detail="Ce nom d'utilisateur existe déjà")
-    
+
     conn.close()
     access_token = create_access_token(data={"sub": username})
     return {
@@ -2081,7 +2090,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     cursor = conn.cursor()
     cursor.execute(f"SELECT id, password_hash FROM users WHERE username = {SQL_PARAM}", (username,))
     row = cursor.fetchone()
-    
+
     if not row or not verify_password(form_data.password, row[1]):
         conn.close()
         raise HTTPException(status_code=400, detail="Identifiants incorrects")
@@ -2090,7 +2099,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     preferences = get_user_preferences(cursor, int(row[0]))
     conn.commit()
     conn.close()
-    
+
     access_token = create_access_token(data={"sub": username})
     return {
         "access_token": access_token,
@@ -2777,7 +2786,7 @@ def get_cached_tmdb_page_provider_links(movie_id: int, region_code: str, *, allo
             f"""
             SELECT provider_links_json, source_page_url, fetched_at, expires_at
             FROM movie_provider_link_cache
-            WHERE movie_id = {SQL_PARAM} AND region_code = {SQL_PARAM}
+            WHERE media_type = 'movie' AND movie_id = {SQL_PARAM} AND region_code = {SQL_PARAM}
             """,
             (int(movie_id), (region_code or "FR").strip().upper() or "FR"),
         )
@@ -2824,9 +2833,9 @@ def set_cached_tmdb_page_provider_links(
         cursor.execute(
             f"""
             INSERT INTO movie_provider_link_cache (
-                movie_id, region_code, provider_links_json, source_page_url, fetched_at, expires_at
-            ) VALUES ({SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM})
-            ON CONFLICT (movie_id, region_code) DO UPDATE SET
+                movie_id, media_type, region_code, provider_links_json, source_page_url, fetched_at, expires_at
+            ) VALUES ({SQL_PARAM}, 'movie', {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM}, {SQL_PARAM})
+            ON CONFLICT (media_type, movie_id, region_code) DO UPDATE SET
                 provider_links_json = excluded.provider_links_json,
                 source_page_url = excluded.source_page_url,
                 fetched_at = excluded.fetched_at,
@@ -3762,7 +3771,11 @@ def get_user_owned_streaming_services(cursor, user_id: int) -> list[str]:
 
 
 def build_movie_subscription_provider_names(movie_id: int) -> list[str]:
-    watch_providers = get_tmdb_watch_providers(int(movie_id))
+    return build_media_subscription_provider_names(movie_id, "movie")
+
+
+def build_media_subscription_provider_names(media_id: int, media_type: str) -> list[str]:
+    watch_providers = get_tmdb_media_watch_providers(int(media_id), media_type)
     return dedupe_list(
         [
             normalized
@@ -3782,6 +3795,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
             f"""
             SELECT
                 movie_id AS id,
+                media_type,
                 title,
                 poster_url,
                 rating,
@@ -3802,6 +3816,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
             f"""
             SELECT
                 movie_id AS id,
+                media_type,
                 title,
                 poster_url,
                 rating,
@@ -3820,6 +3835,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
             f"""
             SELECT
                 movie_id AS id,
+                media_type,
                 title,
                 poster_url,
                 rating,
@@ -3838,6 +3854,7 @@ def fetch_playlist_base_rows(cursor, playlist_id: int, user_id: int) -> tuple[li
         f"""
         SELECT
             movie_id AS id,
+            media_type,
             title,
             poster_url,
             rating,
@@ -3862,7 +3879,16 @@ def hydrate_playlist_row_metadata(
     include_watch_providers: bool,
 ) -> dict:
     movie_id = int(row.get("id") or 0)
-    next_primary_genre = decode_db_text(row.get("primary_genre")) or get_movie_primary_genre(movie_id)
+    media_type = normalize_media_type(str(row.get("media_type") or "movie"))
+    details = None
+    next_primary_genre = decode_db_text(row.get("primary_genre"))
+    if not next_primary_genre:
+        if media_type == "movie":
+            next_primary_genre = get_movie_primary_genre(movie_id)
+        else:
+            details = get_tmdb_media_details(media_type, movie_id)
+            genres = details.get("genres", []) if isinstance(details, dict) else []
+            next_primary_genre = str(genres[0]) if genres else "Autres"
     raw_provider_names = row.get("subscription_provider_names")
     if isinstance(raw_provider_names, list):
         parsed_provider_names = raw_provider_names
@@ -3884,7 +3910,7 @@ def hydrate_playlist_row_metadata(
         should_persist = True
 
     if include_watch_providers and not next_provider_names:
-        next_provider_names = build_movie_subscription_provider_names(movie_id)
+        next_provider_names = build_media_subscription_provider_names(movie_id, media_type)
         should_persist = True
 
     row["primary_genre"] = next_primary_genre or "Autres"
@@ -3897,12 +3923,13 @@ def hydrate_playlist_row_metadata(
             SET primary_genre = {SQL_PARAM},
                 subscription_provider_names = {SQL_PARAM},
                 metadata_updated_at = CURRENT_TIMESTAMP
-            WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}
+            WHERE playlist_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}
             """,
             (
                 row["primary_genre"],
                 dump_json_list(next_provider_names),
                 int(playlist_db_id),
+                media_type,
                 movie_id,
             ),
         )
@@ -4071,6 +4098,7 @@ def get_test_ai_feedback_profile(cursor, user_id: int) -> dict[str, object]:
         SELECT movie_id, reaction_type, reaction_rating
         FROM recommendation_impressions
         WHERE user_id = {param}
+          AND media_type = 'movie'
           AND responded_at IS NOT NULL
           AND COALESCE(reaction_type, '') NOT LIKE {param}
         ORDER BY responded_at DESC
@@ -4131,7 +4159,9 @@ def mark_recommendation_reaction(
     movie_id: int,
     reaction_type: str,
     reaction_rating: Optional[float] = None,
+    media_type: str = "movie",
 ):
+    normalized_media_type = normalize_media_type(media_type)
     if not is_recommendation_ai_enabled_user(cursor, user_id):
         return
 
@@ -4139,11 +4169,11 @@ def mark_recommendation_reaction(
         """
         SELECT id
         FROM recommendation_impressions
-        WHERE user_id = {param} AND movie_id = {param}
+        WHERE user_id = {param} AND media_type = {param} AND movie_id = {param}
         ORDER BY shown_at DESC
         LIMIT 1
         """.format(param=SQL_PARAM),
-        (int(user_id), int(movie_id)),
+        (int(user_id), normalized_media_type, int(movie_id)),
     )
     row = cursor.fetchone()
     if not row:
@@ -4153,6 +4183,7 @@ def mark_recommendation_reaction(
                 request_id,
                 user_id,
                 movie_id,
+                media_type,
                 mode,
                 algorithm_variant,
                 rank,
@@ -4161,12 +4192,13 @@ def mark_recommendation_reaction(
             reaction_type,
             reaction_rating
         )
-            VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, CURRENT_TIMESTAMP, {param}, {param})
+            VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, CURRENT_TIMESTAMP, {param}, {param})
             """.format(param=SQL_PARAM),
             (
                 str(uuid.uuid4()),
                 int(user_id),
                 int(movie_id),
+                normalized_media_type,
                 "tinder",
                 TEST_AI_ALGORITHM_VARIANT,
                 0,
@@ -4195,6 +4227,7 @@ def insert_recommendation_impression(
     request_id: str,
     user_id: int,
     movie_id: int,
+    media_type: str = "movie",
     mode: str,
     algorithm_variant: str,
     rank: int,
@@ -4209,6 +4242,7 @@ def insert_recommendation_impression(
             request_id,
             user_id,
             movie_id,
+            media_type,
             mode,
             algorithm_variant,
             rank,
@@ -4217,12 +4251,13 @@ def insert_recommendation_impression(
             seed_title,
             seed_similarity
         )
-        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param})
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param})
         """.format(param=SQL_PARAM),
         (
             request_id,
             int(user_id),
             int(movie_id),
+            normalize_media_type(media_type),
             mode,
             algorithm_variant,
             int(rank),
@@ -4238,6 +4273,7 @@ def record_recommendation_impression(
     user_id: int,
     movie_id: int,
     mode: str,
+    media_type: str = "movie",
     rank: int = 1,
     reason: str = "",
     algorithm_variant: str = TEST_AI_ALGORITHM_VARIANT,
@@ -4256,6 +4292,7 @@ def record_recommendation_impression(
             request_id=str(uuid.uuid4()),
             user_id=user_id,
             movie_id=movie_id,
+            media_type=media_type,
             mode=mode,
             algorithm_variant=algorithm_variant,
             rank=rank,
@@ -4382,7 +4419,7 @@ def build_collaborative_candidate_scores(cursor, current_user_id: int, blocked_i
         WITH base AS (
             SELECT movie_id, rating
             FROM user_ratings
-            WHERE user_id = {param}
+            WHERE user_id = {param} AND media_type = 'movie'
         )
         SELECT
             other.user_id,
@@ -4400,6 +4437,7 @@ def build_collaborative_candidate_scores(cursor, current_user_id: int, blocked_i
         FROM base
         JOIN user_ratings other
           ON other.movie_id = base.movie_id
+         AND other.media_type = 'movie'
          AND other.user_id != {param}
         GROUP BY other.user_id
         HAVING overlap_count >= 2 AND similarity_score > 0
@@ -4420,7 +4458,7 @@ def build_collaborative_candidate_scores(cursor, current_user_id: int, blocked_i
             """
             SELECT movie_id, rating
             FROM user_ratings
-            WHERE user_id = {param} AND rating >= 4
+            WHERE user_id = {param} AND media_type = 'movie' AND rating >= 4
             ORDER BY added_at DESC
             LIMIT 24
             """.format(param=SQL_PARAM),
@@ -4592,6 +4630,7 @@ def serialize_review_row(row: Any) -> dict:
     return {
         "id": row["id"],
         "movie_id": row["movie_id"],
+        "media_type": row["media_type"] if "media_type" in row_keys else "movie",
         "title": row["title"],
         "poster_url": row["poster_url"],
         "rating": row["rating"],
@@ -5225,6 +5264,7 @@ def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, pa
             u.username,
             u.avatar_url,
             r.movie_id,
+            r.media_type,
             r.title,
             r.poster_url,
             r.rating,
@@ -5358,6 +5398,7 @@ def serialize_direct_message_row(row: Any, current_user_id: int) -> dict:
         "movie": (
             {
                 "id": row["movie_id"],
+                "media_type": row["media_type"] if "media_type" in row_keys else "movie",
                 "title": row["movie_title"],
                 "poster_url": row["movie_poster_url"],
                 "rating": row["movie_rating"],
@@ -5376,6 +5417,7 @@ def serialize_direct_message_row(row: Any, current_user_id: int) -> dict:
                 "movie": (
                     {
                         "id": row["reply_movie_id"],
+                        "media_type": row["reply_media_type"] if "reply_media_type" in row_keys else "movie",
                         "title": row["reply_movie_title"],
                         "poster_url": row["reply_movie_poster_url"],
                         "rating": row["reply_movie_rating"],
@@ -5422,6 +5464,7 @@ def serialize_direct_conversation_row(row: Any) -> dict:
                 "movie": (
                     {
                         "id": row["last_movie_id"],
+                        "media_type": row["last_media_type"] if "last_media_type" in row_keys else "movie",
                         "title": row["last_movie_title"],
                         "poster_url": row["last_movie_poster_url"],
                     }
@@ -5530,6 +5573,7 @@ def fetch_direct_conversations(cursor, current_user_id: int) -> list[dict]:
             last_message.content AS last_message_content,
             last_message.sender_id AS last_sender_id,
             last_message.movie_id AS last_movie_id,
+            last_message.media_type AS last_media_type,
             last_message.movie_title AS last_movie_title,
             last_message.movie_poster_url AS last_movie_poster_url,
             (
@@ -5782,10 +5826,13 @@ class PlaylistCreate(BaseModel):
 class PlaylistMovePayload(BaseModel):
     source_movie_id: int
     target_movie_id: int
+    source_media_type: str = "movie"
+    target_media_type: str = "movie"
 
 
 class ReviewCreate(BaseModel):
     movie_id: int
+    media_type: str = "movie"
     title: str
     poster_url: str
     rating: float
@@ -5805,6 +5852,7 @@ class CommentCreate(BaseModel):
 class MessageCreate(BaseModel):
     content: Optional[str] = None
     movie_id: Optional[int] = None
+    media_type: str = "movie"
     movie_title: Optional[str] = None
     movie_poster_url: Optional[str] = None
     movie_rating: Optional[float] = None
@@ -5850,7 +5898,7 @@ def get_all_playlists(current_user: dict = Depends(get_current_user)):
         for row in cursor.fetchall()
     ]
     conn.close()
-    
+
     return [
         {
             "id": WATCH_LATER_SYSTEM_ID,
@@ -5944,7 +5992,7 @@ def get_playlist_previews(current_user: dict = Depends(get_current_user)):
             )
             cursor.execute(
                 f"""
-                SELECT movie_id AS id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') AS added_at
+                SELECT movie_id AS id, media_type, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') AS added_at
                 FROM playlist_items
                 WHERE playlist_id = {SQL_PARAM}
                 ORDER BY {order_clause}
@@ -5960,7 +6008,7 @@ def get_playlist_previews(current_user: dict = Depends(get_current_user)):
             count = int(cursor.fetchone()["count"] or 0)
             cursor.execute(
                 f"""
-                SELECT movie_id AS id, title, poster_url, rating, added_at
+                SELECT movie_id AS id, media_type, title, poster_url, rating, added_at
                 FROM user_ratings
                 WHERE user_id = {SQL_PARAM} AND rating >= 4
                 ORDER BY added_at DESC
@@ -5976,7 +6024,7 @@ def get_playlist_previews(current_user: dict = Depends(get_current_user)):
             count = int(cursor.fetchone()["count"] or 0)
             cursor.execute(
                 f"""
-                SELECT movie_id AS id, title, poster_url, rating, added_at
+                SELECT movie_id AS id, media_type, title, poster_url, rating, added_at
                 FROM user_ratings
                 WHERE user_id = {SQL_PARAM}
                 ORDER BY added_at DESC
@@ -6031,41 +6079,50 @@ def create_playlist(p: PlaylistCreate, current_user: dict = Depends(get_current_
 def get_playlist_content(playlist_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    
+
     if playlist_id == WATCH_LATER_SYSTEM_ID:
         real_id = get_or_create_watch_later_id(cursor, current_user["id"])
         conn.commit()
         cursor.execute(
-            f"SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
+            f"SELECT movie_id as id, media_type, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
             (real_id,),
         )
     elif playlist_id == FAVORITES_SYSTEM_ID:
         cursor.execute(
-            f"SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = {SQL_PARAM} AND rating >= 4 ORDER BY added_at DESC",
+            f"SELECT movie_id as id, media_type, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = {SQL_PARAM} AND rating >= 4 ORDER BY added_at DESC",
             (current_user["id"],),
         )
     elif playlist_id == HISTORY_SYSTEM_ID:
         cursor.execute(
-            f"SELECT movie_id as id, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = {SQL_PARAM} ORDER BY added_at DESC",
+            f"SELECT movie_id as id, media_type, title, poster_url, rating, added_at FROM user_ratings WHERE user_id = {SQL_PARAM} ORDER BY added_at DESC",
             (current_user["id"],),
         )
     else:
         target_id = get_custom_playlist_id(cursor, playlist_id, current_user["id"])
         cursor.execute(
-            f"SELECT movie_id as id, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
+            f"SELECT movie_id as id, media_type, title, poster_url, rating, COALESCE(added_at, '1970-01-01 00:00:00') as added_at, COALESCE(sort_index, 0) as sort_index FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC",
             (target_id,),
         )
-    
+
     movies = [dict(row) for row in cursor.fetchall()]
     conn.close()
 
     for movie in movies:
-        movie["primary_genre"] = get_movie_primary_genre(int(movie["id"]))
+        media_type = normalize_media_type(str(movie.get("media_type") or "movie"))
+        if media_type == "movie":
+            movie["primary_genre"] = get_movie_primary_genre(int(movie["id"]))
+        else:
+            details = get_tmdb_media_details(media_type, int(movie["id"]))
+            genres = details.get("genres", []) if isinstance(details, dict) else []
+            movie["primary_genre"] = str(genres[0]) if genres else "Autres"
         movie["subscription_provider_names"] = []
 
     if playlist_id == WATCH_LATER_SYSTEM_ID:
         for movie in movies:
-            watch_providers = get_tmdb_watch_providers(int(movie["id"]))
+            watch_providers = get_tmdb_media_watch_providers(
+                int(movie["id"]),
+                str(movie.get("media_type") or "movie"),
+            )
             movie["subscription_provider_names"] = dedupe_list(
                 [
                     normalize_streaming_service_label(provider.get("name", ""))
@@ -6119,18 +6176,28 @@ def get_playlist_content_paged(
     payload["resolved_sort"] = resolved_sort
     return payload
 
-@app.post("/playlists/{playlist_id}/add/{movie_id}")
-def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict = Depends(get_current_user)):
+def add_media_to_specific_playlist(
+    playlist_id: int,
+    media_type: str,
+    media_id: int,
+    current_user: dict,
+):
+    normalized_media_type = normalize_media_type(media_type)
     conn = get_db_connection()
     cursor = conn.cursor()
     target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
-    
-    info = get_tmdb_details(movie_id)
+
+    info = get_tmdb_media_details(normalized_media_type, media_id)
     if info:
         try:
-            primary_genre = get_movie_primary_genre(movie_id)
+            genres = info.get("genres", []) if isinstance(info, dict) else []
+            primary_genre = (
+                get_movie_primary_genre(media_id)
+                if normalized_media_type == "movie"
+                else (str(genres[0]) if genres else "Autres")
+            )
             subscription_provider_names = (
-                build_movie_subscription_provider_names(movie_id)
+                build_media_subscription_provider_names(media_id, normalized_media_type)
                 if playlist_id == WATCH_LATER_SYSTEM_ID
                 else []
             )
@@ -6144,6 +6211,7 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
                 INSERT INTO playlist_items (
                     playlist_id,
                     movie_id,
+                    media_type,
                     title,
                     poster_url,
                     rating,
@@ -6153,6 +6221,7 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
                     subscription_provider_names,
                     metadata_updated_at
                 ) VALUES (
+                    {SQL_PARAM},
                     {SQL_PARAM},
                     {SQL_PARAM},
                     {SQL_PARAM},
@@ -6168,6 +6237,7 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
                 (
                     target_id,
                     info["id"],
+                    normalized_media_type,
                     info["title"],
                     info["poster_url"],
                     info["rating"],
@@ -6176,40 +6246,78 @@ def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict
                     dump_json_list(subscription_provider_names),
                 ),
             )
-            reaction_type = "watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "playlist_add"
-            mark_recommendation_reaction(
-                cursor,
-                current_user["id"],
-                movie_id,
-                reaction_type,
-            )
+            if normalized_media_type == "movie":
+                reaction_type = "watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "playlist_add"
+                mark_recommendation_reaction(
+                    cursor,
+                    current_user["id"],
+                    media_id,
+                    reaction_type,
+                )
             conn.commit()
         except DBIntegrityError:
-            pass
-        
+            conn.rollback()
+
     conn.close()
     return {"status": "added"}
 
-@app.delete("/playlists/{playlist_id}/remove/{movie_id}")
-def remove_from_specific_playlist(playlist_id: int, movie_id: int, current_user: dict = Depends(get_current_user)):
+
+@app.post("/playlists/{playlist_id}/items/{media_type}/{media_id}")
+def add_media_to_playlist_route(
+    playlist_id: int,
+    media_type: str,
+    media_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return add_media_to_specific_playlist(playlist_id, media_type, media_id, current_user)
+
+
+@app.post("/playlists/{playlist_id}/add/{movie_id}")
+def add_to_specific_playlist(playlist_id: int, movie_id: int, current_user: dict = Depends(get_current_user)):
+    return add_media_to_specific_playlist(playlist_id, "movie", movie_id, current_user)
+
+
+def remove_media_from_specific_playlist(
+    playlist_id: int,
+    media_type: str,
+    media_id: int,
+    current_user: dict,
+):
+    normalized_media_type = normalize_media_type(media_type)
     conn = get_db_connection()
     cursor = conn.cursor()
     target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
 
     cursor.execute(
-        f"DELETE FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
-        (target_id, movie_id),
+        f"DELETE FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+        (target_id, normalized_media_type, media_id),
     )
-    reaction_type = "undo_watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "undo_playlist_add"
-    mark_recommendation_reaction(
-        cursor,
-        current_user["id"],
-        movie_id,
-        reaction_type,
-    )
+    if normalized_media_type == "movie":
+        reaction_type = "undo_watch_later" if playlist_id == WATCH_LATER_SYSTEM_ID else "undo_playlist_add"
+        mark_recommendation_reaction(
+            cursor,
+            current_user["id"],
+            media_id,
+            reaction_type,
+        )
     conn.commit()
     conn.close()
     return {"status": "removed"}
+
+
+@app.delete("/playlists/{playlist_id}/items/{media_type}/{media_id}")
+def remove_media_from_playlist_route(
+    playlist_id: int,
+    media_type: str,
+    media_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return remove_media_from_specific_playlist(playlist_id, media_type, media_id, current_user)
+
+
+@app.delete("/playlists/{playlist_id}/remove/{movie_id}")
+def remove_from_specific_playlist(playlist_id: int, movie_id: int, current_user: dict = Depends(get_current_user)):
+    return remove_media_from_specific_playlist(playlist_id, "movie", movie_id, current_user)
 
 @app.post("/playlists/{playlist_id}/reorder")
 def reorder_playlist(
@@ -6217,27 +6325,43 @@ def reorder_playlist(
     payload: dict,
     current_user: dict = Depends(get_current_user),
 ):
-    ordered_movie_ids = payload.get("movie_ids")
-    if not isinstance(ordered_movie_ids, list) or not all(isinstance(movie_id, int) for movie_id in ordered_movie_ids):
-        raise HTTPException(status_code=400, detail="Liste de films invalide")
+    raw_items = payload.get("items")
+    if raw_items is not None:
+        if not isinstance(raw_items, list):
+            raise HTTPException(status_code=400, detail="Liste de contenus invalide")
+        try:
+            ordered_items = [
+                (normalize_media_type(str(item["media_type"])), int(item["id"]))
+                for item in raw_items
+                if isinstance(item, dict)
+            ]
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Liste de contenus invalide")
+        if len(ordered_items) != len(raw_items):
+            raise HTTPException(status_code=400, detail="Liste de contenus invalide")
+    else:
+        ordered_movie_ids = payload.get("movie_ids")
+        if not isinstance(ordered_movie_ids, list) or not all(isinstance(movie_id, int) for movie_id in ordered_movie_ids):
+            raise HTTPException(status_code=400, detail="Liste de contenus invalide")
+        ordered_items = [("movie", movie_id) for movie_id in ordered_movie_ids]
 
     conn = get_db_connection()
     cursor = conn.cursor()
     target_id = get_playlist_target_id(cursor, playlist_id, current_user["id"])
 
     cursor.execute(
-        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
+        f"SELECT media_type, movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
         (target_id,),
     )
-    existing_movie_ids = {int(row[0]) for row in cursor.fetchall()}
-    if existing_movie_ids != set(ordered_movie_ids):
+    existing_items = {(str(row[0] or "movie"), int(row[1])) for row in cursor.fetchall()}
+    if existing_items != set(ordered_items):
         conn.close()
         raise HTTPException(status_code=400, detail="La liste des films ne correspond pas à la playlist")
 
-    for index, movie_id in enumerate(ordered_movie_ids, start=1):
+    for index, (media_type, movie_id) in enumerate(ordered_items, start=1):
         cursor.execute(
-            f"UPDATE playlist_items SET sort_index = {SQL_PARAM} WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
-            (index, target_id, movie_id),
+            f"UPDATE playlist_items SET sort_index = {SQL_PARAM} WHERE playlist_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+            (index, target_id, media_type, movie_id),
         )
 
     conn.commit()
@@ -6256,39 +6380,41 @@ def move_playlist_movie(
 
     cursor.execute(
         f"""
-        SELECT movie_id
+        SELECT media_type, movie_id
         FROM playlist_items
         WHERE playlist_id = {SQL_PARAM}
         ORDER BY COALESCE(sort_index, 2147483647) ASC, COALESCE(added_at, '1970-01-01 00:00:00') DESC, movie_id DESC
         """,
         (target_id,),
     )
-    ordered_movie_ids = [int(row[0]) for row in cursor.fetchall()]
-    if payload.source_movie_id not in ordered_movie_ids or payload.target_movie_id not in ordered_movie_ids:
+    ordered_items = [(str(row[0] or "movie"), int(row[1])) for row in cursor.fetchall()]
+    source_item = (normalize_media_type(payload.source_media_type), payload.source_movie_id)
+    target_item = (normalize_media_type(payload.target_media_type), payload.target_movie_id)
+    if source_item not in ordered_items or target_item not in ordered_items:
         conn.close()
         raise HTTPException(status_code=400, detail="Film introuvable dans cette playlist")
 
-    source_index = ordered_movie_ids.index(payload.source_movie_id)
-    target_index = ordered_movie_ids.index(payload.target_movie_id)
+    source_index = ordered_items.index(source_item)
+    target_index = ordered_items.index(target_item)
     if source_index == target_index:
         conn.close()
         return {"status": "unchanged"}
 
-    moved_movie_id = ordered_movie_ids.pop(source_index)
-    ordered_movie_ids.insert(target_index, moved_movie_id)
+    moved_item = ordered_items.pop(source_index)
+    ordered_items.insert(target_index, moved_item)
 
-    for index, movie_id in enumerate(ordered_movie_ids, start=1):
+    for index, (media_type, movie_id) in enumerate(ordered_items, start=1):
         cursor.execute(
-            f"UPDATE playlist_items SET sort_index = {SQL_PARAM} WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
-            (index, target_id, movie_id),
+            f"UPDATE playlist_items SET sort_index = {SQL_PARAM} WHERE playlist_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+            (index, target_id, media_type, movie_id),
         )
 
     conn.commit()
     conn.close()
     return {"status": "moved"}
 
-@app.post("/movies/rate/{movie_id}/{rating}")
-def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_current_user)):
+def rate_media(media_type: str, media_id: int, rating: float, current_user: dict):
+    normalized_media_type = normalize_media_type(media_type)
     rounded_rating = round(float(rating) * 2) / 2
     if rounded_rating < 0.5 or rounded_rating > 5:
         raise HTTPException(status_code=400, detail="La note doit être comprise entre 0.5 et 5")
@@ -6296,55 +6422,68 @@ def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_cu
     conn = get_db_connection()
     cursor = conn.cursor()
     watch_later_id = get_or_create_watch_later_id(cursor, current_user["id"])
-    movie_row = movies_df[movies_df['id'] == movie_id] if not movies_df.empty else pd.DataFrame()
-    title = str(movie_row.iloc[0]["title"]) if not movie_row.empty else "Inconnu"
-    poster = fetch_poster_from_tmdb(movie_id)
+    details = get_tmdb_media_details(normalized_media_type, media_id)
+    if not details:
+        conn.close()
+        raise HTTPException(status_code=502, detail="Impossible de charger ce contenu pour le noter.")
+    title = str(details.get("title") or "Inconnu")
+    poster = str(details.get("poster_url") or "")
 
-    if title == "Inconnu":
-        details = get_tmdb_details(movie_id)
-        if details:
-            title = details["title"]
-            poster = details["poster_url"] or poster
-    
     cursor.execute(
         """
-        INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
-        VALUES ({param}, {param}, {param}, {param}, {param})
-        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+        INSERT INTO user_ratings (user_id, movie_id, media_type, rating, title, poster_url)
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param})
+        ON CONFLICT(user_id, media_type, movie_id) DO UPDATE SET
             rating = EXCLUDED.rating,
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url,
             added_at = CURRENT_TIMESTAMP
         """.format(param=SQL_PARAM),
-        (current_user["id"], movie_id, rounded_rating, title, poster),
+        (current_user["id"], media_id, normalized_media_type, rounded_rating, title, poster),
     )
     cursor.execute(
-        f"UPDATE reviews SET rating = {SQL_PARAM} WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
-        (rounded_rating, current_user["id"], movie_id),
+        f"UPDATE reviews SET rating = {SQL_PARAM} WHERE user_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+        (rounded_rating, current_user["id"], normalized_media_type, media_id),
     )
     cursor.execute(
-        f"DELETE FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
-        (watch_later_id, movie_id),
+        f"DELETE FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+        (watch_later_id, normalized_media_type, media_id),
     )
-    mark_recommendation_reaction(
-        cursor,
-        current_user["id"],
-        movie_id,
-        "rated",
-        rounded_rating,
-    )
+    if normalized_media_type == "movie":
+        mark_recommendation_reaction(
+            cursor,
+            current_user["id"],
+            media_id,
+            "rated",
+            rounded_rating,
+        )
     conn.commit()
     conn.close()
     return {"status": "rated"}
 
 
-@app.delete("/movies/rate/{movie_id}")
-def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_user)):
+@app.post("/media/{media_type}/{media_id}/rating/{rating}")
+def rate_media_route(
+    media_type: str,
+    media_id: int,
+    rating: float,
+    current_user: dict = Depends(get_current_user),
+):
+    return rate_media(media_type, media_id, rating, current_user)
+
+
+@app.post("/movies/rate/{movie_id}/{rating}")
+def rate_movie(movie_id: int, rating: float, current_user: dict = Depends(get_current_user)):
+    return rate_media("movie", movie_id, rating, current_user)
+
+
+def delete_media_rating(media_type: str, media_id: int, current_user: dict):
+    normalized_media_type = normalize_media_type(media_type)
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        f"SELECT id FROM reviews WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM} LIMIT 1",
-        (current_user["id"], movie_id),
+        f"SELECT id FROM reviews WHERE user_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM} LIMIT 1",
+        (current_user["id"], normalized_media_type, media_id),
     )
     if cursor.fetchone():
         conn.close()
@@ -6353,31 +6492,60 @@ def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_
             detail="Cette note est liée à une critique. Modifie ou supprime la critique pour retirer la note.",
         )
     cursor.execute(
-        f"DELETE FROM user_ratings WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
-        (current_user["id"], movie_id),
+        f"DELETE FROM user_ratings WHERE user_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+        (current_user["id"], normalized_media_type, media_id),
     )
-    mark_recommendation_reaction(
-        cursor,
-        current_user["id"],
-        movie_id,
-        "undo_rating",
-    )
+    if normalized_media_type == "movie":
+        mark_recommendation_reaction(
+            cursor,
+            current_user["id"],
+            media_id,
+            "undo_rating",
+        )
     conn.commit()
     conn.close()
     return {"status": "removed"}
 
 
-@app.get("/movies/user-rating/{movie_id}")
-def get_user_movie_rating(movie_id: int, current_user: dict = Depends(get_current_user)):
+@app.delete("/media/{media_type}/{media_id}/rating")
+def delete_media_rating_route(
+    media_type: str,
+    media_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return delete_media_rating(media_type, media_id, current_user)
+
+
+@app.delete("/movies/rate/{movie_id}")
+def delete_movie_rating(movie_id: int, current_user: dict = Depends(get_current_user)):
+    return delete_media_rating("movie", movie_id, current_user)
+
+
+def get_user_media_rating(media_type: str, media_id: int, current_user: dict):
+    normalized_media_type = normalize_media_type(media_type)
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        f"SELECT rating FROM user_ratings WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
-        (current_user["id"], movie_id),
+        f"SELECT rating FROM user_ratings WHERE user_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}",
+        (current_user["id"], normalized_media_type, media_id),
     )
     row = cursor.fetchone()
     conn.close()
     return {"rating": float(row[0]) if row else None}
+
+
+@app.get("/media/{media_type}/{media_id}/user-rating")
+def get_user_media_rating_route(
+    media_type: str,
+    media_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return get_user_media_rating(media_type, media_id, current_user)
+
+
+@app.get("/movies/user-rating/{movie_id}")
+def get_user_movie_rating(movie_id: int, current_user: dict = Depends(get_current_user)):
+    return get_user_media_rating("movie", movie_id, current_user)
 
 # --- 7. RECOMMANDATIONS ---
 def compute_recommendation_feed(
@@ -6402,7 +6570,7 @@ def compute_recommendation_feed(
     preferences = get_user_preferences(cursor, current_user_id)
 
     cursor.execute(
-        f"SELECT movie_id, rating FROM user_ratings WHERE user_id = {SQL_PARAM} ORDER BY added_at DESC",
+        f"SELECT movie_id, rating FROM user_ratings WHERE user_id = {SQL_PARAM} AND media_type = 'movie' ORDER BY added_at DESC",
         (current_user_id,),
     )
     rating_rows = [(int(row[0]), float(row[1])) for row in cursor.fetchall()]
@@ -6410,7 +6578,7 @@ def compute_recommendation_feed(
     disliked_ids = [movie_id for movie_id, rating in rating_rows if rating <= 2.5][:12]
 
     cursor.execute(
-        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM}",
+        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND media_type = 'movie'",
         (watch_later_id,),
     )
     watch_later_ids = {int(row[0]) for row in cursor.fetchall()}
@@ -6419,7 +6587,7 @@ def compute_recommendation_feed(
         """
         SELECT movie_id, reaction_type, responded_at, shown_at
         FROM recommendation_impressions
-        WHERE user_id = {param}
+        WHERE user_id = {param} AND media_type = 'movie'
           AND mode = 'tinder'
         ORDER BY COALESCE(responded_at, shown_at) DESC
         LIMIT 500
@@ -6467,7 +6635,7 @@ def compute_recommendation_feed(
         tinder_history_blocked_ids.add(movie_id)
 
     cursor.execute(
-        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY COALESCE(sort_index, 999999), added_at DESC LIMIT 12",
+        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND media_type = 'movie' ORDER BY COALESCE(sort_index, 999999), added_at DESC LIMIT 12",
         (watch_later_id,),
     )
     recent_watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
@@ -7103,6 +7271,182 @@ def get_movie_feed(
     )
 
 
+@lru_cache(maxsize=1)
+def get_tmdb_tv_genre_ids() -> dict[str, int]:
+    try:
+        response = requests.get(
+            "https://api.themoviedb.org/3/genre/tv/list",
+            params={"api_key": TMDB_API_KEY, "language": "fr-FR"},
+            timeout=3,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return {}
+
+    return {
+        str(genre.get("name") or "").strip().casefold(): int(genre["id"])
+        for genre in payload.get("genres", [])
+        if isinstance(genre, dict) and isinstance(genre.get("id"), int) and genre.get("name")
+    }
+
+
+def fetch_tmdb_tv_candidates(path: str, extra_params: Optional[dict] = None) -> list[dict]:
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/{path.lstrip('/')}",
+            params={
+                "api_key": TMDB_API_KEY,
+                "language": "fr-FR",
+                "include_adult": "false",
+                "page": 1,
+                **(extra_params or {}),
+            },
+            timeout=3,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        logger.warning("Echec chargement candidats séries TMDB path=%s: %s", path, exc)
+        return []
+    return [item for item in payload.get("results", []) if isinstance(item, dict)]
+
+
+def compute_tv_recommendation_feed(
+    current_user_id: int,
+    limit: int = 10,
+    exclude_ids: Optional[str] = None,
+) -> list[dict]:
+    safe_limit = max(1, min(int(limit), 30))
+    client_excluded_ids = parse_exclude_ids(exclude_ids)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    watch_later_id = get_or_create_watch_later_id(cursor, current_user_id)
+    conn.commit()
+    preferences = get_user_preferences(cursor, current_user_id)
+
+    cursor.execute(
+        f"SELECT movie_id, rating FROM user_ratings WHERE user_id = {SQL_PARAM} AND media_type = 'tv' ORDER BY added_at DESC",
+        (current_user_id,),
+    )
+    rating_rows = [(int(row[0]), float(row[1])) for row in cursor.fetchall()]
+    rated_ids = {media_id for media_id, _ in rating_rows}
+    positive_seed_ids = [media_id for media_id, rating in rating_rows if rating >= 3.5][:6]
+
+    cursor.execute(
+        f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND media_type = 'tv'",
+        (watch_later_id,),
+    )
+    watch_later_ids = {int(row[0]) for row in cursor.fetchall()}
+
+    cursor.execute(
+        """
+        SELECT movie_id, reaction_type, responded_at, shown_at
+        FROM recommendation_impressions
+        WHERE user_id = {param} AND media_type = 'tv' AND mode = 'tinder'
+        ORDER BY COALESCE(responded_at, shown_at) DESC
+        LIMIT 500
+        """.format(param=SQL_PARAM),
+        (current_user_id,),
+    )
+    recent_pass_ids: set[int] = set()
+    pass_cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=PASS_RECONSIDER_COOLDOWN_DAYS)
+    seen_impression_ids: set[int] = set()
+    for row in cursor.fetchall():
+        media_id = int(row[0])
+        if media_id in seen_impression_ids:
+            continue
+        seen_impression_ids.add(media_id)
+        reaction_type = str(row[1] or "")
+        raw_timestamp = str(row[2] or row[3] or "").strip().replace("Z", "+00:00")
+        try:
+            timestamp = datetime.datetime.fromisoformat(raw_timestamp.replace(" ", "T", 1)).replace(tzinfo=None)
+        except ValueError:
+            timestamp = None
+        if reaction_type in PASS_REACTION_TYPES and (timestamp is None or timestamp >= pass_cutoff):
+            recent_pass_ids.add(media_id)
+    conn.close()
+
+    blocked_ids = rated_ids | watch_later_ids | recent_pass_ids | client_excluded_ids
+    genre_map = get_tmdb_tv_genre_ids()
+    preferred_genre_ids = [
+        genre_map[name.strip().casefold()]
+        for name in preferences.get("favorite_genres", [])
+        if name.strip().casefold() in genre_map
+    ][:4]
+
+    requests_to_run: list[tuple[str, dict, float, str]] = [
+        ("tv/popular", {}, 1.0, "Séries populaires pour toi"),
+        ("trending/tv/week", {}, 1.1, "Tendance cette semaine"),
+    ]
+    if preferred_genre_ids:
+        requests_to_run.append(
+            (
+                "discover/tv",
+                {
+                    "with_genres": "|".join(str(genre_id) for genre_id in preferred_genre_ids),
+                    "sort_by": "vote_average.desc",
+                    "vote_count.gte": 80,
+                },
+                1.45,
+                "Selon tes genres préférés",
+            )
+        )
+    for seed_id in positive_seed_ids:
+        requests_to_run.append(
+            (f"tv/{seed_id}/recommendations", {}, 1.75, "Inspiré par tes séries bien notées")
+        )
+
+    candidate_sources: list[tuple[list[dict], float, str]] = []
+    with ThreadPoolExecutor(max_workers=min(6, len(requests_to_run))) as executor:
+        futures = [
+            (executor.submit(fetch_tmdb_tv_candidates, path, params), weight, reason)
+            for path, params, weight, reason in requests_to_run
+        ]
+        for future, weight, reason in futures:
+            candidate_sources.append((future.result(), weight, reason))
+
+    ranked_candidates: dict[int, tuple[float, dict, str]] = {}
+    for candidates, source_weight, reason in candidate_sources:
+        for source_rank, item in enumerate(candidates[:30]):
+            normalized = normalize_tmdb_tv_show(item)
+            if normalized is None or normalized["id"] in blocked_ids:
+                continue
+            vote_count = float(item.get("vote_count") or 0.0)
+            popularity = float(item.get("popularity") or 0.0)
+            score = (
+                source_weight
+                + max(0.0, 1.0 - source_rank * 0.025)
+                + min(float(normalized["rating"]) / 10.0, 1.0) * 0.8
+                + min(math.log1p(max(vote_count, 0.0)) / 10.0, 0.8)
+                + min(math.log1p(max(popularity, 0.0)) / 12.0, 0.6)
+            )
+            previous = ranked_candidates.get(int(normalized["id"]))
+            if previous:
+                score += previous[0] + 0.6
+            if not previous or score > previous[0]:
+                ranked_candidates[int(normalized["id"])] = (score, normalized, reason)
+
+    ordered = sorted(ranked_candidates.values(), key=lambda value: value[0], reverse=True)
+    return [
+        {
+            **item,
+            "recommendation_reason": reason,
+            "recommendation_variant": "tmdb_tv_affinity_v1",
+        }
+        for _, item, reason in ordered[:safe_limit]
+    ]
+
+
+@app.get("/series/feed")
+def get_tv_feed(
+    limit: int = 10,
+    exclude_ids: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    return compute_tv_recommendation_feed(current_user["id"], limit, exclude_ids)
+
+
 @app.post("/recommendations/impressions")
 def create_recommendation_impression(
     payload: RecommendationImpressionPayload,
@@ -7111,6 +7455,7 @@ def create_recommendation_impression(
     recorded = record_recommendation_impression(
         user_id=current_user["id"],
         movie_id=payload.movie_id,
+        media_type=payload.media_type,
         mode=payload.mode,
         rank=payload.rank,
         reason=payload.reason,
@@ -7139,7 +7484,7 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = {param}
+        WHERE user_id = {param} AND media_type = 'movie'
         """.format(param=SQL_PARAM),
         (current_user["id"],),
     )
@@ -7156,7 +7501,7 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = {param}
+        WHERE user_id = {param} AND media_type = 'movie'
         GROUP BY algorithm_variant, mode
         ORDER BY shown_count DESC
         """.format(param=SQL_PARAM),
@@ -7177,7 +7522,7 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             responded_at,
             seed_title
         FROM recommendation_impressions
-        WHERE user_id = {param}
+        WHERE user_id = {param} AND media_type = 'movie'
         ORDER BY shown_at DESC
         LIMIT 24
         """.format(param=SQL_PARAM),
@@ -7195,7 +7540,7 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = {param}
+        WHERE user_id = {param} AND media_type = 'movie'
         GROUP BY movie_id
         HAVING SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) > 0
         ORDER BY positive_count DESC, response_count DESC, average_rating DESC
@@ -7216,7 +7561,7 @@ def get_test_ai_metrics(current_user: dict = Depends(get_current_user)):
             SUM(CASE WHEN reaction_rating <= 2.5 THEN 1 ELSE 0 END) AS negative_count,
             AVG(CASE WHEN reaction_rating IS NOT NULL THEN reaction_rating ELSE NULL END) AS average_rating
         FROM recommendation_impressions
-        WHERE user_id = {param}
+        WHERE user_id = {param} AND media_type = 'movie'
           AND COALESCE(seed_title, '') != ''
         GROUP BY seed_movie_id, seed_title
         HAVING SUM(CASE WHEN responded_at IS NOT NULL THEN 1 ELSE 0 END) > 0
@@ -7431,6 +7776,7 @@ def fetch_friend_rated_movies(current_user_id: int, limit: int = 18) -> list[dic
         """
         SELECT
             ur.movie_id AS id,
+            ur.media_type,
             ur.title,
             ur.poster_url,
             ur.rating,
@@ -7599,7 +7945,7 @@ def build_group_recommendations(
         preferences = get_user_preferences(cursor, user_id)
         watch_later_id = get_or_create_watch_later_id(cursor, user_id)
         cursor.execute(
-            f"SELECT movie_id, rating FROM user_ratings WHERE user_id = {SQL_PARAM} ORDER BY added_at DESC",
+        f"SELECT movie_id, rating FROM user_ratings WHERE user_id = {SQL_PARAM} AND media_type = 'movie' ORDER BY added_at DESC",
             (user_id,),
         )
         rating_rows = [(int(row[0]), float(row[1])) for row in cursor.fetchall()]
@@ -7614,7 +7960,7 @@ def build_group_recommendations(
             )
 
         cursor.execute(
-            f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} ORDER BY added_at DESC LIMIT 18",
+            f"SELECT movie_id FROM playlist_items WHERE playlist_id = {SQL_PARAM} AND media_type = 'movie' ORDER BY added_at DESC LIMIT 18",
             (watch_later_id,),
         )
         watch_later_ids = [int(row[0]) for row in cursor.fetchall()]
@@ -8275,6 +8621,7 @@ def get_social_review(review_id: int, current_user: dict = Depends(get_current_u
 
 @app.post("/social/reviews")
 def create_review(review: ReviewCreate, current_user: dict = Depends(get_current_user)):
+    media_type = normalize_media_type(review.media_type)
     review_title = review.title.strip()
     review_content = review.content.strip()
     poster_url = review.poster_url.strip()
@@ -8283,7 +8630,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     if review_rating < 0.5 or review_rating > 5:
         raise HTTPException(status_code=400, detail="La note doit être comprise entre 0,5 et 5")
     if len(review_title) < 1:
-        raise HTTPException(status_code=400, detail="Le titre du film est requis")
+        raise HTTPException(status_code=400, detail="Le titre du contenu est requis")
     if len(review_content) < 1:
         raise HTTPException(status_code=400, detail="La critique ne peut pas être vide")
     ensure_clean_ugc_text(review_title)
@@ -8294,12 +8641,13 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     review_id = execute_insert_and_get_id(
         cursor,
         """
-        INSERT INTO reviews (user_id, movie_id, title, poster_url, rating, content)
-        VALUES ({param}, {param}, {param}, {param}, {param}, {param})
+        INSERT INTO reviews (user_id, movie_id, media_type, title, poster_url, rating, content)
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param})
         """.format(param=SQL_PARAM),
         (
             current_user["id"],
             review.movie_id,
+            media_type,
             review_title,
             poster_url,
             review_rating,
@@ -8308,9 +8656,9 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     )
     cursor.execute(
         """
-        INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
-        VALUES ({param}, {param}, {param}, {param}, {param})
-        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+        INSERT INTO user_ratings (user_id, movie_id, media_type, rating, title, poster_url)
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param})
+        ON CONFLICT(user_id, media_type, movie_id) DO UPDATE SET
             rating = EXCLUDED.rating,
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url,
@@ -8319,6 +8667,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
         (
             current_user["id"],
             review.movie_id,
+            media_type,
             review_rating,
             review_title,
             poster_url,
@@ -8382,7 +8731,7 @@ def update_review(
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT movie_id, title, poster_url
+        SELECT movie_id, media_type, title, poster_url
         FROM reviews
         WHERE id = {param} AND user_id = {param}
         """.format(param=SQL_PARAM),
@@ -8403,9 +8752,9 @@ def update_review(
     )
     cursor.execute(
         """
-        INSERT INTO user_ratings (user_id, movie_id, rating, title, poster_url)
-        VALUES ({param}, {param}, {param}, {param}, {param})
-        ON CONFLICT(user_id, movie_id) DO UPDATE SET
+        INSERT INTO user_ratings (user_id, movie_id, media_type, rating, title, poster_url)
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param})
+        ON CONFLICT(user_id, media_type, movie_id) DO UPDATE SET
             rating = EXCLUDED.rating,
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url,
@@ -8414,6 +8763,7 @@ def update_review(
         (
             current_user["id"],
             review_row["movie_id"],
+            review_row["media_type"],
             review_rating,
             review_row["title"],
             review_row["poster_url"],
@@ -8795,6 +9145,7 @@ def get_direct_conversation_messages(
                 dm.sender_id,
                 sender.username AS sender_username,
                 dm.movie_id,
+                dm.media_type,
                 dm.movie_title,
                 dm.movie_poster_url,
                 dm.movie_rating,
@@ -8804,6 +9155,7 @@ def get_direct_conversation_messages(
                 reply_dm.sender_id AS reply_sender_id,
                 reply_sender.username AS reply_sender_username,
                 reply_dm.movie_id AS reply_movie_id,
+                reply_dm.media_type AS reply_media_type,
                 reply_dm.movie_title AS reply_movie_title,
                 reply_dm.movie_poster_url AS reply_movie_poster_url,
                 reply_dm.movie_rating AS reply_movie_rating
@@ -8865,13 +9217,14 @@ async def create_direct_message(
     content = (payload.content or "").strip()
 
     movie_id = payload.movie_id
+    media_type = normalize_media_type(payload.media_type)
     movie_title = (payload.movie_title or "").strip()
     movie_poster_url = (payload.movie_poster_url or "").strip()
     movie_rating = payload.movie_rating
     reply_to_message_id = payload.reply_to_message_id
 
     if movie_id is not None and (not movie_title or not movie_poster_url):
-        details = get_tmdb_details(movie_id)
+        details = get_tmdb_media_details(media_type, movie_id)
         if details:
             movie_title = details["title"]
             movie_poster_url = details["poster_url"]
@@ -8907,18 +9260,20 @@ async def create_direct_message(
             sender_id,
             content,
             movie_id,
+            media_type,
             movie_title,
             movie_poster_url,
             movie_rating,
             reply_to_message_id
         )
-        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param})
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param}, {param})
         """.format(param=SQL_PARAM),
         (
             conversation_id,
             current_user["id"],
             content,
             movie_id,
+            media_type,
             movie_title or None,
             movie_poster_url or None,
             movie_rating,
@@ -8947,6 +9302,7 @@ async def create_direct_message(
             dm.sender_id,
             sender.username AS sender_username,
             dm.movie_id,
+            dm.media_type,
             dm.movie_title,
             dm.movie_poster_url,
             dm.movie_rating,
@@ -8955,6 +9311,7 @@ async def create_direct_message(
             reply_dm.sender_id AS reply_sender_id,
             reply_sender.username AS reply_sender_username,
             reply_dm.movie_id AS reply_movie_id,
+            reply_dm.media_type AS reply_media_type,
             reply_dm.movie_title AS reply_movie_title,
             reply_dm.movie_poster_url AS reply_movie_poster_url,
             reply_dm.movie_rating AS reply_movie_rating
@@ -9385,13 +9742,13 @@ def news():
     res = requests.get(url).json().get('results', [])[:10]
     return [{"id": m['id'], "title": m['title'], "poster_url": "https://image.tmdb.org/t/p/w500"+m.get('poster_path', ""), "rating": m['vote_average'], "overview": m['overview']} for m in res]
 
-@app.post("/movies/dislike/{movie_id}")
-def dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user)):
+def dislike_media(media_type: str, media_id: int, current_user: dict):
+    normalized_media_type = normalize_media_type(media_type)
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        f"SELECT 1 FROM user_ratings WHERE user_id = {SQL_PARAM} AND movie_id = {SQL_PARAM} LIMIT 1",
-        (current_user["id"], movie_id),
+        f"SELECT 1 FROM user_ratings WHERE user_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM} LIMIT 1",
+        (current_user["id"], normalized_media_type, media_id),
     )
     if cursor.fetchone():
         conn.close()
@@ -9400,27 +9757,57 @@ def dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user))
     mark_recommendation_reaction(
         cursor,
         current_user["id"],
-        movie_id,
+        media_id,
         "pass",
+        media_type=normalized_media_type,
     )
     conn.commit()
     conn.close()
     return {"status": "passed"}
 
 
-@app.delete("/movies/dislike/{movie_id}")
-def undo_dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user)):
+def undo_dislike_media(media_type: str, media_id: int, current_user: dict):
+    normalized_media_type = normalize_media_type(media_type)
     conn = get_db_connection()
     cursor = conn.cursor()
     mark_recommendation_reaction(
         cursor,
         current_user["id"],
-        movie_id,
+        media_id,
         "undo_pass",
+        media_type=normalized_media_type,
     )
     conn.commit()
     conn.close()
     return {"status": "removed"}
+
+
+@app.post("/media/{media_type}/{media_id}/dislike")
+def dislike_media_route(
+    media_type: str,
+    media_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return dislike_media(media_type, media_id, current_user)
+
+
+@app.delete("/media/{media_type}/{media_id}/dislike")
+def undo_dislike_media_route(
+    media_type: str,
+    media_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    return undo_dislike_media(media_type, media_id, current_user)
+
+
+@app.post("/movies/dislike/{movie_id}")
+def dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user)):
+    return dislike_media("movie", movie_id, current_user)
+
+
+@app.delete("/movies/dislike/{movie_id}")
+def undo_dislike_movie(movie_id: int, current_user: dict = Depends(get_current_user)):
+    return undo_dislike_media("movie", movie_id, current_user)
 
 
 def mount_reliure_api():

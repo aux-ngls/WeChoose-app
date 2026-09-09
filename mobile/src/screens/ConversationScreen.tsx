@@ -951,7 +951,11 @@ export default function ConversationScreen({
                           ? [styles.sharedMovieCardMine, { borderColor: theme.colors.accentSoft, backgroundColor: theme.colors.accentSoft }]
                           : [styles.sharedMovieCardOther, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }],
                       ]}
-                      onPress={() => navigation.navigate('MovieDetails', { movieId: message.movie!.id, title: message.movie!.title })}
+                      onPress={() => navigation.navigate('MovieDetails', {
+                        movieId: message.movie!.id,
+                        mediaType: message.movie!.media_type ?? 'movie',
+                        title: message.movie!.title,
+                      })}
                     >
                       <CachedPoster uri={message.movie.poster_url} style={styles.sharedMoviePoster} />
                       <View style={styles.sharedMovieBody}>

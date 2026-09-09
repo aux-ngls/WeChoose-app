@@ -318,9 +318,14 @@ export default function UserProfileScreen() {
                   <View key={movie.id} style={styles.posterCell}>
                     <MoviePosterTile
                       movie={movie}
-                      onPress={() => navigation.navigate('MovieDetails', { movieId: movie.id, title: movie.title })}
+                      onPress={() => navigation.navigate('MovieDetails', {
+                        movieId: movie.id,
+                        mediaType: movie.media_type ?? 'movie',
+                        title: movie.title,
+                      })}
                       onLongPress={(event) => setQuickAddMovie({
                         id: movie.id,
+                        media_type: movie.media_type ?? 'movie',
                         title: movie.title,
                         anchorX: event.nativeEvent.pageX,
                         anchorY: event.nativeEvent.pageY,
@@ -371,9 +376,14 @@ export default function UserProfileScreen() {
                     style={[styles.reviewCard, { backgroundColor: theme.rgba.cardStrong }]}
                   >
                     <Pressable
-                      onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}
+                      onPress={() => navigation.navigate('MovieDetails', {
+                        movieId: review.movie_id,
+                        mediaType: review.media_type ?? 'movie',
+                        title: review.title,
+                      })}
                       onLongPress={(event) => setQuickAddMovie({
                         id: review.movie_id,
+                        media_type: review.media_type ?? 'movie',
                         title: review.title,
                         anchorX: event.nativeEvent.pageX,
                         anchorY: event.nativeEvent.pageY,

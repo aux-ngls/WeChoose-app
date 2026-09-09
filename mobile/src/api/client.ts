@@ -5,6 +5,7 @@ import type {
   DirectConversationDetails,
   DirectConversationSummary,
   DirectMessage,
+  MediaType,
   MovieDetails,
   OnboardingPreferencesResponse,
   PersonDetails,
@@ -35,8 +36,12 @@ type MovieDetailsCacheEntry = {
   fetchedAt: number;
 };
 
-const movieDetailsCache = new Map<number, MovieDetailsCacheEntry>();
-const movieDetailsInFlight = new Map<number, Promise<MovieDetails>>();
+const movieDetailsCache = new Map<string, MovieDetailsCacheEntry>();
+const movieDetailsInFlight = new Map<string, Promise<MovieDetails>>();
+
+function getMediaCacheKey(mediaType: MediaType, mediaId: number) {
+  return `${mediaType}:${mediaId}`;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -231,34 +236,73 @@ export async function fetchMovieFeed(
   return request<SearchMovie[]>(`/movies/feed?${params.toString()}`, undefined, token);
 }
 
-function getFreshMovieDetailsFromMemory(movieId: number): MovieDetails | null {
-  const cachedEntry = movieDetailsCache.get(movieId);
+export async function fetchMediaFeed(
+  token: string,
+  mediaType: MediaType,
+  options?: { excludeIds?: number[]; limit?: number; mode?: string },
+): Promise<SearchMovie[]> {
+  if (mediaType === 'movie') {
+    return fetchMovieFeed(token, options);
+  }
+  const params = new URLSearchParams();
+  params.set('limit', String(options?.limit ?? 8));
+  if (options?.excludeIds?.length) {
+    params.set('exclude_ids', options.excludeIds.join(','));
+  }
+  return request<SearchMovie[]>(`/series/feed?${params.toString()}`, undefined, token);
+}
+
+function getFreshMovieDetailsFromMemory(movieId: number, mediaType: MediaType = 'movie'): MovieDetails | null {
+  const cacheKey = getMediaCacheKey(mediaType, movieId);
+  const cachedEntry = movieDetailsCache.get(cacheKey);
   if (!cachedEntry) {
     return null;
   }
 
   if (Date.now() - cachedEntry.fetchedAt > MOVIE_DETAILS_CACHE_TTL_MS) {
-    movieDetailsCache.delete(movieId);
+    movieDetailsCache.delete(cacheKey);
     return null;
   }
 
   return cachedEntry.payload;
 }
 
-export function getCachedMovieDetails(movieId: number): MovieDetails | null {
-  return getFreshMovieDetailsFromMemory(movieId);
+export function getCachedMovieDetails(movieId: number, mediaType: MediaType = 'movie'): MovieDetails | null {
+  return getFreshMovieDetailsFromMemory(movieId, mediaType);
 }
 
 export function preloadMovieDetails(token: string, movieIds: Array<number | null | undefined>, limit = MOVIE_DETAILS_PREFETCH_LIMIT) {
   const uniqueMovieIds = Array.from(
     new Set(movieIds.filter((movieId): movieId is number => typeof movieId === 'number' && movieId > 0)),
   )
-    .filter((movieId) => !getFreshMovieDetailsFromMemory(movieId) && !movieDetailsInFlight.has(movieId))
+    .filter((movieId) => !getFreshMovieDetailsFromMemory(movieId) && !movieDetailsInFlight.has(getMediaCacheKey('movie', movieId)))
     .slice(0, limit);
 
   uniqueMovieIds.forEach((movieId) => {
     void fetchMovieDetails(token, movieId).catch(() => {
       // Prefetch is opportunistic: navigation should keep its normal error handling.
+    });
+  });
+}
+
+export function preloadMediaDetails(token: string, media: SearchMovie[], limit = MOVIE_DETAILS_PREFETCH_LIMIT) {
+  const uniqueItems = Array.from(
+    new Map(
+      media
+        .filter((item) => typeof item.id === 'number' && item.id > 0)
+        .map((item) => [`${item.media_type ?? 'movie'}:${item.id}`, item] as const),
+    ).values(),
+  )
+    .filter((item) => {
+      const mediaType = item.media_type ?? 'movie';
+      const key = getMediaCacheKey(mediaType, item.id);
+      return !getFreshMovieDetailsFromMemory(item.id, mediaType) && !movieDetailsInFlight.has(key);
+    })
+    .slice(0, limit);
+
+  uniqueItems.forEach((item) => {
+    void fetchMediaDetails(token, item.media_type ?? 'movie', item.id).catch(() => {
+      // Prefetch is opportunistic: navigation keeps its normal error handling.
     });
   });
 }
@@ -271,6 +315,7 @@ export async function recordRecommendationImpression(token: string, movie: Searc
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         movie_id: movie.id,
+        media_type: movie.media_type ?? 'movie',
         mode,
         rank: 1,
         reason: movie.recommendation_reason ?? '',
@@ -289,28 +334,38 @@ export async function fetchMovieDetails(
   movieId: number,
   options?: { forceRefresh?: boolean },
 ): Promise<MovieDetails> {
+  return fetchMediaDetails(token, 'movie', movieId, options);
+}
+
+export async function fetchMediaDetails(
+  token: string,
+  mediaType: MediaType,
+  mediaId: number,
+  options?: { forceRefresh?: boolean },
+): Promise<MovieDetails> {
+  const cacheKey = getMediaCacheKey(mediaType, mediaId);
   if (!options?.forceRefresh) {
-    const cachedPayload = getFreshMovieDetailsFromMemory(movieId);
+    const cachedPayload = getFreshMovieDetailsFromMemory(mediaId, mediaType);
     if (cachedPayload) {
       return cachedPayload;
     }
 
-    const inFlightRequest = movieDetailsInFlight.get(movieId);
+    const inFlightRequest = movieDetailsInFlight.get(cacheKey);
     if (inFlightRequest) {
       return inFlightRequest;
     }
   }
 
-  const requestPromise = request<MovieDetails>(`/movie/${movieId}`, undefined, token)
+  const requestPromise = request<MovieDetails>(`/media/${mediaType}/${mediaId}`, undefined, token)
     .then((payload) => {
-      movieDetailsCache.set(movieId, { payload, fetchedAt: Date.now() });
+      movieDetailsCache.set(cacheKey, { payload, fetchedAt: Date.now() });
       return payload;
     })
     .finally(() => {
-      movieDetailsInFlight.delete(movieId);
+      movieDetailsInFlight.delete(cacheKey);
     });
 
-  movieDetailsInFlight.set(movieId, requestPromise);
+  movieDetailsInFlight.set(cacheKey, requestPromise);
   return requestPromise;
 }
 
@@ -319,15 +374,27 @@ export async function fetchPersonDetails(token: string, personId: number): Promi
 }
 
 export async function fetchUserMovieRating(token: string, movieId: number): Promise<UserMovieRating> {
-  return request<UserMovieRating>(`/movies/user-rating/${movieId}`, undefined, token);
+  return fetchUserMediaRating(token, 'movie', movieId);
+}
+
+export async function fetchUserMediaRating(token: string, mediaType: MediaType, mediaId: number): Promise<UserMovieRating> {
+  return request<UserMovieRating>(`/media/${mediaType}/${mediaId}/user-rating`, undefined, token);
 }
 
 export async function rateMovie(token: string, movieId: number, rating: number): Promise<void> {
-  await request<null>(`/movies/rate/${movieId}/${rating}`, { method: 'POST' }, token);
+  await rateMedia(token, 'movie', movieId, rating);
+}
+
+export async function rateMedia(token: string, mediaType: MediaType, mediaId: number, rating: number): Promise<void> {
+  await request<null>(`/media/${mediaType}/${mediaId}/rating/${rating}`, { method: 'POST' }, token);
 }
 
 export async function removeMovieRating(token: string, movieId: number): Promise<void> {
-  await request<null>(`/movies/rate/${movieId}`, { method: 'DELETE' }, token);
+  await removeMediaRating(token, 'movie', movieId);
+}
+
+export async function removeMediaRating(token: string, mediaType: MediaType, mediaId: number): Promise<void> {
+  await request<null>(`/media/${mediaType}/${mediaId}/rating`, { method: 'DELETE' }, token);
 }
 
 export interface DislikeMovieResponse {
@@ -335,23 +402,43 @@ export interface DislikeMovieResponse {
 }
 
 export async function dislikeMovie(token: string, movieId: number): Promise<DislikeMovieResponse> {
-  return request<DislikeMovieResponse>(`/movies/dislike/${movieId}`, { method: 'POST' }, token);
+  return dislikeMedia(token, 'movie', movieId);
+}
+
+export async function dislikeMedia(token: string, mediaType: MediaType, mediaId: number): Promise<DislikeMovieResponse> {
+  return request<DislikeMovieResponse>(`/media/${mediaType}/${mediaId}/dislike`, { method: 'POST' }, token);
 }
 
 export async function undoDislikeMovie(token: string, movieId: number): Promise<void> {
-  await request<null>(`/movies/dislike/${movieId}`, { method: 'DELETE' }, token);
+  await undoDislikeMedia(token, 'movie', movieId);
+}
+
+export async function undoDislikeMedia(token: string, mediaType: MediaType, mediaId: number): Promise<void> {
+  await request<null>(`/media/${mediaType}/${mediaId}/dislike`, { method: 'DELETE' }, token);
 }
 
 export async function addToWatchLater(token: string, movieId: number): Promise<void> {
-  await request<null>(`/playlists/-1/add/${movieId}`, { method: 'POST' }, token);
+  await addMediaToPlaylist(token, -1, 'movie', movieId);
 }
 
 export async function addMovieToPlaylist(token: string, playlistId: number, movieId: number): Promise<void> {
-  await request<null>(`/playlists/${playlistId}/add/${movieId}`, { method: 'POST' }, token);
+  await addMediaToPlaylist(token, playlistId, 'movie', movieId);
+}
+
+export async function addMediaToPlaylist(token: string, playlistId: number, mediaType: MediaType, mediaId: number): Promise<void> {
+  await request<null>(`/playlists/${playlistId}/items/${mediaType}/${mediaId}`, { method: 'POST' }, token);
 }
 
 export async function searchMovies(token: string, query: string): Promise<SearchMovie[]> {
   return request<SearchMovie[]>(`/search?query=${encodeURIComponent(query)}`, undefined, token);
+}
+
+export async function searchMedia(token: string, query: string, mediaType: 'all' | MediaType = 'all'): Promise<SearchMovie[]> {
+  return request<SearchMovie[]>(
+    `/media/search?query=${encodeURIComponent(query)}&media_type=${mediaType}`,
+    undefined,
+    token,
+  );
 }
 
 export async function fetchSocialFeed(token: string): Promise<SocialReview[]> {
@@ -362,6 +449,7 @@ export async function createReview(
   token: string,
   payload: {
     movie_id: number;
+    media_type?: MediaType;
     title: string;
     poster_url: string;
     rating: number;
@@ -564,6 +652,7 @@ export async function sendMessage(
   payload: {
     content?: string;
     movie_id?: number;
+    media_type?: MediaType;
     movie_title?: string;
     movie_poster_url?: string;
     movie_rating?: number;
@@ -707,7 +796,11 @@ export async function fetchPlaylistMoviesPage(
 }
 
 export async function removeMovieFromPlaylist(token: string, playlistId: number, movieId: number): Promise<void> {
-  await request<null>(`/playlists/${playlistId}/remove/${movieId}`, { method: 'DELETE' }, token);
+  await removeMediaFromPlaylist(token, playlistId, 'movie', movieId);
+}
+
+export async function removeMediaFromPlaylist(token: string, playlistId: number, mediaType: MediaType, mediaId: number): Promise<void> {
+  await request<null>(`/playlists/${playlistId}/items/${mediaType}/${mediaId}`, { method: 'DELETE' }, token);
 }
 
 export async function reorderPlaylistMovies(token: string, playlistId: number, movieIds: number[]): Promise<void> {
@@ -717,6 +810,20 @@ export async function reorderPlaylistMovies(token: string, playlistId: number, m
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ movie_ids: movieIds }),
+    },
+    token,
+  );
+}
+
+export async function reorderPlaylistMedia(token: string, playlistId: number, items: SearchMovie[]): Promise<void> {
+  await request<null>(
+    `/playlists/${playlistId}/reorder`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: items.map((item) => ({ media_type: item.media_type ?? 'movie', id: item.id })),
+      }),
     },
     token,
   );
@@ -736,6 +843,28 @@ export async function movePlaylistMovie(
       body: JSON.stringify({
         source_movie_id: sourceMovieId,
         target_movie_id: targetMovieId,
+      }),
+    },
+    token,
+  );
+}
+
+export async function movePlaylistMedia(
+  token: string,
+  playlistId: number,
+  source: SearchMovie,
+  target: SearchMovie,
+): Promise<void> {
+  await request<null>(
+    `/playlists/${playlistId}/move`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_movie_id: source.id,
+        source_media_type: source.media_type ?? 'movie',
+        target_movie_id: target.id,
+        target_media_type: target.media_type ?? 'movie',
       }),
     },
     token,

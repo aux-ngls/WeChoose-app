@@ -1,8 +1,8 @@
 # Qulte - Project Memory
 
-Last updated: 2026-05-20
-Current branch: main
-Current stable commit: 6dcc7ed
+Last updated: 2026-09-09
+Current branch: feature/tv-series
+Current stable commit: ba691c7
 
 ## Maintenance Rule
 
@@ -30,6 +30,7 @@ The mobile app currently includes:
 - authentication and first-run onboarding with a dedicated concept screen explaining Qulte before the favorite-film selection;
 - a compact onboarding favorite-film selection screen focused on search, progress, and validation, without duplicated explanatory blocks;
 - movie Tinder / swipe recommendations;
+- TV-series support is being added on `feature/tv-series`: series can be searched, opened, rated, reviewed, shared, sent in private messages, and added to playlists through shared `media_type + TMDB id` contracts.
 - Tinder is explicitly responsive on iPad: the recommendation card keeps a compact phone-like width, stays centered, and keeps the rating controls aligned with the card.
 - pull-to-refresh on dynamic mobile screens such as search, social, messages, playlists, and profiles;
 - profile page with profile picture, description, favorite identity content, playlists, and user reviews;
@@ -111,6 +112,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
 - Rating deletion rule: a movie rating cannot be removed if it is linked to an existing review; the user must edit or delete the review first so reviews never become note-less.
 - TV-series migration is being developed on `feature/tv-series`. Content identity must always include `media_type` plus the TMDB id so movie and TV ids cannot collide. Existing movie routes and data remain backward compatible throughout the rollout.
+- The first series recommendation feed is independent from the movie AI model: it uses TMDB series sources, user TV ratings/watch-later/pass exclusions, and keeps movie recommendation behavior isolated.
 - Tinder pass/swipe-left is not a movie rating. It records a mild negative recommendation signal and uses a short cooldown; older passed films may reappear if the algorithm scores them well.
 - If a Tinder movie is already rated, swiping left should only skip to the next card and must not record a negative recommendation signal.
 - Tinder should not keep showing already rated movies; rated cards must be removed from the local mobile stack/cache and filtered server-side.

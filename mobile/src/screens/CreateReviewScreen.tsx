@@ -16,7 +16,7 @@ import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
 import StarRatingInput from '../components/StarRatingInput';
-import { ApiError, createReview, preloadMovieDetails, searchMovies, updateReview } from '../api/client';
+import { ApiError, createReview, preloadMediaDetails, searchMedia, updateReview } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
@@ -34,7 +34,8 @@ export default function CreateReviewScreen({
   const initialMovie = route.params?.movieId
     ? {
         id: route.params.movieId,
-        title: route.params.title ?? 'Film',
+        media_type: route.params.mediaType ?? 'movie',
+        title: route.params.title ?? (route.params.mediaType === 'tv' ? 'Série' : 'Film'),
         poster_url: route.params.posterUrl ?? '',
         rating: route.params.rating ?? 0,
       }
@@ -64,7 +65,7 @@ export default function CreateReviewScreen({
       void (async () => {
         setLoading(true);
         try {
-          const payload = await searchMovies(session.token, trimmedQuery);
+          const payload = await searchMedia(session.token, trimmedQuery);
           setResults(payload);
           setError('');
         } catch (searchError) {
@@ -72,7 +73,7 @@ export default function CreateReviewScreen({
             await signOut();
             return;
           }
-          setError('Impossible de rechercher ce film.');
+          setError('Impossible de rechercher ce contenu.');
         } finally {
           setLoading(false);
         }
@@ -85,7 +86,7 @@ export default function CreateReviewScreen({
   useEffect(() => {
     void prefetchPosterUrls(results.map((movie) => movie.poster_url), 10);
     if (session) {
-      preloadMovieDetails(session.token, results.slice(0, 6).map((movie) => movie.id));
+      preloadMediaDetails(session.token, results.slice(0, 6));
     }
   }, [results, session]);
 
@@ -108,7 +109,7 @@ export default function CreateReviewScreen({
 
     const trimmedContent = reviewContent.trim();
     if (!selectedMovie) {
-      setError('Choisis un film avant de publier ta critique.');
+      setError('Choisis un film ou une série avant de publier ta critique.');
       return;
     }
     if (trimmedContent.length < 1) {
@@ -130,6 +131,7 @@ export default function CreateReviewScreen({
       } else {
         await createReview(session.token, {
           movie_id: selectedMovie.id,
+          media_type: selectedMovie.media_type ?? 'movie',
           title: selectedMovie.title,
           poster_url: selectedMovie.poster_url || FALLBACK_POSTER,
           rating: reviewRating,
@@ -178,14 +180,14 @@ export default function CreateReviewScreen({
 
       <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
         <View style={styles.rowBetween}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Film</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Film ou série</Text>
           {resultsLabel ? <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>{resultsLabel}</Text> : null}
         </View>
         {!isEditMode ? (
           <SearchField
             value={query}
             onChangeText={setQuery}
-            placeholder={selectedMovie ? 'Choisir un autre film' : 'Chercher un film'}
+            placeholder={selectedMovie ? 'Choisir un autre contenu' : 'Chercher un film ou une série'}
           />
         ) : null}
 
@@ -225,7 +227,7 @@ export default function CreateReviewScreen({
           <View style={styles.resultsList}>
             {results.map((movie) => (
               <Pressable
-                key={movie.id}
+                key={`${movie.media_type ?? 'movie'}-${movie.id}`}
                 style={[styles.resultCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.cardStrong }]}
                 onPress={() => selectMovie(movie)}
               >

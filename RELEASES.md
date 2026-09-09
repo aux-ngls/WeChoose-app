@@ -1,6 +1,6 @@
 # Qulte - Releases And Stable Points
 
-Last updated: 2026-05-20
+Last updated: 2026-09-09
 
 ## Maintenance Rule
 
@@ -10,7 +10,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Current Stable State
 
-Commit: `6dcc7ed`
+Commit: `ba691c7`
 
 Summary:
 - audited the main app/API user flows with temporary accounts;
@@ -27,6 +27,11 @@ Summary:
 - made social notifications mark themselves as read when tapped, before navigating to the underlying profile or review.
 - reworked the review detail card so the poster and meta stay in the top row while the review text now spans the full width below.
 - aligned the rating badge and like pill on the same row in review details.
+- opened the TV-series migration branch with shared TMDB media identity, generic media search/detail endpoints, and additive schema preparation.
+
+## Feature Branch Checkpoints
+
+- `feature/tv-series`: series now flow through search, Tinder mode switching, details, ratings, reviews, playlists, private messages, and public share links using `media_type + TMDB id`; Postgres migration has been validated in rollback transactions but not permanently applied here.
 
 ## Latest Workspace Changes
 
@@ -154,3 +159,4 @@ npx eas submit --platform ios
 - Mobile settings now include owned streaming platforms, and the watch-later playlist can filter to movies available on those subscription services.
 - Profile loading now uses a lightweight playlist preview endpoint, fixing slow or blocked profile screens for accounts with very large playlists.
 - Playlist details now page large movie lists progressively instead of loading every movie up front, which fixes heavy watchlists like `@random`'s account.
+- TV-series work now uses the composite identity `media_type + TMDB id` across backend and mobile contracts to avoid movie/series id collisions.

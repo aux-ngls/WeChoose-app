@@ -12,7 +12,7 @@ import InlineBanner from '../components/InlineBanner';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import ScreenHeader from '../components/ScreenHeader';
 import SearchField from '../components/SearchField';
-import { ApiError, preloadMovieDetails, searchMovies, searchSocialUsers } from '../api/client';
+import { ApiError, preloadMediaDetails, searchMedia, searchSocialUsers } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
@@ -184,7 +184,7 @@ export default function SearchScreen() {
 
     try {
       if (mode === 'movies') {
-        const payload = await searchMovies(session.token, trimmedQuery);
+        const payload = await searchMedia(session.token, trimmedQuery);
         setMovieResults(payload);
       } else {
         const payload = await searchSocialUsers(session.token, trimmedQuery);
@@ -196,7 +196,7 @@ export default function SearchScreen() {
         await signOut();
         return;
       }
-      setError(mode === 'movies' ? 'Impossible de rechercher ce film.' : 'Impossible de rechercher cet utilisateur.');
+      setError(mode === 'movies' ? 'Impossible de rechercher ce contenu.' : 'Impossible de rechercher cet utilisateur.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -228,10 +228,10 @@ export default function SearchScreen() {
   }, [movieResults.length, query, searchMode, userResults.length]);
 
   const results: SearchResult[] = searchMode === 'movies'
-    ? movieResults.map((movie) => ({ kind: 'movie', id: `movie-${movie.id}`, movie }))
+    ? movieResults.map((movie) => ({ kind: 'movie', id: `${movie.media_type ?? 'movie'}-${movie.id}`, movie }))
     : userResults.map((user) => ({ kind: 'user', id: `user-${user.id}`, user }));
   const recentResults: SearchResult[] = searchMode === 'movies'
-    ? recentMovies.map((movie) => ({ kind: 'movie', id: `recent-movie-${movie.id}`, movie }))
+    ? recentMovies.map((movie) => ({ kind: 'movie', id: `recent-${movie.media_type ?? 'movie'}-${movie.id}`, movie }))
     : recentUsers.map((user) => ({ kind: 'user', id: `recent-user-${user.id}`, user }));
   const displayedResults = query.trim().length >= 2 ? results : recentResults;
 
@@ -241,7 +241,7 @@ export default function SearchScreen() {
       : [];
     void prefetchPosterUrls(moviesToPrefetch.map((movie) => movie.poster_url), 12);
     if (session) {
-      preloadMovieDetails(session.token, moviesToPrefetch.slice(0, 6).map((movie) => movie.id));
+      preloadMediaDetails(session.token, moviesToPrefetch.slice(0, 6));
     }
   }, [movieResults, query, recentMovies, searchMode, session]);
 
@@ -250,7 +250,12 @@ export default function SearchScreen() {
       return;
     }
 
-    const nextMovies = [movie, ...recentMovies.filter((recentMovie) => recentMovie.id !== movie.id)].slice(0, RECENT_MOVIES_LIMIT);
+    const nextMovies = [
+      movie,
+      ...recentMovies.filter(
+        (recentMovie) => recentMovie.id !== movie.id || (recentMovie.media_type ?? 'movie') !== (movie.media_type ?? 'movie'),
+      ),
+    ].slice(0, RECENT_MOVIES_LIMIT);
     setRecentMovies(nextMovies);
     await AsyncStorage.setItem(
       getRecentMoviesKey(session.username),
@@ -306,7 +311,7 @@ export default function SearchScreen() {
             />
             <View style={[styles.modeSwitcher, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
               {[
-                ['movies', 'Films', 'film-outline'],
+                ['movies', 'Films & séries', 'film-outline'],
                 ['users', 'Utilisateurs', 'people-outline'],
               ].map(([mode, label, icon]) => {
                 const isActive = searchMode === mode;
@@ -330,7 +335,7 @@ export default function SearchScreen() {
               ref={searchInputRef}
               value={query}
               onChangeText={setQuery}
-              placeholder={searchMode === 'movies' ? 'Chercher un film' : 'Chercher un utilisateur'}
+              placeholder={searchMode === 'movies' ? 'Chercher un film ou une série' : 'Chercher un utilisateur'}
               icon={searchMode === 'movies' ? 'search' : 'person-outline'}
             />
             {query.trim().length < 2 && recentResults.length > 0 ? (
@@ -354,16 +359,25 @@ export default function SearchScreen() {
               style={[styles.itemCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
               onPress={() => {
                 void rememberRecentMovie(item.movie);
-                navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title });
+                navigation.navigate('MovieDetails', {
+                  movieId: item.movie.id,
+                  mediaType: item.movie.media_type ?? 'movie',
+                  title: item.movie.title,
+                });
               }}
             >
               <Pressable
                 onPress={() => {
                   void rememberRecentMovie(item.movie);
-                  navigation.navigate('MovieDetails', { movieId: item.movie.id, title: item.movie.title });
+                  navigation.navigate('MovieDetails', {
+                    movieId: item.movie.id,
+                    mediaType: item.movie.media_type ?? 'movie',
+                    title: item.movie.title,
+                  });
                 }}
                 onLongPress={(event) => setQuickAddMovie({
                   id: item.movie.id,
+                  media_type: item.movie.media_type ?? 'movie',
                   title: item.movie.title,
                   anchorX: event.nativeEvent.pageX,
                   anchorY: event.nativeEvent.pageY,
@@ -374,6 +388,9 @@ export default function SearchScreen() {
               </Pressable>
               <View style={styles.itemBody}>
                 <Text style={[styles.itemTitle, { color: theme.colors.text }]}>{item.movie.title}</Text>
+                <Text style={[styles.itemHint, { color: theme.colors.textMuted }]}>
+                  {(item.movie.media_type ?? 'movie') === 'tv' ? 'Série' : 'Film'}
+                </Text>
                 <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
                   <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.movie.rating.toFixed(1)} / 10</Text>
                 </View>
@@ -410,7 +427,7 @@ export default function SearchScreen() {
         ListEmptyComponent={
           !loading ? (
             query.trim().length >= 2 ? (
-              <EmptyStateCard title={searchMode === 'movies' ? 'Aucun film' : 'Aucun profil'} />
+              <EmptyStateCard title={searchMode === 'movies' ? 'Aucun film ou série' : 'Aucun profil'} />
             ) : (
               <EmptyStateCard title="Aucune recherche recente" />
             )

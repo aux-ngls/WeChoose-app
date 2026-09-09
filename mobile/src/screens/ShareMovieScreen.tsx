@@ -9,8 +9,8 @@ import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
 import {
   ApiError,
-  preloadMovieDetails,
-  searchMovies,
+  preloadMediaDetails,
+  searchMedia,
   searchSocialUsers,
   sendMessage,
   startConversation,
@@ -64,6 +64,7 @@ export default function ShareMovieScreen({
     route.params.movieId && route.params.title
       ? {
           id: route.params.movieId,
+          media_type: route.params.mediaType ?? 'movie',
           title: route.params.title,
           poster_url: route.params.posterUrl ?? '',
           rating: route.params.rating ?? 0,
@@ -122,7 +123,7 @@ export default function ShareMovieScreen({
         setLoading(true);
         try {
           if (isConversationShare) {
-            const payload = await searchMovies(session.token, trimmedQuery);
+            const payload = await searchMedia(session.token, trimmedQuery);
             setMovieResults(payload);
           } else {
             const payload = await searchSocialUsers(session.token, trimmedQuery);
@@ -136,7 +137,7 @@ export default function ShareMovieScreen({
           }
           setError(
             isConversationShare
-              ? 'Impossible de rechercher des films.'
+              ? 'Impossible de rechercher des films ou des séries.'
               : 'Impossible de rechercher des utilisateurs.',
           );
         } finally {
@@ -151,7 +152,7 @@ export default function ShareMovieScreen({
   useEffect(() => {
     void prefetchPosterUrls(movieResults.map((movie) => movie.poster_url), 10);
     if (session) {
-      preloadMovieDetails(session.token, movieResults.slice(0, 6).map((movie) => movie.id));
+      preloadMediaDetails(session.token, movieResults.slice(0, 6));
     }
   }, [movieResults, session]);
 
@@ -187,6 +188,7 @@ export default function ShareMovieScreen({
           : (await startConversation(session.token, user.id)).id;
       const createdMessage = await sendMessage(session.token, conversationId, {
         movie_id: movieToShare.id,
+        media_type: movieToShare.media_type ?? 'movie',
         movie_title: movieToShare.title,
         movie_poster_url: movieToShare.poster_url,
         movie_rating: movieToShare.rating,
@@ -199,7 +201,7 @@ export default function ShareMovieScreen({
         message_id: createdMessage.id,
         sender_id: createdMessage.sender.id,
         sender_username: createdMessage.sender.username,
-        preview: `Film partage : ${movieToShare.title}`,
+        preview: `${(movieToShare.media_type ?? 'movie') === 'tv' ? 'Série' : 'Film'} partagé : ${movieToShare.title}`,
         message: createdMessage,
       });
       DeviceEventEmitter.emit(CONVERSATION_MESSAGE_EVENT, {
@@ -220,7 +222,7 @@ export default function ShareMovieScreen({
         await signOut();
         return;
       }
-      setError("Impossible de partager ce film.");
+      setError("Impossible de partager ce contenu.");
     } finally {
       setSharingUserIds((current) => current.filter((id) => id !== user.id));
     }
@@ -257,7 +259,7 @@ export default function ShareMovieScreen({
           <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-          {isConversationShare ? 'Envoyer un film' : 'Partager'}
+          {isConversationShare ? 'Envoyer un film ou une série' : 'Partager'}
         </Text>
         <View style={styles.iconSpacer} />
       </View>
@@ -336,7 +338,7 @@ export default function ShareMovieScreen({
         {isConversationShare
           ? movieResults.map((movie) => (
               <Pressable
-                key={movie.id}
+                key={`${movie.media_type ?? 'movie'}-${movie.id}`}
                 style={[styles.userCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
                 onPress={() => selectMovie(movie)}
               >

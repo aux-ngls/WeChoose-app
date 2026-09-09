@@ -1,5 +1,6 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
 import type { RootStackParamList } from './types';
+import type { MediaType } from '../types';
 
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
@@ -8,6 +9,7 @@ let pendingNotificationData: NotificationData | null = null;
 let pendingMovieNavigation:
   | {
       movieId: number;
+      mediaType: MediaType;
     }
   | null = null;
 
@@ -39,17 +41,17 @@ function canOpenMovieDetails() {
   return currentRoute.name !== 'Auth' && currentRoute.name !== 'Onboarding' && currentRoute.name !== 'Tutorial';
 }
 
-function navigateToMovieDetails(movieId: number) {
+function navigateToMovieDetails(movieId: number, mediaType: MediaType = 'movie') {
   if (!canOpenMovieDetails()) {
-    pendingMovieNavigation = { movieId };
+    pendingMovieNavigation = { movieId, mediaType };
     return;
   }
 
   pendingMovieNavigation = null;
-  navigationRef.navigate('MovieDetails', { movieId, source: 'default' });
+  navigationRef.navigate('MovieDetails', { movieId, mediaType, source: 'default' });
 }
 
-function parseMovieIdFromUrl(url: string): number | null {
+function parseMediaFromUrl(url: string): { movieId: number; mediaType: MediaType } | null {
   const trimmedUrl = url.trim();
   if (!trimmedUrl) {
     return null;
@@ -57,12 +59,24 @@ function parseMovieIdFromUrl(url: string): number | null {
 
   const directMovieMatch = trimmedUrl.match(/^qulte:\/\/movie\/(\d+)(?:[/?#]|$)/i);
   if (directMovieMatch?.[1]) {
-    return readNumber(directMovieMatch[1]) ?? null;
+    const movieId = readNumber(directMovieMatch[1]);
+    return movieId ? { movieId, mediaType: 'movie' } : null;
+  }
+
+  const directTvMatch = trimmedUrl.match(/^qulte:\/\/(?:tv|series)\/(\d+)(?:[/?#]|$)/i);
+  if (directTvMatch?.[1]) {
+    const movieId = readNumber(directTvMatch[1]);
+    return movieId ? { movieId, mediaType: 'tv' } : null;
   }
 
   const webMovieMatch = trimmedUrl.match(/\/movie\/(\d+)(?:[/?#]|$)/i);
   if (webMovieMatch?.[1]) {
-    return readNumber(webMovieMatch[1]) ?? null;
+    const movieId = readNumber(webMovieMatch[1]);
+    if (!movieId) {
+      return null;
+    }
+    const mediaType = /[?&]media_type=tv(?:&|$)/i.test(trimmedUrl) ? 'tv' : 'movie';
+    return { movieId, mediaType };
   }
 
   return null;
@@ -103,12 +117,12 @@ export function navigateFromNotificationData(data: NotificationData) {
 }
 
 export function navigateFromExternalUrl(url: string) {
-  const movieId = parseMovieIdFromUrl(url);
-  if (!movieId) {
+  const media = parseMediaFromUrl(url);
+  if (!media) {
     return;
   }
 
-  navigateToMovieDetails(movieId);
+  navigateToMovieDetails(media.movieId, media.mediaType);
 }
 
 export function flushPendingNotificationNavigation() {
@@ -116,6 +130,6 @@ export function flushPendingNotificationNavigation() {
     navigateFromNotificationData(pendingNotificationData);
   }
   if (pendingMovieNavigation?.movieId) {
-    navigateToMovieDetails(pendingMovieNavigation.movieId);
+    navigateToMovieDetails(pendingMovieNavigation.movieId, pendingMovieNavigation.mediaType);
   }
 }

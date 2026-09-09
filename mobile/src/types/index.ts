@@ -1,5 +1,8 @@
+export type MediaType = 'movie' | 'tv';
+
 export interface SearchMovie {
   id: number;
+  media_type?: MediaType;
   title: string;
   poster_url: string;
   rating: number;
@@ -80,6 +83,7 @@ export interface BlockedUser {
 export interface SocialReview {
   id: number;
   movie_id: number;
+  media_type?: MediaType;
   title: string;
   poster_url: string;
   rating: number;
@@ -135,6 +139,7 @@ export interface SocialNotificationsPayload {
 
 export interface ProfileShowcaseMovie {
   id: number;
+  media_type?: MediaType;
   title: string;
   poster_url: string;
   rating: number;
@@ -213,6 +218,7 @@ export interface DirectConversationSummary {
     preview: string;
     movie: {
       id: number;
+      media_type?: MediaType;
       title: string;
       poster_url: string;
     } | null;
@@ -246,6 +252,7 @@ export interface MovieCastMember {
 
 export interface MovieDetails {
   id: number;
+  media_type: MediaType;
   title: string;
   overview: string;
   rating: number;
@@ -257,6 +264,18 @@ export interface MovieDetails {
   tagline: string;
   genres: string[];
   directors: string[];
+  creators?: string[];
+  status?: string;
+  number_of_seasons?: number;
+  number_of_episodes?: number;
+  seasons?: Array<{
+    id: number | null;
+    season_number: number;
+    name: string;
+    episode_count: number;
+    air_date: string;
+    poster_url: string | null;
+  }>;
   watch_providers: MovieWatchProviders;
 }
 
@@ -385,6 +404,7 @@ export interface DirectMessage {
   };
   movie: {
     id: number;
+    media_type?: MediaType;
     title: string;
     poster_url: string;
     rating: number;
@@ -398,6 +418,7 @@ export interface DirectMessage {
     };
     movie: {
       id: number;
+      media_type?: MediaType;
       title: string;
       poster_url: string;
       rating: number;

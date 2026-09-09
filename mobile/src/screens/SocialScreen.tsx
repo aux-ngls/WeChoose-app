@@ -261,10 +261,15 @@ export default function SocialScreen() {
               <Pressable
                 onPress={(event) => {
                   event.stopPropagation();
-                  navigation.navigate('MovieDetails', { movieId: item.movie_id, title: item.title });
+                  navigation.navigate('MovieDetails', {
+                    movieId: item.movie_id,
+                    mediaType: item.media_type ?? 'movie',
+                    title: item.title,
+                  });
                 }}
                 onLongPress={(event) => setQuickAddMovie({
                   id: item.movie_id,
+                  media_type: item.media_type ?? 'movie',
                   title: item.title,
                   anchorX: event.nativeEvent.pageX,
                   anchorY: event.nativeEvent.pageY,

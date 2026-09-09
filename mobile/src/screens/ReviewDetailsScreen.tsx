@@ -172,7 +172,11 @@ export default function ReviewDetailsScreen({
         <>
           <View style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <View style={styles.reviewTopRow}>
-              <Pressable onPress={() => navigation.navigate('MovieDetails', { movieId: review.movie_id, title: review.title })}>
+              <Pressable onPress={() => navigation.navigate('MovieDetails', {
+                movieId: review.movie_id,
+                mediaType: review.media_type ?? 'movie',
+                title: review.title,
+              })}>
                 <CachedPoster uri={review.poster_url} style={styles.poster} />
               </Pressable>
               <View style={styles.reviewBody}>

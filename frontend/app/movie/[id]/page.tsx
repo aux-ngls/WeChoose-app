@@ -20,6 +20,7 @@ interface MovieCastMember {
 
 interface PublicMovieDetails {
   id: number;
+  media_type?: "movie" | "tv";
   title: string;
   overview: string;
   rating: number;
@@ -30,6 +31,9 @@ interface PublicMovieDetails {
   tagline: string;
   genres: string[];
   directors: string[];
+  number_of_seasons?: number;
+  number_of_episodes?: number;
+  status?: string;
   cast: MovieCastMember[];
   watch_providers: {
     link: string;
@@ -41,8 +45,12 @@ interface PublicMovieDetails {
 
 const FALLBACK_POSTER = "https://via.placeholder.com/500x750?text=No+Image";
 
-async function fetchPublicMovie(movieId: string): Promise<PublicMovieDetails | null> {
-  const res = await fetch(`${API_URL}/movie/${movieId}`, {
+function normalizeMediaType(value: string | string[] | undefined): "movie" | "tv" {
+  return value === "tv" ? "tv" : "movie";
+}
+
+async function fetchPublicMovie(movieId: string, mediaType: "movie" | "tv"): Promise<PublicMovieDetails | null> {
+  const res = await fetch(`${API_URL}/media/${mediaType}/${movieId}`, {
     cache: "no-store",
   }).catch(() => null);
 
@@ -61,6 +69,9 @@ async function fetchPublicMovie(movieId: string): Promise<PublicMovieDetails | n
 function formatMeta(movie: PublicMovieDetails) {
   const items = [
     movie.release_date?.trim(),
+    movie.media_type === "tv" && movie.number_of_seasons
+      ? `${movie.number_of_seasons} saison${movie.number_of_seasons > 1 ? "s" : ""}`
+      : "",
     movie.runtime ? `${movie.runtime} min` : "",
     movie.rating ? `${movie.rating.toFixed(1)} / 10` : "",
   ].filter(Boolean);
@@ -161,15 +172,19 @@ function CastStrip({ cast }: { cast: MovieCastMember[] }) {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ media_type?: string | string[] }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const movie = await fetchPublicMovie(id);
+  const query = await searchParams;
+  const mediaType = normalizeMediaType(query.media_type);
+  const movie = await fetchPublicMovie(id, mediaType);
 
   if (!movie) {
     return {
-      title: "Film introuvable",
+      title: mediaType === "tv" ? "Série introuvable" : "Film introuvable",
     };
   }
 
@@ -186,18 +201,24 @@ export async function generateMetadata({
 
 export default async function MovieSharePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ media_type?: string | string[] }>;
 }) {
   const { id } = await params;
-  const movie = await fetchPublicMovie(id);
+  const query = await searchParams;
+  const mediaType = normalizeMediaType(query.media_type);
+  const movie = await fetchPublicMovie(id, mediaType);
 
   if (!movie) {
     return (
       <main className="min-h-screen bg-[#07070A] px-4 pb-20 pt-8 text-white">
         <div className="mx-auto flex max-w-xl flex-col items-center gap-4 text-center">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8ed3ff]">Qulte</p>
-          <h1 className="text-3xl font-black tracking-[-0.05em]">Fiche film indisponible</h1>
+          <h1 className="text-3xl font-black tracking-[-0.05em]">
+            {mediaType === "tv" ? "Fiche série indisponible" : "Fiche film indisponible"}
+          </h1>
           <p className="max-w-md text-sm text-slate-400">
             Ce lien n&apos;est plus disponible pour le moment.
           </p>
@@ -295,7 +316,7 @@ export default async function MovieSharePage({
 
         {movie.directors.length > 0 ? (
           <section className="space-y-[14px] px-0.5 py-0.5">
-            <SectionTitle>Réalisation</SectionTitle>
+            <SectionTitle>{movie.media_type === "tv" ? "Création" : "Réalisation"}</SectionTitle>
             <p className="text-[14px] leading-[22px] text-[#cbd5e1]">{movie.directors.join(", ")}</p>
           </section>
         ) : null}

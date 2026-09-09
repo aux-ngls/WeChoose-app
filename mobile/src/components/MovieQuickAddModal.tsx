@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { addMovieToPlaylist, ApiError, fetchPlaylists } from '../api/client';
+import { addMediaToPlaylist, ApiError, fetchPlaylists } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
-import type { PlaylistSummary } from '../types';
+import type { MediaType, PlaylistSummary } from '../types';
 
 export interface QuickAddMovieTarget {
   id: number;
+  media_type?: MediaType;
   title: string;
   anchorX?: number;
   anchorY?: number;
@@ -104,7 +105,7 @@ export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQui
     setActivePlaylistId(playlist.id);
     setError('');
     try {
-      await addMovieToPlaylist(session.token, playlist.id, movie.id);
+      await addMediaToPlaylist(session.token, playlist.id, movie.media_type ?? 'movie', movie.id);
       onAdded?.(playlist.name);
       onClose();
     } catch (addError) {
@@ -112,7 +113,7 @@ export default function MovieQuickAddModal({ movie, onClose, onAdded }: MovieQui
         await signOut();
         return;
       }
-      setError("Impossible d'ajouter ce film à cette playlist.");
+      setError("Impossible d'ajouter ce contenu à cette playlist.");
     } finally {
       setActivePlaylistId(null);
     }

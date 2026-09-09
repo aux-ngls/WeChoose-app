@@ -1,6 +1,6 @@
 # Qulte - Roadmap
 
-Last updated: 2026-05-05
+Last updated: 2026-09-09
 
 ## Maintenance Rule
 
@@ -10,7 +10,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Immediate Priorities
 
-- Add TV series without regressing movie flows: shared media contracts, additive PostgreSQL migration, series details, user interactions, then a separately validated recommendation pipeline.
+- Finish validating TV series on the `feature/tv-series` branch, then merge after mobile and backend smoke tests on the real server.
 - Finish iOS publication readiness: App Store Connect metadata, screenshots, privacy form, and review notes.
 - Keep removing visible loading states, especially in Tinder and high-traffic mobile screens.
 - Improve first connection experience and onboarding quality.

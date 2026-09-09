@@ -1,6 +1,6 @@
 # Qulte - Decisions
 
-Last updated: 2026-05-05
+Last updated: 2026-09-09
 
 ## Maintenance Rule
 
@@ -151,6 +151,6 @@ Reason:
 - the first TV scope rates and reviews a complete series, without episode-progress tracking.
 
 Rollout rule:
-- use additive database migrations and default all historical rows to `movie`;
+- default all historical rows to `movie`, then replace movie-only uniqueness constraints with composite `media_type + movie_id` constraints;
 - keep legacy movie API routes as compatibility wrappers;
-- validate TV features behind a dedicated branch and feature flag before enabling them globally.
+- validate TV features on `feature/tv-series` before merging into the release branch.
