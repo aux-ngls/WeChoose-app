@@ -10,6 +10,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Immediate Priorities
 
+- Add TV series without regressing movie flows: shared media contracts, additive PostgreSQL migration, series details, user interactions, then a separately validated recommendation pipeline.
 - Finish iOS publication readiness: App Store Connect metadata, screenshots, privacy form, and review notes.
 - Keep removing visible loading states, especially in Tinder and high-traffic mobile screens.
 - Improve first connection experience and onboarding quality.
@@ -53,6 +54,7 @@ It is part of the shared project memory and should stay aligned with `PROJECT_ME
 
 ## Later Ideas
 
+- Season and episode progress tracking after whole-series ratings are stable.
 - Group movie matching.
 - Shared watchlists.
 - Better friend-based discovery, without overpowering personal taste.

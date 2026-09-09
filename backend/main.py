@@ -106,6 +106,7 @@ FAVORITES_SYSTEM_ID = -2
 HISTORY_SYSTEM_ID = -3
 WATCH_LATER_NAME = "À regarder plus tard"
 PLAYLIST_SORT_OPTIONS = {"manual", "genre", "recent", "oldest", "rating"}
+MEDIA_TYPES = {"movie", "tv"}
 NOW_PLAYING_CACHE_TTL_SECONDS = 300
 NEWS_HIGHLIGHTS_CACHE_TTL_SECONDS = 90
 TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS = 60 * 60 * 6
@@ -117,6 +118,8 @@ now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
 tmdb_watch_providers_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 tmdb_movie_details_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+tmdb_tv_watch_providers_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+tmdb_tv_details_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 watchmode_sources_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
 GLOBAL_RECOMMENDATION_AI_ENABLED = True
@@ -134,6 +137,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "avatars")
 AVATAR_PUBLIC_PREFIX = "/uploads/avatars"
 POSTGRES_SCHEMA_PATH = os.path.join(BASE_DIR, "postgres_schema.sql")
+POSTGRES_MEDIA_TYPE_MIGRATION_PATH = os.path.join(
+    BASE_DIR,
+    "migrations",
+    "20260909_add_media_type_columns.sql",
+)
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 AVATAR_CONTENT_TYPES = {
     "image/jpeg": ".jpg",
@@ -713,7 +721,46 @@ def normalize_tmdb_movie(movie: dict) -> Optional[dict]:
         "title": str(title),
         "poster_url": f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else "https://via.placeholder.com/500",
         "rating": float(movie.get("vote_average") or 0.0),
+        "media_type": "movie",
     }
+
+
+def normalize_media_type(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized not in MEDIA_TYPES:
+        raise HTTPException(status_code=422, detail="Type de contenu invalide.")
+    return normalized
+
+
+def normalize_tmdb_tv_show(show: dict) -> Optional[dict]:
+    show_id = show.get("id")
+    title = show.get("name")
+    if not isinstance(show_id, int) or not title:
+        return None
+
+    poster_path = show.get("poster_path")
+    return {
+        "id": show_id,
+        "title": str(title),
+        "poster_url": f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else "https://via.placeholder.com/500",
+        "rating": float(show.get("vote_average") or 0.0),
+        "media_type": "tv",
+        "overview": str(show.get("overview") or ""),
+        "release_date": str(show.get("first_air_date") or ""),
+    }
+
+
+def normalize_tmdb_media_item(item: dict, fallback_media_type: Optional[str] = None) -> Optional[dict]:
+    media_type = str(item.get("media_type") or fallback_media_type or "").strip().lower()
+    if media_type == "movie":
+        normalized = normalize_tmdb_movie(item)
+        if normalized is not None:
+            normalized["overview"] = str(item.get("overview") or "")
+            normalized["release_date"] = str(item.get("release_date") or "")
+        return normalized
+    if media_type == "tv":
+        return normalize_tmdb_tv_show(item)
+    return None
 
 
 @lru_cache(maxsize=2048)
@@ -725,6 +772,22 @@ def get_tmdb_movie_summary(movie_id: int) -> Optional[dict]:
         return None
 
     return normalize_tmdb_movie(data if isinstance(data, dict) else {})
+
+
+@lru_cache(maxsize=2048)
+def get_tmdb_tv_summary(tv_id: int) -> Optional[dict]:
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/tv/{int(tv_id)}",
+            params={"api_key": TMDB_API_KEY, "language": "fr-FR"},
+            timeout=2,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        return None
+
+    return normalize_tmdb_tv_show(data if isinstance(data, dict) else {})
 
 
 def get_display_movie_title(movie_id: int) -> str:
@@ -789,6 +852,8 @@ def init_postgres_db():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_movie_provider_link_cache_expires ON movie_provider_link_cache(expires_at)"
     )
+    with open(POSTGRES_MEDIA_TYPE_MIGRATION_PATH, "r", encoding="utf-8") as migration_file:
+        cursor.execute(migration_file.read())
     conn.commit()
     conn.close()
 
@@ -804,6 +869,15 @@ def init_sqlite_db():
             cursor.execute(
                 f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
             )
+
+    media_tables = (
+        "user_ratings",
+        "playlist_items",
+        "reviews",
+        "direct_messages",
+        "recommendation_impressions",
+        "movie_provider_link_cache",
+    )
     
     # Table USERS
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -1101,6 +1175,28 @@ def init_sqlite_db():
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_moderation_reports_reporter ON moderation_reports(reporter_user_id)"
+    )
+
+    for table_name in media_tables:
+        ensure_column(table_name, "media_type", "TEXT NOT NULL DEFAULT 'movie'")
+
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_ratings_media ON user_ratings(user_id, media_type, movie_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_media ON playlist_items(playlist_id, media_type, movie_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reviews_media ON reviews(media_type, movie_id, created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_direct_messages_media ON direct_messages(media_type, movie_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_user_media ON recommendation_impressions(user_id, media_type, movie_id, shown_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_movie_provider_link_cache_media ON movie_provider_link_cache(media_type, movie_id, region_code)"
     )
     
     conn.commit()
@@ -2572,14 +2668,20 @@ def set_cached_watchmode_sources(cache_key: str, payload: dict[str, Any]) -> dic
     return payload
 
 
-def fetch_tmdb_watch_providers_payload(movie_id: int) -> Optional[dict]:
+def fetch_tmdb_watch_providers_payload(media_id: int, media_type: str = "movie") -> Optional[dict]:
+    normalized_media_type = normalize_media_type(media_type)
     try:
-        url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers?api_key={TMDB_API_KEY}"
-        response = requests.get(url, timeout=2)
+        url = f"https://api.themoviedb.org/3/{normalized_media_type}/{int(media_id)}/watch/providers"
+        response = requests.get(url, params={"api_key": TMDB_API_KEY}, timeout=2)
         response.raise_for_status()
         data = response.json()
     except Exception as exc:
-        logger.warning("Echec TMDB watch providers pour movie_id=%s: %s", movie_id, exc)
+        logger.warning(
+            "Echec TMDB watch providers pour media_type=%s media_id=%s: %s",
+            normalized_media_type,
+            media_id,
+            exc,
+        )
         return None
 
     return data if isinstance(data, dict) else None
@@ -2957,12 +3059,13 @@ def fetch_watchmode_payload(path: str, params: dict[str, Any]) -> Optional[Any]:
         return None
 
 
-def resolve_watchmode_title_id_for_tmdb_movie(movie_id: int) -> Optional[str]:
+def resolve_watchmode_title_id_for_tmdb_media(media_id: int, media_type: str = "movie") -> Optional[str]:
+    normalized_media_type = normalize_media_type(media_type)
     payload = fetch_watchmode_payload(
         "/search",
         {
-            "search_field": "tmdb_movie_id",
-            "search_value": str(movie_id),
+            "search_field": "tmdb_movie_id" if normalized_media_type == "movie" else "tmdb_tv_id",
+            "search_value": str(media_id),
         },
     )
     if not isinstance(payload, dict):
@@ -2975,9 +3078,9 @@ def resolve_watchmode_title_id_for_tmdb_movie(movie_id: int) -> Optional[str]:
     for item in title_results:
         if not isinstance(item, dict):
             continue
-        if item.get("tmdb_type") != "movie":
+        if item.get("tmdb_type") != normalized_media_type:
             continue
-        if int(item.get("tmdb_id") or 0) != int(movie_id):
+        if int(item.get("tmdb_id") or 0) != int(media_id):
             continue
         watchmode_id = item.get("id")
         if isinstance(watchmode_id, int):
@@ -2986,14 +3089,23 @@ def resolve_watchmode_title_id_for_tmdb_movie(movie_id: int) -> Optional[str]:
     return None
 
 
-def fetch_watchmode_sources_for_movie(movie_id: int, region_code: str) -> Optional[dict[str, Any]]:
+def resolve_watchmode_title_id_for_tmdb_movie(movie_id: int) -> Optional[str]:
+    return resolve_watchmode_title_id_for_tmdb_media(movie_id, "movie")
+
+
+def fetch_watchmode_sources_for_media(
+    media_id: int,
+    region_code: str,
+    media_type: str = "movie",
+) -> Optional[dict[str, Any]]:
+    normalized_media_type = normalize_media_type(media_type)
     normalized_region = (region_code or "FR").strip().upper() or "FR"
-    cache_key = f"{int(movie_id)}:{normalized_region}"
+    cache_key = f"{normalized_media_type}:{int(media_id)}:{normalized_region}"
     cached_payload = get_cached_watchmode_sources(cache_key)
     if cached_payload is not None:
         return cached_payload
 
-    watchmode_title_id = resolve_watchmode_title_id_for_tmdb_movie(int(movie_id))
+    watchmode_title_id = resolve_watchmode_title_id_for_tmdb_media(int(media_id), normalized_media_type)
     if not watchmode_title_id:
         return get_cached_watchmode_sources(cache_key, allow_stale=True)
 
@@ -3036,6 +3148,10 @@ def fetch_watchmode_sources_for_movie(movie_id: int, region_code: str) -> Option
             "sources_by_name": source_map,
         },
     )
+
+
+def fetch_watchmode_sources_for_movie(movie_id: int, region_code: str) -> Optional[dict[str, Any]]:
+    return fetch_watchmode_sources_for_media(movie_id, region_code, "movie")
 
 
 def attach_watchmode_links_to_provider(provider: dict[str, Any], watchmode_sources_by_name: dict[str, Any]) -> dict[str, Any]:
@@ -3136,12 +3252,16 @@ def enhance_watch_providers_with_tmdb_scrape(movie_id: int, watch_providers: dic
     return enriched
 
 
-def enhance_watch_providers_with_watchmode(movie_id: int, watch_providers: dict) -> dict:
+def enhance_watch_providers_with_watchmode(
+    media_id: int,
+    watch_providers: dict,
+    media_type: str = "movie",
+) -> dict:
     if not WATCHMODE_API_KEY:
         return watch_providers
 
     region_code = str(watch_providers.get("region") or "FR").strip().upper() or "FR"
-    watchmode_payload = fetch_watchmode_sources_for_movie(int(movie_id), region_code)
+    watchmode_payload = fetch_watchmode_sources_for_media(int(media_id), region_code, media_type)
     if not isinstance(watchmode_payload, dict):
         return watch_providers
 
@@ -3196,27 +3316,35 @@ def serialize_tmdb_watch_providers(data: dict) -> dict:
     }
 
 
-def get_tmdb_watch_providers(movie_id: int) -> dict:
-    cached_payload = get_cached_tmdb_payload(tmdb_watch_providers_cache, movie_id)
+def get_tmdb_media_watch_providers(media_id: int, media_type: str = "movie") -> dict:
+    normalized_media_type = normalize_media_type(media_type)
+    cache = tmdb_watch_providers_cache if normalized_media_type == "movie" else tmdb_tv_watch_providers_cache
+    cached_payload = get_cached_tmdb_payload(cache, media_id)
     if cached_payload is not None:
-        enhanced_payload = enhance_watch_providers_with_watchmode(movie_id, cached_payload)
-        return enhance_watch_providers_with_tmdb_scrape(movie_id, enhanced_payload)
+        enhanced_payload = enhance_watch_providers_with_watchmode(media_id, cached_payload, normalized_media_type)
+        if normalized_media_type == "movie":
+            return enhance_watch_providers_with_tmdb_scrape(media_id, enhanced_payload)
+        return enhanced_payload
 
-    provider_payload = fetch_tmdb_watch_providers_payload(movie_id)
+    provider_payload = fetch_tmdb_watch_providers_payload(media_id, normalized_media_type)
     if provider_payload is not None:
         tmdb_payload = set_cached_tmdb_payload(
-            tmdb_watch_providers_cache,
-            movie_id,
+            cache,
+            media_id,
             serialize_tmdb_watch_providers(provider_payload),
             TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS,
         )
-        enhanced_payload = enhance_watch_providers_with_watchmode(movie_id, tmdb_payload)
-        return enhance_watch_providers_with_tmdb_scrape(movie_id, enhanced_payload)
+        enhanced_payload = enhance_watch_providers_with_watchmode(media_id, tmdb_payload, normalized_media_type)
+        if normalized_media_type == "movie":
+            return enhance_watch_providers_with_tmdb_scrape(media_id, enhanced_payload)
+        return enhanced_payload
 
-    stale_payload = get_cached_tmdb_payload(tmdb_watch_providers_cache, movie_id, allow_stale=True)
+    stale_payload = get_cached_tmdb_payload(cache, media_id, allow_stale=True)
     if stale_payload is not None:
-        enhanced_payload = enhance_watch_providers_with_watchmode(movie_id, stale_payload)
-        return enhance_watch_providers_with_tmdb_scrape(movie_id, enhanced_payload)
+        enhanced_payload = enhance_watch_providers_with_watchmode(media_id, stale_payload, normalized_media_type)
+        if normalized_media_type == "movie":
+            return enhance_watch_providers_with_tmdb_scrape(media_id, enhanced_payload)
+        return enhanced_payload
 
     return {
         "region": "",
@@ -3225,6 +3353,10 @@ def get_tmdb_watch_providers(movie_id: int) -> dict:
         "rent": [],
         "buy": [],
     }
+
+
+def get_tmdb_watch_providers(movie_id: int) -> dict:
+    return get_tmdb_media_watch_providers(movie_id, "movie")
 
 
 def fetch_tmdb_movie_details_payload(movie_id: int) -> Optional[dict]:
@@ -3275,6 +3407,7 @@ def build_tmdb_movie_details_payload(data: dict, watch_providers: dict) -> dict:
     ]
     return {
         "id": data["id"],
+        "media_type": "movie",
         "title": data["title"],
         "overview": data.get("overview") or "",
         "rating": data.get("vote_average") or 0,
@@ -3333,6 +3466,169 @@ def get_tmdb_details(movie_id):
         }
 
     return None
+
+
+def fetch_tmdb_tv_details_payload(tv_id: int) -> Optional[dict]:
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/tv/{int(tv_id)}",
+            params={
+                "api_key": TMDB_API_KEY,
+                "language": "fr-FR",
+                "append_to_response": "videos,credits",
+            },
+            timeout=3,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        logger.warning("Echec TMDB details serie pour tv_id=%s: %s", tv_id, exc)
+        return None
+
+    return data if isinstance(data, dict) and isinstance(data.get("id"), int) else None
+
+
+def build_tmdb_tv_details_payload(data: dict, watch_providers: dict) -> dict:
+    title = str(data.get("name") or "")
+    resolved_watch_providers = apply_provider_search_fallbacks(
+        watch_providers,
+        title,
+        str(watch_providers.get("region") or ""),
+    )
+    videos = data.get("videos", {}).get("results", [])
+    trailer = next(
+        (
+            f"https://www.youtube.com/embed/{video['key']}"
+            for video in videos
+            if video.get("site") == "YouTube" and video.get("type") == "Trailer" and video.get("key")
+        ),
+        None,
+    )
+    if trailer is None:
+        trailer = next(
+            (
+                f"https://www.youtube.com/embed/{video['key']}"
+                for video in videos
+                if video.get("site") == "YouTube" and video.get("key")
+            ),
+            None,
+        )
+
+    cast = [
+        {
+            "id": int(actor["id"]) if isinstance(actor.get("id"), int) else None,
+            "name": str(actor.get("name") or ""),
+            "character": str(actor.get("character") or ""),
+            "photo": f"https://image.tmdb.org/t/p/w200{actor['profile_path']}" if actor.get("profile_path") else None,
+        }
+        for actor in data.get("credits", {}).get("cast", [])[:8]
+        if actor.get("name")
+    ]
+    creators = [
+        str(creator.get("name"))
+        for creator in data.get("created_by", [])
+        if isinstance(creator, dict) and creator.get("name")
+    ][:3]
+    genres = [
+        str(genre.get("name"))
+        for genre in data.get("genres", [])
+        if isinstance(genre, dict) and genre.get("name")
+    ][:4]
+    runtimes = [
+        int(runtime)
+        for runtime in data.get("episode_run_time", [])
+        if isinstance(runtime, (int, float)) and int(runtime) > 0
+    ]
+    seasons = [
+        {
+            "id": int(season["id"]) if isinstance(season.get("id"), int) else None,
+            "season_number": int(season.get("season_number") or 0),
+            "name": str(season.get("name") or ""),
+            "episode_count": int(season.get("episode_count") or 0),
+            "air_date": str(season.get("air_date") or ""),
+            "poster_url": (
+                f"https://image.tmdb.org/t/p/w342{season['poster_path']}"
+                if season.get("poster_path")
+                else None
+            ),
+        }
+        for season in data.get("seasons", [])
+        if isinstance(season, dict)
+    ]
+
+    return {
+        "id": int(data["id"]),
+        "media_type": "tv",
+        "title": title,
+        "overview": str(data.get("overview") or ""),
+        "rating": float(data.get("vote_average") or 0.0),
+        "poster_url": f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get("poster_path") else "",
+        "trailer_url": trailer,
+        "cast": cast,
+        "release_date": str(data.get("first_air_date") or "").split("-")[0],
+        "runtime": runtimes[0] if runtimes else 0,
+        "tagline": str(data.get("tagline") or ""),
+        "genres": genres,
+        "directors": creators,
+        "creators": creators,
+        "status": str(data.get("status") or ""),
+        "number_of_seasons": int(data.get("number_of_seasons") or 0),
+        "number_of_episodes": int(data.get("number_of_episodes") or 0),
+        "seasons": seasons,
+        "watch_providers": resolved_watch_providers,
+    }
+
+
+def get_tmdb_tv_details(tv_id: int) -> Optional[dict]:
+    cached_payload = get_cached_tmdb_payload(tmdb_tv_details_cache, tv_id)
+    if cached_payload is not None:
+        return cached_payload
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        details_future = executor.submit(fetch_tmdb_tv_details_payload, tv_id)
+        watch_providers_future = executor.submit(get_tmdb_media_watch_providers, tv_id, "tv")
+        data = details_future.result()
+        watch_providers = watch_providers_future.result()
+
+    if data is not None:
+        payload = build_tmdb_tv_details_payload(data, watch_providers)
+        return set_cached_tmdb_payload(
+            tmdb_tv_details_cache,
+            tv_id,
+            payload,
+            TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS,
+        )
+
+    stale_payload = get_cached_tmdb_payload(tmdb_tv_details_cache, tv_id, allow_stale=True)
+    if stale_payload is not None:
+        return stale_payload
+
+    summary = get_tmdb_tv_summary(tv_id)
+    if summary is None:
+        return None
+    return {
+        **summary,
+        "overview": summary.get("overview") or "",
+        "trailer_url": None,
+        "cast": [],
+        "runtime": 0,
+        "tagline": "",
+        "genres": [],
+        "directors": [],
+        "creators": [],
+        "status": "",
+        "number_of_seasons": 0,
+        "number_of_episodes": 0,
+        "seasons": [],
+        "watch_providers": watch_providers,
+    }
+
+
+def get_tmdb_media_details(media_type: str, media_id: int) -> Optional[dict]:
+    normalized_media_type = normalize_media_type(media_type)
+    if normalized_media_type == "movie":
+        return get_tmdb_details(int(media_id))
+    return get_tmdb_tv_details(int(media_id))
 
 
 @lru_cache(maxsize=512)
@@ -8783,6 +9079,65 @@ async def realtime_websocket(websocket: WebSocket, token: str = Query(...)):
 
 
 # --- 8. ENDPOINTS STANDARDS (Inchangé) ---
+def search_tmdb_media(query: str, media_type: str = "all", limit: int = 20) -> list[dict]:
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return []
+
+    normalized_filter = str(media_type or "all").strip().lower()
+    if normalized_filter not in {"all", *MEDIA_TYPES}:
+        raise HTTPException(status_code=422, detail="Filtre de contenu invalide.")
+
+    endpoint_type = "multi" if normalized_filter == "all" else normalized_filter
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/search/{endpoint_type}",
+            params={
+                "api_key": TMDB_API_KEY,
+                "language": "fr-FR",
+                "query": normalized_query,
+                "include_adult": "false",
+                "page": 1,
+            },
+            timeout=3,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        logger.warning("Echec recherche TMDB media_type=%s query=%r: %s", normalized_filter, normalized_query, exc)
+        raise HTTPException(status_code=502, detail="Impossible de rechercher les contenus pour le moment.")
+
+    results = payload.get("results", []) if isinstance(payload, dict) else []
+    normalized_results: list[dict] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        normalized = normalize_tmdb_media_item(
+            item,
+            fallback_media_type=None if normalized_filter == "all" else normalized_filter,
+        )
+        if normalized is None:
+            continue
+        normalized_results.append(normalized)
+        if len(normalized_results) >= max(1, min(int(limit), 40)):
+            break
+    return normalized_results
+
+
+@app.get("/media/search")
+def media_search(query: str, media_type: str = "all", limit: int = 20):
+    return search_tmdb_media(query, media_type, limit)
+
+
+@app.get("/media/{media_type}/{media_id}")
+def media_detail(media_type: str, media_id: int):
+    details = get_tmdb_media_details(media_type, media_id)
+    if not details:
+        label = "série" if str(media_type).lower() == "tv" else "film"
+        raise HTTPException(status_code=502, detail=f"Impossible de charger cette fiche {label} pour le moment.")
+    return details
+
+
 @app.get("/search")
 def search(query: str):
     url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&language=fr-FR&query={query}"

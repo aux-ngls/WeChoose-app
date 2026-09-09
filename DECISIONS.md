@@ -139,3 +139,18 @@ Current implementation status:
 - the migration strategy remains incremental: remove SQLite-only SQL patterns first, then tackle the remaining placeholder-level compatibility once the hot paths are stable.
 - the backend SQL migration is now considered functionally complete at the application-query level: remaining `?` characters in `backend/main.py` are no longer active SQL placeholders.
 - the temporary PostgreSQL SQL translator has now been removed from the runtime path; the backend executes native PostgreSQL queries directly and keeps only an explicit SQLite legacy branch plus backend-aware placeholder helpers.
+
+## Movies And TV Series
+
+Decision: add TV series through a shared TMDB media identity made of `media_type` (`movie` or `tv`) and the TMDB numeric id.
+
+Reason:
+- TMDB movie and TV ids can overlap, so a numeric id alone is not a safe content key;
+- existing movie routes and stored data must remain compatible during the rollout;
+- the movie recommendation model must remain unchanged until a separate TV model is validated;
+- the first TV scope rates and reviews a complete series, without episode-progress tracking.
+
+Rollout rule:
+- use additive database migrations and default all historical rows to `movie`;
+- keep legacy movie API routes as compatibility wrappers;
+- validate TV features behind a dedicated branch and feature flag before enabling them globally.

@@ -110,6 +110,7 @@ The web site remains active and should not be removed while the mobile app is be
 - Rating display consistency between Tinder, movie details, reviews, playlists, and top lists.
 - Rating write consistency: rating from Tinder/movie details updates the user's review rating for the same movie, and review creation/update updates the user's movie rating.
 - Rating deletion rule: a movie rating cannot be removed if it is linked to an existing review; the user must edit or delete the review first so reviews never become note-less.
+- TV-series migration is being developed on `feature/tv-series`. Content identity must always include `media_type` plus the TMDB id so movie and TV ids cannot collide. Existing movie routes and data remain backward compatible throughout the rollout.
 - Tinder pass/swipe-left is not a movie rating. It records a mild negative recommendation signal and uses a short cooldown; older passed films may reappear if the algorithm scores them well.
 - If a Tinder movie is already rated, swiping left should only skip to the next card and must not record a negative recommendation signal.
 - Tinder should not keep showing already rated movies; rated cards must be removed from the local mobile stack/cache and filtered server-side.
