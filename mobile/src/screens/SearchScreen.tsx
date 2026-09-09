@@ -12,7 +12,7 @@ import InlineBanner from '../components/InlineBanner';
 import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/MovieQuickAddModal';
 import ScreenHeader from '../components/ScreenHeader';
 import SearchField from '../components/SearchField';
-import { ApiError, searchMovies, searchSocialUsers } from '../api/client';
+import { ApiError, preloadMovieDetails, searchMovies, searchSocialUsers } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
@@ -240,7 +240,10 @@ export default function SearchScreen() {
       ? (query.trim().length >= 2 ? movieResults : recentMovies)
       : [];
     void prefetchPosterUrls(moviesToPrefetch.map((movie) => movie.poster_url), 12);
-  }, [movieResults, query, recentMovies, searchMode]);
+    if (session) {
+      preloadMovieDetails(session.token, moviesToPrefetch.slice(0, 6).map((movie) => movie.id));
+    }
+  }, [movieResults, query, recentMovies, searchMode, session]);
 
   const rememberRecentMovie = useCallback(async (movie: SearchMovie) => {
     if (!session) {

@@ -9,6 +9,7 @@ import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
 import {
   ApiError,
+  preloadMovieDetails,
   searchMovies,
   searchSocialUsers,
   sendMessage,
@@ -149,7 +150,10 @@ export default function ShareMovieScreen({
 
   useEffect(() => {
     void prefetchPosterUrls(movieResults.map((movie) => movie.poster_url), 10);
-  }, [movieResults]);
+    if (session) {
+      preloadMovieDetails(session.token, movieResults.slice(0, 6).map((movie) => movie.id));
+    }
+  }, [movieResults, session]);
 
   const rememberRecentShareUser = useCallback(
     async (user: SocialUser) => {

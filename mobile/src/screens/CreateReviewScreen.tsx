@@ -16,7 +16,7 @@ import EmptyStateCard from '../components/EmptyStateCard';
 import InlineBanner from '../components/InlineBanner';
 import SearchField from '../components/SearchField';
 import StarRatingInput from '../components/StarRatingInput';
-import { ApiError, createReview, searchMovies, updateReview } from '../api/client';
+import { ApiError, createReview, preloadMovieDetails, searchMovies, updateReview } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
@@ -84,7 +84,10 @@ export default function CreateReviewScreen({
 
   useEffect(() => {
     void prefetchPosterUrls(results.map((movie) => movie.poster_url), 10);
-  }, [results]);
+    if (session) {
+      preloadMovieDetails(session.token, results.slice(0, 6).map((movie) => movie.id));
+    }
+  }, [results, session]);
 
   const canPublish = useMemo(
     () => Boolean(selectedMovie) && reviewRating >= 0.5 && reviewContent.trim().length > 0 && !publishing,

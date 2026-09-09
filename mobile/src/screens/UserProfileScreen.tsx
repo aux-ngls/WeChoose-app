@@ -5,7 +5,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text,
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { API_URL } from '../api/config';
-import { ApiError, blockUser, fetchSocialProfile, followUser, reportUser, startConversation, unfollowUser } from '../api/client';
+import { ApiError, blockUser, fetchSocialProfile, followUser, preloadMovieDetails, reportUser, startConversation, unfollowUser } from '../api/client';
 import AppScreen from '../components/AppScreen';
 import CachedPoster, { prefetchPosterUrls } from '../components/CachedPoster';
 import EmptyStateCard from '../components/EmptyStateCard';
@@ -83,7 +83,14 @@ export default function UserProfileScreen() {
       ...(profile?.reviews ?? []).map((review) => review.poster_url),
     ];
     void prefetchPosterUrls(posterUrls, 18);
-  }, [profile]);
+    if (session) {
+      const movieIds = [
+        ...(profile?.profile_movies ?? []).map((movie) => movie.id),
+        ...(profile?.reviews ?? []).map((review) => review.movie_id),
+      ];
+      preloadMovieDetails(session.token, movieIds, 8);
+    }
+  }, [profile, session]);
 
   const refreshProfile = useCallback(async () => {
     setRefreshing(true);

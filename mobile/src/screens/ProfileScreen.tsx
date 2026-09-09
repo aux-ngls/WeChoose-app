@@ -20,6 +20,7 @@ import {
   fetchPlaylistPreviews,
   fetchSocialNotifications,
   fetchSocialProfile,
+  preloadMovieDetails,
   saveProfilePreferences,
   searchMovies,
   searchPeople,
@@ -135,7 +136,15 @@ export default function ProfileScreen() {
       ...playlists.flatMap((playlist) => playlist.preview_movies.map((movie) => movie.poster_url)),
     ];
     void prefetchPosterUrls(posterUrls, 30);
-  }, [playlists, profile]);
+    if (session) {
+      const movieIds = [
+        ...(profile?.profile_movies ?? []).map((movie) => movie.id),
+        ...(profile?.reviews ?? []).map((review) => review.movie_id),
+        ...playlists.flatMap((playlist) => playlist.preview_movies.map((movie) => movie.id)),
+      ];
+      preloadMovieDetails(session.token, movieIds, 10);
+    }
+  }, [playlists, profile, session]);
 
   useEffect(() => {
     void Audio.setAudioModeAsync({

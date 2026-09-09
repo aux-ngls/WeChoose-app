@@ -32,6 +32,7 @@ import {
   fetchMovieDetails,
   fetchPlaylists,
   fetchUserMovieRating,
+  getCachedMovieDetails,
   rateMovie,
   removeMovieRating,
 } from '../api/client';
@@ -85,8 +86,9 @@ export default function MovieDetailsScreen({
     () => buildUserCacheKey(PERSISTED_MOVIE_DETAILS_SCOPE, session?.username, String(route.params.movieId)),
     [route.params.movieId, session?.username],
   );
-  const [movie, setMovie] = useState<MovieDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialMemoryMovie = useMemo(() => getCachedMovieDetails(route.params.movieId), [route.params.movieId]);
+  const [movie, setMovie] = useState<MovieDetails | null>(() => initialMemoryMovie);
+  const [loading, setLoading] = useState(() => !initialMemoryMovie);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -119,9 +121,10 @@ export default function MovieDetailsScreen({
     }
 
     let active = true;
-    setLoading(true);
+    const memoryMovie = getCachedMovieDetails(route.params.movieId);
+    setLoading(!memoryMovie);
     setActionLoading(false);
-    setMovie(null);
+    setMovie(memoryMovie);
     setUserRating(0);
     setError('');
     setFeedback('');
@@ -133,7 +136,7 @@ export default function MovieDetailsScreen({
 
     void (async () => {
       const cachedDetails = await readPersistentCache<PersistedMovieDetailsCache>(persistentCacheKey);
-      if (active && cachedDetails?.movie) {
+      if (active && !memoryMovie && cachedDetails?.movie) {
         setMovie(cachedDetails.movie);
         setUserRating(cachedDetails.userRating ?? 0);
         setLoading(false);
@@ -160,7 +163,7 @@ export default function MovieDetailsScreen({
           await signOut();
           return;
         }
-        if (active && !cachedDetails?.movie) {
+        if (active && !memoryMovie && !cachedDetails?.movie) {
           setError('Impossible de charger cette fiche film.');
         }
       } finally {
@@ -433,7 +436,7 @@ export default function MovieDetailsScreen({
         ) : movie ? (
           <>
             <View style={[styles.heroCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
-              <CachedPoster uri={movie.poster_url} style={styles.heroPoster} />
+              <CachedPoster uri={movie.poster_url} size="w780" style={styles.heroPoster} />
               <LinearGradient
                 colors={['rgba(7,10,18,0.02)', 'rgba(7,10,18,0.18)', 'rgba(7,10,18,0.68)', 'rgba(7,10,18,0.96)']}
                 locations={[0, 0.38, 0.72, 1]}

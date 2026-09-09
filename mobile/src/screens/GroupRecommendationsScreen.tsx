@@ -12,6 +12,7 @@ import SearchField from '../components/SearchField';
 import {
   ApiError,
   fetchSocialGroupRecommendations,
+  preloadMovieDetails,
   searchSocialUsers,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -90,7 +91,10 @@ export default function GroupRecommendationsScreen({
 
   useEffect(() => {
     void prefetchPosterUrls(recommendations.map((movie) => movie.poster_url), 14);
-  }, [recommendations]);
+    if (session) {
+      preloadMovieDetails(session.token, recommendations.slice(0, 8).map((movie) => movie.id));
+    }
+  }, [recommendations, session]);
 
   const loadRecommendations = useCallback(async () => {
     if (!session || selectedUsers.length === 0) {

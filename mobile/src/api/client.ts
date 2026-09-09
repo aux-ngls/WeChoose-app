@@ -27,6 +27,16 @@ import type {
 } from '../types';
 
 const REQUEST_TIMEOUT_MS = 18000;
+const MOVIE_DETAILS_CACHE_TTL_MS = 10 * 60 * 1000;
+const MOVIE_DETAILS_PREFETCH_LIMIT = 6;
+
+type MovieDetailsCacheEntry = {
+  payload: MovieDetails;
+  fetchedAt: number;
+};
+
+const movieDetailsCache = new Map<number, MovieDetailsCacheEntry>();
+const movieDetailsInFlight = new Map<number, Promise<MovieDetails>>();
 
 export class ApiError extends Error {
   status: number;
@@ -221,6 +231,38 @@ export async function fetchMovieFeed(
   return request<SearchMovie[]>(`/movies/feed?${params.toString()}`, undefined, token);
 }
 
+function getFreshMovieDetailsFromMemory(movieId: number): MovieDetails | null {
+  const cachedEntry = movieDetailsCache.get(movieId);
+  if (!cachedEntry) {
+    return null;
+  }
+
+  if (Date.now() - cachedEntry.fetchedAt > MOVIE_DETAILS_CACHE_TTL_MS) {
+    movieDetailsCache.delete(movieId);
+    return null;
+  }
+
+  return cachedEntry.payload;
+}
+
+export function getCachedMovieDetails(movieId: number): MovieDetails | null {
+  return getFreshMovieDetailsFromMemory(movieId);
+}
+
+export function preloadMovieDetails(token: string, movieIds: Array<number | null | undefined>, limit = MOVIE_DETAILS_PREFETCH_LIMIT) {
+  const uniqueMovieIds = Array.from(
+    new Set(movieIds.filter((movieId): movieId is number => typeof movieId === 'number' && movieId > 0)),
+  )
+    .filter((movieId) => !getFreshMovieDetailsFromMemory(movieId) && !movieDetailsInFlight.has(movieId))
+    .slice(0, limit);
+
+  uniqueMovieIds.forEach((movieId) => {
+    void fetchMovieDetails(token, movieId).catch(() => {
+      // Prefetch is opportunistic: navigation should keep its normal error handling.
+    });
+  });
+}
+
 export async function recordRecommendationImpression(token: string, movie: SearchMovie, mode = 'tinder'): Promise<void> {
   await request<null>(
     '/recommendations/impressions',
@@ -242,8 +284,34 @@ export async function recordRecommendationImpression(token: string, movie: Searc
   );
 }
 
-export async function fetchMovieDetails(token: string, movieId: number): Promise<MovieDetails> {
-  return request<MovieDetails>(`/movie/${movieId}`, undefined, token);
+export async function fetchMovieDetails(
+  token: string,
+  movieId: number,
+  options?: { forceRefresh?: boolean },
+): Promise<MovieDetails> {
+  if (!options?.forceRefresh) {
+    const cachedPayload = getFreshMovieDetailsFromMemory(movieId);
+    if (cachedPayload) {
+      return cachedPayload;
+    }
+
+    const inFlightRequest = movieDetailsInFlight.get(movieId);
+    if (inFlightRequest) {
+      return inFlightRequest;
+    }
+  }
+
+  const requestPromise = request<MovieDetails>(`/movie/${movieId}`, undefined, token)
+    .then((payload) => {
+      movieDetailsCache.set(movieId, { payload, fetchedAt: Date.now() });
+      return payload;
+    })
+    .finally(() => {
+      movieDetailsInFlight.delete(movieId);
+    });
+
+  movieDetailsInFlight.set(movieId, requestPromise);
+  return requestPromise;
 }
 
 export async function fetchPersonDetails(token: string, personId: number): Promise<PersonDetails> {

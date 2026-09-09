@@ -29,6 +29,7 @@ import {
   fetchRuntimeAlerts,
   fetchUserMovieRating,
   getOnboardingPreferences,
+  preloadMovieDetails,
   rateMovie,
   recordRecommendationImpression,
   undoDislikeMovie,
@@ -99,8 +100,8 @@ function parseCachedMovies(rawValue: string | null, username: string): SearchMov
   }
 }
 
-function prefetchMoviePosters(movies: SearchMovie[]) {
-  void prefetchPosterUrls(movies.map((movie) => movie.poster_url), 16);
+function prefetchMoviePosters(movies: SearchMovie[], useLargePosters: boolean) {
+  void prefetchPosterUrls(movies.map((movie) => movie.poster_url), 16, useLargePosters ? 'w780' : 'w500');
 }
 
 export default function HomeScreen() {
@@ -177,7 +178,10 @@ export default function HomeScreen() {
 
   useEffect(() => {
     moviesRef.current = movies;
-    prefetchMoviePosters(movies);
+    prefetchMoviePosters(movies, isWideLayout);
+    if (session) {
+      preloadMovieDetails(session.token, movies.slice(0, MIN_READY_TINDER_MOVIES).map((movie) => movie.id));
+    }
 
     if (!session || movies.length === 0) {
       return;
@@ -191,7 +195,7 @@ export default function HomeScreen() {
     };
     tinderMovieCache = payload;
     void AsyncStorage.setItem(getTinderCacheKey(session.username), JSON.stringify(payload));
-  }, [movies, session]);
+  }, [isWideLayout, movies, session]);
 
   const rememberExcludedMovieIds = useCallback((movieIds: number[]) => {
     const excludedMovieIds = locallyExcludedMovieIdsRef.current;
@@ -284,12 +288,12 @@ export default function HomeScreen() {
     };
     lastFetchAtRef.current = Date.now();
     moviesRef.current = cachedMovies;
-    prefetchMoviePosters(cachedMovies);
+    prefetchMoviePosters(cachedMovies, isWideLayout);
     setMovies(cachedMovies);
     setError('');
     setLoading(false);
     return true;
-  }, [filterExcludedMovies, session]);
+  }, [filterExcludedMovies, isWideLayout, session]);
 
   const loadFeed = useCallback(async (excludeIds: number[] = [], options?: { reset?: boolean }) => {
     if (!session || isFetchingRef.current) {
@@ -318,7 +322,7 @@ export default function HomeScreen() {
         const next = payload.filter((movie) => !existingIds.has(movie.id) && !excludedIds.has(movie.id));
         const nextStack = [...base, ...next].slice(0, CACHE_MAX_SIZE);
         moviesRef.current = nextStack;
-        prefetchMoviePosters(nextStack);
+        prefetchMoviePosters(nextStack, isWideLayout);
         return nextStack;
       });
       lastFetchAtRef.current = Date.now();
@@ -335,7 +339,7 @@ export default function HomeScreen() {
       isFetchingRef.current = false;
       setLoading(false);
     }
-  }, [getKnownExcludedMovieIds, session, signOut]);
+  }, [getKnownExcludedMovieIds, isWideLayout, session, signOut]);
 
   useFocusEffect(
     useCallback(() => {
@@ -751,7 +755,7 @@ export default function HomeScreen() {
             <View style={[styles.cardFrame, { width: tinderCardWidth }]}>
             {secondMovie ? (
               <View style={styles.backCard}>
-                <CachedPoster uri={secondMovie.poster_url} style={styles.heroPoster} />
+                <CachedPoster uri={secondMovie.poster_url} size={isWideLayout ? 'w780' : 'w500'} style={styles.heroPoster} />
                 <View style={styles.backOverlay} />
               </View>
             ) : null}
@@ -762,7 +766,7 @@ export default function HomeScreen() {
                 onPress={() => navigation.navigate('MovieDetails', { movieId: currentMovie.id, title: currentMovie.title, source: 'tinder' })}
                 disabled={submitting}
               >
-                <CachedPoster uri={currentMovie.poster_url} style={styles.heroPoster} />
+                <CachedPoster uri={currentMovie.poster_url} size={isWideLayout ? 'w780' : 'w500'} style={styles.heroPoster} />
                 <LinearGradient
                   pointerEvents="none"
                   colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.06)', 'rgba(2,6,23,0.28)', 'rgba(2,6,23,0.72)', 'rgba(2,6,23,0.97)']}

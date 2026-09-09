@@ -12,6 +12,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import {
   ApiError,
   fetchSocialFeed,
+  preloadMovieDetails,
   reportReview,
   toggleReviewLike,
 } from '../api/client';
@@ -54,7 +55,10 @@ export default function SocialScreen() {
   useEffect(() => {
     reviewsRef.current = reviews;
     void prefetchPosterUrls(reviews.map((review) => review.poster_url), 18);
-  }, [reviews]);
+    if (session) {
+      preloadMovieDetails(session.token, reviews.slice(0, 8).map((review) => review.movie_id));
+    }
+  }, [reviews, session]);
 
   useEffect(() => {
     if (!session) {

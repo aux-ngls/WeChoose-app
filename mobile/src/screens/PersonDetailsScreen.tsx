@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ApiError, fetchPersonDetails } from '../api/client';
+import { ApiError, fetchPersonDetails, preloadMovieDetails } from '../api/client';
 import AppScreen from '../components/AppScreen';
 import InlineBanner from '../components/InlineBanner';
 import { prefetchPosterUrls } from '../components/CachedPoster';
@@ -94,7 +94,10 @@ export default function PersonDetailsScreen({
 
   useEffect(() => {
     void prefetchPosterUrls((person?.known_for_movies ?? []).map((movie) => movie.poster_url), 12);
-  }, [person]);
+    if (session) {
+      preloadMovieDetails(session.token, (person?.known_for_movies ?? []).slice(0, 8).map((movie) => movie.id));
+    }
+  }, [person, session]);
 
   const metaItems = useMemo(() => {
     if (!person) {

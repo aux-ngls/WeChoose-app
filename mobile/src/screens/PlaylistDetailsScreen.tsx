@@ -25,6 +25,7 @@ import {
   fetchProfilePreferences,
   fetchPlaylistMoviesPage,
   movePlaylistMovie,
+  preloadMovieDetails,
   removeMovieFromPlaylist,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -148,7 +149,10 @@ export default function PlaylistDetailsScreen({
   useEffect(() => {
     moviesRef.current = movies;
     void prefetchPosterUrls(movies.map((movie) => movie.poster_url), 30);
-  }, [movies]);
+    if (session) {
+      preloadMovieDetails(session.token, movies.slice(0, 8).map((movie) => movie.id));
+    }
+  }, [movies, session]);
 
   useEffect(() => {
     totalCountRef.current = totalCount;
