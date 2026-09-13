@@ -172,6 +172,22 @@ SQLITE_PATH=/home/wechoose/backend/wechoose.db
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/qulte
 ```
 
+Optional legal-torrent-to-Drive automation env vars:
+
+```bash
+LEGAL_TORRENT_AUTODOWNLOAD_ENABLED=1
+LEGAL_TORRENT_ALLOWED_HOSTS=archive.org,...
+LEGAL_TORRENT_RCLONE_DESTINATION=gdrive:Qulte
+LEGAL_TORRENT_ADMIN_TOKEN=...
+LEGAL_TORRENT_DOWNLOAD_DIR=/tmp/qulte-legal-torrents
+```
+
+Legal torrent automation guardrails:
+- only direct `.torrent` URLs from `LEGAL_TORRENT_ALLOWED_HOSTS` are accepted;
+- sources must be registered through the admin endpoint before Qulte can download anything;
+- adding a matching item to `À regarder plus tard` creates a background job automatically;
+- the server expects `aria2c` for torrent downloads and `rclone` configured for Google Drive uploads.
+
 PostgreSQL cleanup status:
 - production runs on PostgreSQL;
 - the most sensitive SQLite-specific statements have already been replaced with native PostgreSQL-friendly SQL in the recommendation, ratings, playlists, follows/blocks, and direct-conversation paths.
@@ -189,6 +205,7 @@ PostgreSQL cleanup status:
 - users can now save the streaming platforms they own in mobile settings, and the watch-later playlist can filter to movies available on those owned subscription services.
 - mobile profile loading now uses `/playlists/previews` instead of fetching every playlist in full; this keeps profiles responsive for accounts with very large watch-later playlists, such as `@random`.
 - playlist details now load progressively through `/playlists/{playlist_id}/paged`, so very large playlists no longer need to fetch every movie before the screen becomes usable.
+- backend now has an opt-in legal torrent automation pipeline: whitelisted legal `.torrent` sources can be registered by admin, and adding a matching title to watch-later queues a server job that downloads via `aria2c` and uploads to Google Drive via `rclone`.
 
 ## How To Resume Work
 
