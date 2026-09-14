@@ -110,6 +110,13 @@ function formatPlaylistRating(rating: number, playlistId: number) {
   return `${rating.toFixed(1)} / ${scale}`;
 }
 
+function applyMediaFilter(items: SearchMovie[], mediaFilter: PlaylistMediaFilter) {
+  if (mediaFilter === 'all') {
+    return items;
+  }
+  return items.filter((item) => (item.media_type ?? 'movie') === mediaFilter);
+}
+
 export default function PlaylistDetailsScreen({
   navigation,
   route,
@@ -259,7 +266,8 @@ export default function PlaylistDetailsScreen({
       payload: Awaited<ReturnType<typeof fetchPlaylistMoviesPage>>,
       options?: { append?: boolean },
     ) => {
-      const nextMovies = options?.append ? mergeUniqueMovies(moviesRef.current, payload.items) : payload.items;
+      const filteredItems = applyMediaFilter(payload.items, mediaFilter);
+      const nextMovies = options?.append ? mergeUniqueMovies(moviesRef.current, filteredItems) : filteredItems;
       startTransition(() => setMovies(nextMovies));
       setTotalCount(payload.playlist_total_count);
       setHasMore(payload.has_more);
@@ -267,7 +275,7 @@ export default function PlaylistDetailsScreen({
       setDataCacheKey(requestCacheKey);
       setError('');
     },
-    [],
+    [mediaFilter],
   );
 
   const startBackgroundPrefetch = useCallback(
@@ -366,8 +374,9 @@ export default function PlaylistDetailsScreen({
     setError('');
 
     if (cachedPage) {
-      startTransition(() => setMovies(cachedPage.movies));
-      setTotalCount(cachedPage.totalCount);
+      const filteredCachedMovies = applyMediaFilter(cachedPage.movies, mediaFilter);
+      startTransition(() => setMovies(filteredCachedMovies));
+      setTotalCount(mediaFilter === 'all' ? cachedPage.totalCount : filteredCachedMovies.length);
       setHasMore(cachedPage.hasMore);
       setNextOffset(cachedPage.nextOffset);
       setBufferedPage(cachedPage.bufferedPage);
@@ -388,8 +397,9 @@ export default function PlaylistDetailsScreen({
       }
 
       if (persistedPage?.movies?.length) {
-        startTransition(() => setMovies(persistedPage.movies));
-        setTotalCount(persistedPage.totalCount);
+        const filteredPersistedMovies = applyMediaFilter(persistedPage.movies, mediaFilter);
+        startTransition(() => setMovies(filteredPersistedMovies));
+        setTotalCount(mediaFilter === 'all' ? persistedPage.totalCount : filteredPersistedMovies.length);
         setHasMore(persistedPage.hasMore);
         setNextOffset(persistedPage.nextOffset);
         setBufferedPage(persistedPage.bufferedPage);

@@ -3765,6 +3765,28 @@ def normalize_playlist_media_type_filter(value: Optional[str]) -> str:
     raise HTTPException(status_code=422, detail="Filtre de contenu invalide.")
 
 
+def normalize_media_title_for_match(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+@lru_cache(maxsize=4096)
+def infer_playlist_media_type_from_title(stored_media_type: str, media_id: int, title: str) -> str:
+    normalized_media_type = normalize_media_type(stored_media_type or "movie")
+    if normalized_media_type != "movie":
+        return normalized_media_type
+
+    normalized_title = normalize_media_title_for_match(title)
+    if not normalized_title:
+        return normalized_media_type
+
+    tv_summary = get_tmdb_tv_summary(int(media_id))
+    tv_title = normalize_media_title_for_match(str((tv_summary or {}).get("title") or ""))
+    if tv_title and tv_title == normalized_title:
+        return "tv"
+
+    return normalized_media_type
+
+
 def get_user_owned_streaming_services(cursor, user_id: int) -> list[str]:
     cursor.execute(
         f"SELECT owned_streaming_services FROM user_preferences WHERE user_id = {SQL_PARAM}",
@@ -3902,7 +3924,8 @@ def hydrate_playlist_row_metadata(
     include_watch_providers: bool,
 ) -> dict:
     movie_id = int(row.get("id") or 0)
-    media_type = normalize_media_type(str(row.get("media_type") or "movie"))
+    stored_media_type = normalize_media_type(str(row.get("media_type") or "movie"))
+    media_type = infer_playlist_media_type_from_title(stored_media_type, movie_id, str(row.get("title") or ""))
     details = None
     next_primary_genre = decode_db_text(row.get("primary_genre"))
     if not next_primary_genre:
@@ -3928,7 +3951,7 @@ def hydrate_playlist_row_metadata(
         ]
     )
 
-    should_persist = False
+    should_persist = media_type != stored_media_type
     if decode_db_text(row.get("primary_genre")) != next_primary_genre:
         should_persist = True
 
@@ -3938,21 +3961,24 @@ def hydrate_playlist_row_metadata(
 
     row["primary_genre"] = next_primary_genre or "Autres"
     row["subscription_provider_names"] = next_provider_names
+    row["media_type"] = media_type
 
     if playlist_db_id is not None and should_persist:
         cursor.execute(
             f"""
             UPDATE playlist_items
-            SET primary_genre = {SQL_PARAM},
+            SET media_type = {SQL_PARAM},
+                primary_genre = {SQL_PARAM},
                 subscription_provider_names = {SQL_PARAM},
                 metadata_updated_at = CURRENT_TIMESTAMP
             WHERE playlist_id = {SQL_PARAM} AND media_type = {SQL_PARAM} AND movie_id = {SQL_PARAM}
             """,
             (
+                media_type,
                 row["primary_genre"],
                 dump_json_list(next_provider_names),
                 int(playlist_db_id),
-                media_type,
+                stored_media_type,
                 movie_id,
             ),
         )
@@ -4018,7 +4044,6 @@ def browse_playlist_rows(
     media_type_filter: str,
 ) -> dict:
     base_rows, is_watch_later, playlist_db_id = fetch_playlist_base_rows(cursor, playlist_id, user_id)
-    playlist_total_count = len(base_rows)
     trimmed_query = query.strip().lower()
     normalized_media_type_filter = normalize_playlist_media_type_filter(media_type_filter)
 
@@ -4042,6 +4067,7 @@ def browse_playlist_rows(
             row for row in hydrated_rows if normalize_media_type(str(row.get("media_type") or "movie")) == normalized_media_type_filter
         ]
 
+    playlist_total_count = len(hydrated_rows)
     ordered_rows = sort_playlist_rows(hydrated_rows, sort_mode)
 
     if is_watch_later and only_owned_streaming_services:
