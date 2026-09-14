@@ -778,6 +778,7 @@ export async function fetchPlaylistMoviesPage(
     sort?: 'manual' | 'genre' | 'recent' | 'oldest' | 'rating';
     query?: string;
     onlyOwnedStreamingServices?: boolean;
+    mediaTypeFilter?: 'all' | MediaType;
   },
 ): Promise<PlaylistMoviesPage> {
   const params = new URLSearchParams();
@@ -791,6 +792,9 @@ export async function fetchPlaylistMoviesPage(
   }
   if (options?.onlyOwnedStreamingServices) {
     params.set('only_owned_streaming_services', 'true');
+  }
+  if (options?.mediaTypeFilter && options.mediaTypeFilter !== 'all') {
+    params.set('media_type_filter', options.mediaTypeFilter);
   }
   return request<PlaylistMoviesPage>(`/playlists/${playlistId}/paged?${params.toString()}`, undefined, token);
 }

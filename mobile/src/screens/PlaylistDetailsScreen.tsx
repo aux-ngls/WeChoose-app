@@ -34,6 +34,7 @@ import { useTheme } from '../theme/ThemeContext';
 import {
   FAVORITES_PLAYLIST_ID,
   HISTORY_PLAYLIST_ID,
+  type MediaType,
   type SearchMovie,
   WATCH_LATER_PLAYLIST_ID,
 } from '../types';
@@ -48,6 +49,7 @@ const SORT_OPTIONS = [
 ] as const;
 
 type SortMode = (typeof SORT_OPTIONS)[number]['key'];
+type PlaylistMediaFilter = 'all' | MediaType;
 type BufferedPage = {
   items: SearchMovie[];
   nextOffset: number;
@@ -69,6 +71,12 @@ const PERSISTED_PLAYLIST_SCOPE = 'playlist-details-screen-v2';
 
 const playlistMoviesCache = new Map<string, PlaylistCacheEntry>();
 
+const MEDIA_FILTER_OPTIONS: Array<{ key: PlaylistMediaFilter; label: string }> = [
+  { key: 'all', label: 'Tout' },
+  { key: 'movie', label: 'Films' },
+  { key: 'tv', label: 'Séries' },
+];
+
 function getMediaKey(item: Pick<SearchMovie, 'id' | 'media_type'>) {
   return `${item.media_type ?? 'movie'}:${item.id}`;
 }
@@ -78,8 +86,9 @@ function buildPlaylistCacheKey(
   sortMode: SortMode,
   query: string,
   onlyOwnedStreamingServices: boolean,
+  mediaFilter: PlaylistMediaFilter,
 ) {
-  return [playlistId, sortMode, query.trim().toLowerCase(), onlyOwnedStreamingServices ? 'owned' : 'all'].join(':');
+  return [playlistId, sortMode, query.trim().toLowerCase(), onlyOwnedStreamingServices ? 'owned' : 'all', mediaFilter].join(':');
 }
 
 function mergeUniqueMovies(currentMovies: SearchMovie[], nextMovies: SearchMovie[]) {
@@ -111,7 +120,7 @@ export default function PlaylistDetailsScreen({
     route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
   const initialSortMode: SortMode =
     route.params.playlistId === WATCH_LATER_PLAYLIST_ID ? 'genre' : supportsManualSort ? 'manual' : 'recent';
-  const initialCacheKey = buildPlaylistCacheKey(route.params.playlistId, initialSortMode, '', false);
+  const initialCacheKey = buildPlaylistCacheKey(route.params.playlistId, initialSortMode, '', false, 'all');
   const initialCache = playlistMoviesCache.get(initialCacheKey);
   const [movies, setMovies] = useState<SearchMovie[]>(() => initialCache?.movies ?? []);
   const [loading, setLoading] = useState(() => !initialCache || initialCache.movies.length === 0);
@@ -123,6 +132,7 @@ export default function PlaylistDetailsScreen({
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [onlyOwnedStreamingServices, setOnlyOwnedStreamingServices] = useState(false);
+  const [mediaFilter, setMediaFilter] = useState<PlaylistMediaFilter>('all');
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
   const [reorderingMovieId, setReorderingMovieId] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(() => initialCache?.totalCount ?? 0);
@@ -139,8 +149,8 @@ export default function PlaylistDetailsScreen({
   const generationRef = useRef(0);
   const prefetchInFlightRef = useRef(false);
   const cacheKey = useMemo(
-    () => buildPlaylistCacheKey(route.params.playlistId, sortMode, debouncedQuery, onlyOwnedStreamingServices),
-    [debouncedQuery, onlyOwnedStreamingServices, route.params.playlistId, sortMode],
+    () => buildPlaylistCacheKey(route.params.playlistId, sortMode, debouncedQuery, onlyOwnedStreamingServices, mediaFilter),
+    [debouncedQuery, mediaFilter, onlyOwnedStreamingServices, route.params.playlistId, sortMode],
   );
   const persistentCacheKey = useMemo(
     () => buildUserCacheKey(PERSISTED_PLAYLIST_SCOPE, session?.username, cacheKey),
@@ -192,7 +202,7 @@ export default function PlaylistDetailsScreen({
   }, []);
 
   const canRemove = route.params.playlistId !== FAVORITES_PLAYLIST_ID && route.params.playlistId !== HISTORY_PLAYLIST_ID;
-  const canReorder = supportsManualSort && sortMode === 'manual' && !debouncedQuery && !onlyOwnedStreamingServices;
+  const canReorder = supportsManualSort && sortMode === 'manual' && !debouncedQuery && !onlyOwnedStreamingServices && mediaFilter === 'all';
   const availableSortOptions = useMemo(
     () => (supportsManualSort ? SORT_OPTIONS : SORT_OPTIONS.filter((option) => option.key !== 'manual')),
     [supportsManualSort],
@@ -230,6 +240,7 @@ export default function PlaylistDetailsScreen({
         sort: sortMode,
         query: debouncedQuery,
         onlyOwnedStreamingServices,
+        mediaTypeFilter: mediaFilter,
       });
 
       if (generation !== generationRef.current) {
@@ -238,7 +249,7 @@ export default function PlaylistDetailsScreen({
 
       return payload;
     },
-    [debouncedQuery, onlyOwnedStreamingServices, route.params.playlistId, session, sortMode],
+    [debouncedQuery, mediaFilter, onlyOwnedStreamingServices, route.params.playlistId, session, sortMode],
   );
 
   const applyVisiblePage = useCallback(
@@ -608,6 +619,30 @@ export default function PlaylistDetailsScreen({
             </Text>
           </Pressable>
         ) : null}
+        {MEDIA_FILTER_OPTIONS.map((option) => {
+          const isActive = mediaFilter === option.key;
+          return (
+            <Pressable
+              key={option.key}
+              onPress={() => setMediaFilter(option.key)}
+              style={[
+                styles.filterChip,
+                { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+                isActive && styles.filterChipActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterChipLabel,
+                  { color: theme.colors.textSoft },
+                  isActive && styles.filterChipLabelActive,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
       {isSortMenuOpen ? (
         <View style={[styles.sortMenu, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>

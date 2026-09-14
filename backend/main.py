@@ -3756,6 +3756,15 @@ def normalize_playlist_sort(playlist_id: int, requested_sort: Optional[str]) -> 
     return normalized_sort or "manual"
 
 
+def normalize_playlist_media_type_filter(value: Optional[str]) -> str:
+    normalized = str(value or "all").strip().lower()
+    if normalized in {"", "all"}:
+        return "all"
+    if normalized in MEDIA_TYPES:
+        return normalized
+    raise HTTPException(status_code=422, detail="Filtre de contenu invalide.")
+
+
 def get_user_owned_streaming_services(cursor, user_id: int) -> list[str]:
     cursor.execute(
         f"SELECT owned_streaming_services FROM user_preferences WHERE user_id = {SQL_PARAM}",
@@ -4006,10 +4015,12 @@ def browse_playlist_rows(
     sort_mode: str,
     query: str,
     only_owned_streaming_services: bool,
+    media_type_filter: str,
 ) -> dict:
     base_rows, is_watch_later, playlist_db_id = fetch_playlist_base_rows(cursor, playlist_id, user_id)
     playlist_total_count = len(base_rows)
     trimmed_query = query.strip().lower()
+    normalized_media_type_filter = normalize_playlist_media_type_filter(media_type_filter)
 
     hydrated_rows = [
         hydrate_playlist_row_metadata(
@@ -4024,6 +4035,11 @@ def browse_playlist_rows(
     if trimmed_query:
         hydrated_rows = [
             row for row in hydrated_rows if trimmed_query in str(row.get("title") or "").lower()
+        ]
+
+    if normalized_media_type_filter != "all":
+        hydrated_rows = [
+            row for row in hydrated_rows if normalize_media_type(str(row.get("media_type") or "movie")) == normalized_media_type_filter
         ]
 
     ordered_rows = sort_playlist_rows(hydrated_rows, sort_mode)
@@ -6177,6 +6193,7 @@ def get_playlist_content_paged(
     sort: Optional[str] = None,
     query: str = "",
     only_owned_streaming_services: bool = False,
+    media_type_filter: str = "all",
     current_user: dict = Depends(get_current_user),
 ):
     safe_limit = max(1, min(limit, 240))
@@ -6198,6 +6215,7 @@ def get_playlist_content_paged(
             sort_mode=resolved_sort,
             query=query,
             only_owned_streaming_services=only_owned_streaming_services,
+            media_type_filter=media_type_filter,
         )
         conn.commit()
     finally:

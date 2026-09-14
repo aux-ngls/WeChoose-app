@@ -189,6 +189,7 @@ PostgreSQL cleanup status:
 - users can now save the streaming platforms they own in mobile settings, and the watch-later playlist can filter to movies available on those owned subscription services.
 - mobile profile loading now uses `/playlists/previews` instead of fetching every playlist in full; this keeps profiles responsive for accounts with very large watch-later playlists, such as `@random`.
 - playlist details now load progressively through `/playlists/{playlist_id}/paged`, so very large playlists no longer need to fetch every movie before the screen becomes usable.
+- playlist details support a backend-backed `Tout / Films / Séries` filter, so large mixed playlists can be filtered by media type without relying on already-loaded mobile items.
 
 ## How To Resume Work
 

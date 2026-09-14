@@ -161,3 +161,4 @@ npx eas submit --platform ios
 - Playlist details now page large movie lists progressively instead of loading every movie up front, which fixes heavy watchlists like `@random`'s account.
 - TV-series work now uses the composite identity `media_type + TMDB id` across backend and mobile contracts to avoid movie/series id collisions.
 - Production backend smoke after the TV-series migration returned healthy Postgres status, a TV detail payload for Breaking Bad, media search results, and an authenticated `/series/feed` with TV-only items.
+- Playlist details now include `Tout / Films / Séries` filters backed by the paginated backend endpoint.
