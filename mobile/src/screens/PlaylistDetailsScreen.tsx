@@ -131,6 +131,7 @@ export default function PlaylistDetailsScreen({
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const [isMediaFilterMenuOpen, setIsMediaFilterMenuOpen] = useState(false);
   const [onlyOwnedStreamingServices, setOnlyOwnedStreamingServices] = useState(false);
   const [mediaFilter, setMediaFilter] = useState<PlaylistMediaFilter>('all');
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
@@ -361,6 +362,7 @@ export default function PlaylistDetailsScreen({
     const generation = generationRef.current;
     const cachedPage = playlistMoviesCache.get(cacheKey);
     setIsSortMenuOpen(false);
+    setIsMediaFilterMenuOpen(false);
     setError('');
 
     if (cachedPage) {
@@ -572,7 +574,10 @@ export default function PlaylistDetailsScreen({
       <SearchField value={query} onChangeText={setQuery} placeholder="Rechercher un film ou une série" />
       <View style={styles.filtersRow}>
         <Pressable
-          onPress={() => setIsSortMenuOpen((current) => !current)}
+          onPress={() => {
+            setIsMediaFilterMenuOpen(false);
+            setIsSortMenuOpen((current) => !current);
+          }}
           style={[
             styles.filterChip,
             styles.sortTriggerChip,
@@ -594,6 +599,41 @@ export default function PlaylistDetailsScreen({
             name={isSortMenuOpen ? 'chevron-up' : 'chevron-down'}
             size={14}
             color={isSortMenuOpen ? theme.colors.text : theme.colors.textSoft}
+          />
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            setIsSortMenuOpen(false);
+            setIsMediaFilterMenuOpen((current) => !current);
+          }}
+          style={[
+            styles.filterChip,
+            styles.sortTriggerChip,
+            { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+            (isMediaFilterMenuOpen || mediaFilter !== 'all') && {
+              borderColor: theme.colors.secondaryAccent,
+              backgroundColor: theme.colors.accentSoft,
+            },
+          ]}
+        >
+          <Ionicons
+            name="albums-outline"
+            size={14}
+            color={isMediaFilterMenuOpen || mediaFilter !== 'all' ? theme.colors.text : theme.colors.textSoft}
+          />
+          <Text
+            style={[
+              styles.filterChipLabel,
+              { color: theme.colors.textSoft },
+              (isMediaFilterMenuOpen || mediaFilter !== 'all') && { color: theme.colors.text },
+            ]}
+          >
+            Type
+          </Text>
+          <Ionicons
+            name={isMediaFilterMenuOpen ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={isMediaFilterMenuOpen || mediaFilter !== 'all' ? theme.colors.text : theme.colors.textSoft}
           />
         </Pressable>
         {route.params.playlistId === WATCH_LATER_PLAYLIST_ID && ownedStreamingServices.length > 0 ? (
@@ -619,30 +659,6 @@ export default function PlaylistDetailsScreen({
             </Text>
           </Pressable>
         ) : null}
-        {MEDIA_FILTER_OPTIONS.map((option) => {
-          const isActive = mediaFilter === option.key;
-          return (
-            <Pressable
-              key={option.key}
-              onPress={() => setMediaFilter(option.key)}
-              style={[
-                styles.filterChip,
-                { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
-                isActive && styles.filterChipActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterChipLabel,
-                  { color: theme.colors.textSoft },
-                  isActive && styles.filterChipLabelActive,
-                ]}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
       </View>
       {isSortMenuOpen ? (
         <View style={[styles.sortMenu, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -654,6 +670,32 @@ export default function PlaylistDetailsScreen({
                 onPress={() => {
                   setSortMode(option.key);
                   setIsSortMenuOpen(false);
+                }}
+                style={[
+                  styles.sortOptionRow,
+                  { borderColor: theme.rgba.border },
+                  isActive && { backgroundColor: theme.colors.accentSoft },
+                ]}
+              >
+                <Text style={[styles.sortOptionLabel, { color: theme.colors.textSoft }, isActive && { color: theme.colors.text }]}>
+                  {option.label}
+                </Text>
+                {isActive ? <Ionicons name="checkmark" size={16} color={theme.colors.secondaryAccent} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {isMediaFilterMenuOpen ? (
+        <View style={[styles.sortMenu, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          {MEDIA_FILTER_OPTIONS.map((option) => {
+            const isActive = mediaFilter === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => {
+                  setMediaFilter(option.key);
+                  setIsMediaFilterMenuOpen(false);
                 }}
                 style={[
                   styles.sortOptionRow,
