@@ -61,9 +61,10 @@ except Exception:
     psycopg = None
 
 try:
-    from psycopg_pool import ConnectionPool
+    from psycopg_pool import ConnectionPool, PoolTimeout
 except Exception:
     ConnectionPool = None
+    PoolTimeout = TimeoutError
 
 # --- CONFIGURATION SÉCURITÉ ---
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
@@ -77,6 +78,9 @@ DATABASE_BACKEND = "postgres" if DATABASE_URL else "sqlite"
 POSTGRES_POOL_MIN_SIZE = int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1") or "1")
 POSTGRES_POOL_MAX_SIZE = int(os.getenv("POSTGRES_POOL_MAX_SIZE", "10") or "10")
 POSTGRES_POOL_TIMEOUT_SECONDS = float(os.getenv("POSTGRES_POOL_TIMEOUT_SECONDS", "5") or "5")
+POSTGRES_POOL_MAX_LIFETIME_SECONDS = float(os.getenv("POSTGRES_POOL_MAX_LIFETIME_SECONDS", "900") or "900")
+POSTGRES_POOL_MAX_IDLE_SECONDS = float(os.getenv("POSTGRES_POOL_MAX_IDLE_SECONDS", "120") or "120")
+POSTGRES_CONNECT_TIMEOUT_SECONDS = int(os.getenv("POSTGRES_CONNECT_TIMEOUT_SECONDS", "5") or "5")
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
 SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY).strip() or DEFAULT_SECRET_KEY
 ALGORITHM = "HS256"
@@ -184,6 +188,14 @@ RATE_LIMIT_HITS = Counter(
     "qulte_rate_limit_hits_total",
     "Nombre de reponses 429",
     ["scope"],
+)
+POSTGRES_POOL_TIMEOUTS = Counter(
+    "qulte_postgres_pool_timeouts_total",
+    "Nombre de saturations du pool PostgreSQL",
+)
+POSTGRES_DIRECT_FALLBACKS = Counter(
+    "qulte_postgres_direct_fallbacks_total",
+    "Nombre de connexions PostgreSQL directes ouvertes apres saturation du pool",
 )
 
 DEFAULT_RATE_LIMIT = (120, 60.0)
@@ -296,7 +308,18 @@ class PostgresCompatConnection:
         return self._conn.rollback()
 
     def close(self):
-        return self._conn.close()
+        if self._conn is None:
+            return None
+        conn = self._conn
+        self._conn = None
+        return conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
 
     def execute(self, query, params=None):
         cursor = self.cursor()
@@ -321,6 +344,13 @@ class PooledPostgresCompatConnection(PostgresCompatConnection):
                 conn.rollback()
         finally:
             return self._pool.putconn(conn)
+
+    def __del__(self):
+        # Last-resort protection for legacy routes that raise before conn.close().
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 class RealtimeConnectionManager:
@@ -541,13 +571,19 @@ async def startup_runtime_services():
                     min_size=POSTGRES_POOL_MIN_SIZE,
                     max_size=POSTGRES_POOL_MAX_SIZE,
                     timeout=POSTGRES_POOL_TIMEOUT_SECONDS,
+                    max_lifetime=POSTGRES_POOL_MAX_LIFETIME_SECONDS,
+                    max_idle=POSTGRES_POOL_MAX_IDLE_SECONDS,
+                    reconnect_timeout=POSTGRES_CONNECT_TIMEOUT_SECONDS,
+                    check=ConnectionPool.check_connection,
                     open=True,
                 )
                 logger.info(
-                    "Pool PostgreSQL actif min=%s max=%s timeout=%.1fs.",
+                    "Pool PostgreSQL actif min=%s max=%s timeout=%.1fs lifetime=%.0fs idle=%.0fs.",
                     POSTGRES_POOL_MIN_SIZE,
                     POSTGRES_POOL_MAX_SIZE,
                     POSTGRES_POOL_TIMEOUT_SECONDS,
+                    POSTGRES_POOL_MAX_LIFETIME_SECONDS,
+                    POSTGRES_POOL_MAX_IDLE_SECONDS,
                 )
             except Exception:
                 postgres_pool = None
@@ -606,11 +642,13 @@ def healthcheck():
     scraper_status_payload = get_json_app_setting(TMDB_WATCH_SCRAPER_STATUS_KEY) or {"status": "ok"}
     scraper_status = str(scraper_status_payload.get("status") or "ok")
     overall_status = "ok" if db_status == "ok" and redis_status != "error" and scraper_status != "warning" else "degraded"
+    pool_status = postgres_pool.get_stats() if postgres_pool is not None else None
     return {
         "status": overall_status,
         "database": db_status,
         "redis": redis_status,
         "database_mode": DATABASE_BACKEND,
+        "database_pool": pool_status,
         "watch_provider_scraper": scraper_status_payload,
     }
 
@@ -635,13 +673,28 @@ def execute_insert_and_get_id(cursor, query: str, params=()) -> int:
 def get_db_connection(*, row_factory: bool = False):
     if DATABASE_BACKEND == "postgres":
         if postgres_pool is not None:
-            return PooledPostgresCompatConnection(
-                postgres_pool,
-                postgres_pool.getconn(),
-                row_factory=row_factory,
-            )
+            try:
+                pooled_connection = postgres_pool.getconn()
+            except PoolTimeout:
+                POSTGRES_POOL_TIMEOUTS.inc()
+                pool_stats = postgres_pool.get_stats()
+                logger.error(
+                    "Pool PostgreSQL sature; connexion directe temporaire. stats=%s",
+                    pool_stats,
+                )
+                POSTGRES_DIRECT_FALLBACKS.inc()
+            else:
+                return PooledPostgresCompatConnection(
+                    postgres_pool,
+                    pooled_connection,
+                    row_factory=row_factory,
+                )
 
-        conn = psycopg.connect(DATABASE_URL)
+        conn = psycopg.connect(
+            DATABASE_URL,
+            connect_timeout=POSTGRES_CONNECT_TIMEOUT_SECONDS,
+            application_name="qulte-api-direct",
+        )
         return PostgresCompatConnection(conn, row_factory=row_factory)
 
     conn = sqlite3.connect(

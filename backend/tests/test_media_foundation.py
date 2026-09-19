@@ -24,6 +24,66 @@ EMPTY_PROVIDERS = {
 
 
 class MediaFoundationTests(unittest.TestCase):
+    def test_pooled_connection_is_returned_after_context_error(self):
+        class FakeNativeConnection:
+            closed = False
+
+            def __init__(self):
+                self.rollback_count = 0
+
+            def rollback(self):
+                self.rollback_count += 1
+
+        class FakePool:
+            def __init__(self):
+                self.returned = []
+
+            def putconn(self, connection):
+                self.returned.append(connection)
+
+        native_connection = FakeNativeConnection()
+        pool = FakePool()
+
+        with self.assertRaises(RuntimeError):
+            with main.PooledPostgresCompatConnection(
+                pool,
+                native_connection,
+                row_factory=False,
+            ):
+                raise RuntimeError("route failure")
+
+        self.assertEqual(native_connection.rollback_count, 1)
+        self.assertEqual(pool.returned, [native_connection])
+
+    def test_pool_timeout_uses_temporary_direct_connection(self):
+        class SaturatedPool:
+            def getconn(self):
+                raise main.PoolTimeout("pool saturated")
+
+            def get_stats(self):
+                return {"pool_size": 10, "pool_available": 0, "requests_waiting": 1}
+
+        class FakeNativeConnection:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        native_connection = FakeNativeConnection()
+        with patch.object(main, "DATABASE_BACKEND", "postgres"), \
+            patch.object(main, "DATABASE_URL", "postgresql://example.invalid/qulte"), \
+            patch.object(main, "postgres_pool", SaturatedPool()), \
+            patch.object(main.psycopg, "connect", return_value=native_connection) as connect:
+            connection = main.get_db_connection()
+
+        self.assertIsInstance(connection, main.PostgresCompatConnection)
+        self.assertNotIsInstance(connection, main.PooledPostgresCompatConnection)
+        connect.assert_called_once_with(
+            "postgresql://example.invalid/qulte",
+            connect_timeout=main.POSTGRES_CONNECT_TIMEOUT_SECONDS,
+            application_name="qulte-api-direct",
+        )
+
     def test_movie_and_tv_ids_are_disambiguated_by_media_type(self):
         movie = main.normalize_tmdb_media_item(
             {"id": 42, "media_type": "movie", "title": "Film", "vote_average": 7.2}
