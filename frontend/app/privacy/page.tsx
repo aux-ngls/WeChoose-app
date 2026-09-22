@@ -157,6 +157,12 @@ export default function PrivacyPage() {
         >
           Ouvrir la page support
         </Link>
+        <Link
+          href="/account-deletion"
+          className="ml-3 mt-5 inline-flex w-fit items-center rounded-full border border-red-300/20 bg-red-300/8 px-4 py-2 text-sm font-semibold text-red-100 transition hover:bg-red-300/12"
+        >
+          Supprimer un compte
+        </Link>
       </section>
     </main>
   );

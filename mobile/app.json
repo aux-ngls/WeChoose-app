@@ -24,6 +24,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#09090b"
       },
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
       "edgeToEdgeEnabled": true,
       "package": "dev.dury.qulte",
       "versionCode": 19

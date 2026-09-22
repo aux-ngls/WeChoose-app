@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import AppScreen from '../components/AppScreen';
 import FormField from '../components/FormField';
 import InlineBanner from '../components/InlineBanner';
 import QulteMark from '../components/QulteMark';
 import ScreenHeader from '../components/ScreenHeader';
 import { ApiError, confirmPasswordReset, requestPasswordReset } from '../api/client';
+import { WEB_URL } from '../api/config';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -25,6 +26,7 @@ export default function AuthScreen() {
   const [resetPassword, setResetPassword] = useState('');
   const [resetFeedback, setResetFeedback] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const accent = mode === 'login' ? theme.colors.secondaryAccent : theme.colors.accent;
   const accentText = mode === 'login' ? theme.colors.secondaryAccentText : theme.colors.accentText;
@@ -35,6 +37,11 @@ export default function AuthScreen() {
 
     if (!normalizedUsername || !normalizedPassword) {
       setError('Merci de remplir tous les champs.');
+      return;
+    }
+
+    if (mode === 'signup' && !acceptedTerms) {
+      setError("Tu dois accepter les conditions d’utilisation et la politique de confidentialité.");
       return;
     }
 
@@ -164,15 +171,43 @@ export default function AuthScreen() {
             placeholder="••••••••"
           />
           {mode === 'signup' ? (
-            <FormField
-              label="E-mail de récupération"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="toi@exemple.com"
-            />
+            <>
+              <FormField
+                label="E-mail de récupération"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="toi@exemple.com"
+              />
+              <View style={styles.termsRow}>
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: acceptedTerms }}
+                  accessibilityLabel="Accepter les conditions d’utilisation et la politique de confidentialité"
+                  onPress={() => setAcceptedTerms((current) => !current)}
+                  style={[
+                    styles.checkbox,
+                    { borderColor: acceptedTerms ? accent : theme.rgba.border },
+                    acceptedTerms && { backgroundColor: accent },
+                  ]}
+                >
+                  {acceptedTerms ? <Text style={[styles.checkmark, { color: accentText }]}>✓</Text> : null}
+                </Pressable>
+                <Text style={[styles.termsText, { color: theme.colors.textMuted }]}>
+                  J’accepte les{' '}
+                  <Text style={[styles.termsLink, { color: accent }]} onPress={() => void Linking.openURL(`${WEB_URL}/terms`)}>
+                    conditions d’utilisation
+                  </Text>{' '}
+                  et la{' '}
+                  <Text style={[styles.termsLink, { color: accent }]} onPress={() => void Linking.openURL(`${WEB_URL}/privacy`)}>
+                    politique de confidentialité
+                  </Text>
+                  .
+                </Text>
+              </View>
+            </>
           ) : null}
 
           {error ? <InlineBanner message={error} tone="error" /> : null}
@@ -323,6 +358,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkmark: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  termsLink: {
+    fontWeight: '800',
+    textDecorationLine: 'underline',
   },
   resetSection: {
     gap: 12,

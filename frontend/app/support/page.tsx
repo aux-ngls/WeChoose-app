@@ -14,8 +14,8 @@ const supportTopics = [
     body: 'Aide pour la création de compte, la connexion, la perte d’accès, la suppression de compte ou une information de profil incorrecte.',
   },
   {
-    title: 'Application iPhone',
-    body: 'Signalement d’un bug, d’un crash, d’un problème de notification, d’un souci TestFlight ou d’un comportement anormal dans l’application.',
+    title: 'Application mobile',
+    body: 'Signalement d’un bug, d’un crash, d’un problème de notification ou d’un comportement anormal sur iPhone ou Android.',
   },
   {
     title: 'Films et recommandations',
@@ -37,7 +37,7 @@ const supportTopics = [
 
 const usefulDetails = [
   'votre nom d’utilisateur Qulte ;',
-  'le modèle de votre iPhone et la version iOS si le problème est technique ;',
+  'le modèle de votre téléphone et sa version iOS ou Android si le problème est technique ;',
   'une description courte mais précise de ce qui s’est passé ;',
   'le nom du profil, du film, de la critique ou de la conversation concernée si la demande porte sur un contenu ;',
   'une capture d’écran si elle aide à comprendre le problème.',
@@ -53,7 +53,7 @@ export default function SupportPage() {
           </span>
           <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">Aide et contact</h1>
           <p className="text-sm leading-6 text-white/72 sm:text-base">
-            Cette page centralise les demandes liées à l’application Qulte, à la bêta iPhone, au compte utilisateur, aux contenus publiés et à la
+            Cette page centralise les demandes liées à l’application Qulte, au compte utilisateur, aux contenus publiés et à la
             confidentialité. Elle sert aussi de point de contact officiel pour les utilisateurs et pour l’examen de l’application.
           </p>
         </div>
