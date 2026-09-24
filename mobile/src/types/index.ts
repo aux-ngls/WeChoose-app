@@ -71,6 +71,7 @@ export interface SocialUser {
   following_count: number;
   reviews_count: number;
   is_following: boolean;
+  is_profile_public: boolean;
 }
 
 export interface BlockedUser {
@@ -171,6 +172,8 @@ export interface SocialProfile {
   favorites_count: number;
   is_following: boolean;
   is_self: boolean;
+  is_profile_public: boolean;
+  can_view_profile: boolean;
   profile_description: string;
   profile_genres: string[];
   profile_people: ProfileShowcasePerson[];
@@ -445,6 +448,10 @@ export interface ProfilePreferencesPayload {
   profile_movie_ids: number[];
   profile_soundtrack: ProfileShowcaseSoundtrack | null;
   owned_streaming_services?: string[];
+}
+
+export interface ProfileVisibilityPayload {
+  is_public: boolean;
 }
 
 export const FALLBACK_POSTER = 'https://via.placeholder.com/500x750?text=No+Image';

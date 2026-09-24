@@ -253,6 +253,7 @@ export default function ShareMovieScreen({
       following_count: 0,
       reviews_count: 0,
       is_following: false,
+      is_profile_public: false,
     });
   };
 

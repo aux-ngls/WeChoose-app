@@ -188,6 +188,43 @@ class MediaFoundationTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in payload], [5])
         self.assertEqual(payload[0]["media_type"], "tv")
 
+    def test_private_profile_content_requires_follow(self):
+        class FakeCursor:
+            def __init__(self, row):
+                self.row = row
+
+            def execute(self, query, params=None):
+                return None
+
+            def fetchone(self):
+                return self.row
+
+        self.assertFalse(main.can_view_profile_content(FakeCursor((False, False)), 1, 2))
+        self.assertTrue(main.can_view_profile_content(FakeCursor((False, True)), 1, 2))
+        self.assertTrue(main.can_view_profile_content(FakeCursor((True, False)), 1, 2))
+        self.assertTrue(main.can_view_profile_content(FakeCursor(None), 1, 1))
+
+    def test_public_social_feed_filters_on_profile_visibility(self):
+        class FakeConnection:
+            def cursor(self):
+                return object()
+
+            def close(self):
+                return None
+
+        with patch.object(main, "get_db_connection", return_value=FakeConnection()), \
+            patch.object(main, "fetch_serialized_reviews", return_value=[]) as fetch_reviews:
+            payload = main.social_feed(scope="public", current_user={"id": 7})
+
+        self.assertEqual(payload, [])
+        self.assertEqual(fetch_reviews.call_args.args[2], "u.is_profile_public = TRUE")
+
+    def test_invalid_social_feed_scope_is_rejected(self):
+        with self.assertRaises(HTTPException) as context:
+            main.social_feed(scope="unknown", current_user={"id": 7})
+
+        self.assertEqual(context.exception.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

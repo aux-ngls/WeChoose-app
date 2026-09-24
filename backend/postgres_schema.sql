@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE,
     password_hash TEXT,
     avatar_url TEXT,
-    email TEXT
+    email TEXT,
+    is_profile_public BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS user_preferences (

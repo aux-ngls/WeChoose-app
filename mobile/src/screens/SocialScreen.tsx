@@ -27,38 +27,59 @@ import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '..
 
 interface SocialCache {
   username: string;
-  reviews: SocialReview[];
+  feeds: Record<FeedScope, SocialReview[]>;
 }
+
+type FeedScope = 'friends' | 'public';
 
 let socialCache: SocialCache | null = null;
 const PERSISTED_SOCIAL_SCOPE = 'social-screen';
 const MAX_PERSISTED_REVIEWS = 30;
+const EMPTY_FEEDS: Record<FeedScope, SocialReview[]> = { friends: [], public: [] };
 
 export default function SocialScreen() {
   const { session, signOut } = useAuth();
   const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const initialCache = socialCache?.username === session?.username ? socialCache : null;
+  const [activeFeed, setActiveFeed] = useState<FeedScope>('friends');
   const persistentCacheKey = useMemo(
-    () => buildUserCacheKey(PERSISTED_SOCIAL_SCOPE, session?.username),
-    [session?.username],
+    () => buildUserCacheKey(`${PERSISTED_SOCIAL_SCOPE}:${activeFeed}`, session?.username),
+    [activeFeed, session?.username],
   );
-  const [reviews, setReviews] = useState<SocialReview[]>(() => initialCache?.reviews ?? []);
-  const [loading, setLoading] = useState(() => !initialCache);
+  const [feeds, setFeeds] = useState<Record<FeedScope, SocialReview[]>>(
+    () => initialCache?.feeds ?? EMPTY_FEEDS,
+  );
+  const reviews = feeds[activeFeed];
+  const [loadingFeeds, setLoadingFeeds] = useState<FeedScope[]>(
+    () => initialCache?.feeds.friends.length ? [] : ['friends'],
+  );
+  const loading = loadingFeeds.includes(activeFeed);
   const [likingReviewIds, setLikingReviewIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [quickAddMovie, setQuickAddMovie] = useState<QuickAddMovieTarget | null>(null);
-  const reviewsRef = useRef(reviews);
+  const feedsRef = useRef(feeds);
 
   useEffect(() => {
-    reviewsRef.current = reviews;
+    feedsRef.current = feeds;
     void prefetchPosterUrls(reviews.map((review) => review.poster_url), 18);
     if (session) {
       preloadMovieDetails(session.token, reviews.slice(0, 8).map((review) => review.movie_id));
     }
-  }, [reviews, session]);
+  }, [feeds, reviews, session]);
+
+  const commitFeeds = useCallback((updater: (current: Record<FeedScope, SocialReview[]>) => Record<FeedScope, SocialReview[]>) => {
+    setFeeds((current) => {
+      const nextFeeds = updater(current);
+      feedsRef.current = nextFeeds;
+      if (session) {
+        socialCache = { username: session.username, feeds: nextFeeds };
+      }
+      return nextFeeds;
+    });
+  }, [session]);
 
   useEffect(() => {
     if (!session) {
@@ -72,18 +93,16 @@ export default function SocialScreen() {
         return;
       }
 
-      socialCache = {
-        username: session.username,
-        reviews: cachedReviews,
-      };
-      setReviews((current) => (current.length > 0 ? current : cachedReviews));
-      setLoading((current) => (reviewsRef.current.length > 0 ? current : false));
+      commitFeeds((current) => current[activeFeed].length > 0
+        ? current
+        : { ...current, [activeFeed]: cachedReviews });
+      setLoadingFeeds((current) => current.filter((scope) => scope !== activeFeed));
     })();
 
     return () => {
       active = false;
     };
-  }, [persistentCacheKey, session]);
+  }, [activeFeed, commitFeeds, persistentCacheKey, session]);
 
   useEffect(() => {
     if (!session || reviews.length === 0) {
@@ -104,43 +123,31 @@ export default function SocialScreen() {
     return () => clearTimeout(timeout);
   }, [feedback]);
 
-  const updateSocialCache = useCallback((next: Partial<Omit<SocialCache, 'username'>>) => {
+  const loadFeed = useCallback(async (scope: FeedScope = activeFeed) => {
     if (!session) {
       return;
     }
 
-    socialCache = {
-      username: session.username,
-      reviews: next.reviews ?? reviewsRef.current,
-    };
-  }, [session]);
-
-  const loadFeed = useCallback(async () => {
-    if (!session) {
-      return;
-    }
-
-    if (reviewsRef.current.length === 0) {
-      setLoading(true);
+    if (feedsRef.current[scope].length === 0) {
+      setLoadingFeeds((current) => current.includes(scope) ? current : [...current, scope]);
     }
 
     try {
-      const payload = await fetchSocialFeed(session.token);
-      updateSocialCache({ reviews: payload });
-      setReviews(payload);
+      const payload = await fetchSocialFeed(session.token, scope);
+      commitFeeds((current) => ({ ...current, [scope]: payload }));
       setError('');
     } catch (fetchError) {
       if (fetchError instanceof ApiError && fetchError.status === 401) {
         await signOut();
         return;
       }
-      if (reviewsRef.current.length === 0) {
+      if (feedsRef.current[scope].length === 0) {
         setError('Impossible de charger le feed social.');
       }
     } finally {
-      setLoading(false);
+      setLoadingFeeds((current) => current.filter((item) => item !== scope));
     }
-  }, [session, signOut, updateSocialCache]);
+  }, [activeFeed, commitFeeds, session, signOut]);
 
   const refreshSocial = useCallback(async () => {
     setRefreshing(true);
@@ -172,15 +179,18 @@ export default function SocialScreen() {
     setLikingReviewIds((current) => [...current, reviewId]);
     try {
       const payload = await toggleReviewLike(session.token, reviewId);
-      setReviews((current) => {
-        const nextReviews = current.map((review) =>
+      commitFeeds((current) => ({
+        friends: current.friends.map((review) =>
           review.id === reviewId
             ? { ...review, liked_by_me: payload.liked, likes_count: payload.likes_count }
             : review,
-        );
-        updateSocialCache({ reviews: nextReviews });
-        return nextReviews;
-      });
+        ),
+        public: current.public.map((review) =>
+          review.id === reviewId
+            ? { ...review, liked_by_me: payload.liked, likes_count: payload.likes_count }
+            : review,
+        ),
+      }));
       setError('');
     } catch (likeError) {
       if (likeError instanceof ApiError && likeError.status === 401) {
@@ -191,7 +201,7 @@ export default function SocialScreen() {
     } finally {
       setLikingReviewIds((current) => current.filter((id) => id !== reviewId));
     }
-  }, [likingReviewIds, session, signOut, updateSocialCache]);
+  }, [commitFeeds, likingReviewIds, session, signOut]);
 
   const handleReportReview = useCallback(async (review: SocialReview, reason: ReportReason) => {
     if (!session || review.author.username === session.username) {
@@ -246,10 +256,50 @@ export default function SocialScreen() {
         <Ionicons name="chevron-forward" size={18} color={theme.colors.accentText} />
       </Pressable>
 
+      <View style={[styles.feedTabs, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        {([
+          { value: 'friends' as const, label: 'Amis', icon: 'people-outline' as const },
+          { value: 'public' as const, label: 'Public', icon: 'earth-outline' as const },
+        ]).map((tab) => {
+          const isActive = activeFeed === tab.value;
+          return (
+            <Pressable
+              key={tab.value}
+              style={[
+                styles.feedTab,
+                isActive && { backgroundColor: theme.colors.accent },
+              ]}
+              onPress={() => {
+                setError('');
+                if (feedsRef.current[tab.value].length === 0) {
+                  setLoadingFeeds((current) => current.includes(tab.value) ? current : [...current, tab.value]);
+                }
+                setActiveFeed(tab.value);
+              }}
+            >
+              <Ionicons
+                name={tab.icon}
+                size={17}
+                color={isActive ? theme.colors.accentText : theme.colors.textMuted}
+              />
+              <Text style={[styles.feedTabLabel, { color: isActive ? theme.colors.accentText : theme.colors.textMuted }]}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={[styles.feedDescription, { color: theme.colors.textMuted }]}>
+        {activeFeed === 'friends'
+          ? 'Les critiques des personnes que tu suis.'
+          : 'Découvre les critiques des profils publics.'}
+      </Text>
+
       {loading && reviews.length === 0 ? <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text> : null}
 
       {!loading && reviews.length === 0 ? (
-        <EmptyStateCard title="Aucune critique" />
+        <EmptyStateCard title={activeFeed === 'friends' ? 'Aucune critique de tes amis' : 'Aucune critique publique'} />
       ) : (
         <View style={styles.feedList}>
           {reviews.map((item) => (
@@ -367,6 +417,34 @@ const styles = StyleSheet.create({
     color: '#190713',
     fontSize: 15,
     fontWeight: '900',
+  },
+  feedTabs: {
+    flexDirection: 'row',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 5,
+  },
+  feedTab: {
+    flex: 1,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+  },
+  feedTabLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  feedDescription: {
+    marginTop: -3,
+    paddingHorizontal: 4,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   composeButtonSubtitle: {
     color: 'rgba(25,7,19,0.70)',

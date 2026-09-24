@@ -870,6 +870,9 @@ def init_postgres_db():
         cursor.execute(schema_file.read())
     cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
     cursor.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_public BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    cursor.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users ((lower(email))) WHERE email IS NOT NULL AND email <> ''"
     )
     cursor.execute(
@@ -946,6 +949,7 @@ def init_sqlite_db():
                         password_hash TEXT)''')
     ensure_column("users", "avatar_url", "TEXT")
     ensure_column("users", "email", "TEXT")
+    ensure_column("users", "is_profile_public", "INTEGER NOT NULL DEFAULT 0")
     cursor.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL AND email != ''"
     )
@@ -1366,6 +1370,10 @@ class RecoveryEmailPayload(BaseModel):
     email: str = ""
 
 
+class ProfileVisibilityPayload(BaseModel):
+    is_public: bool
+
+
 class PasswordResetRequestPayload(BaseModel):
     identifier: str
 
@@ -1707,6 +1715,49 @@ def is_hidden_user_relationship(cursor, current_user_id: int, target_user_id: in
 def ensure_user_interaction_allowed(cursor, current_user_id: int, target_user_id: int):
     if is_hidden_user_relationship(cursor, current_user_id, target_user_id):
         raise HTTPException(status_code=403, detail="Interaction indisponible pour ce compte.")
+
+
+def can_view_profile_content(cursor, current_user_id: int, target_user_id: int) -> bool:
+    if int(current_user_id) == int(target_user_id):
+        return True
+
+    cursor.execute(
+        """
+        SELECT
+            u.is_profile_public,
+            EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = {param} AND f.followed_id = u.id
+            ) AS is_following
+        FROM users u
+        WHERE u.id = {param}
+        """.format(param=SQL_PARAM),
+        (int(current_user_id), int(target_user_id)),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return False
+    return bool(row_get_value(row, "is_profile_public", 0)) or bool(
+        row_get_value(row, "is_following", 1)
+    )
+
+
+def ensure_review_visible(cursor, review_id: int, current_user_id: int) -> int:
+    cursor.execute(
+        f"SELECT user_id FROM reviews WHERE id = {SQL_PARAM}",
+        (int(review_id),),
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+
+    review_owner_id = int(row_get_value(row, "user_id", 0))
+    if is_hidden_user_relationship(cursor, current_user_id, review_owner_id):
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+    if not can_view_profile_content(cursor, current_user_id, review_owner_id):
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+    return review_owner_id
 
 
 def serialize_tmdb_person(person: dict) -> Optional[dict]:
@@ -2265,6 +2316,37 @@ def confirm_password_reset(payload: PasswordResetConfirmPayload):
 @app.get("/users/me")
 def read_users_me(current_user: dict = Depends(get_current_user)):
     return current_user
+
+
+@app.get("/users/me/profile-visibility")
+def get_profile_visibility(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT is_profile_public FROM users WHERE id = {SQL_PARAM}",
+        (current_user["id"],),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Profil introuvable")
+    return {"is_public": bool(row_get_value(row, "is_profile_public", 0))}
+
+
+@app.put("/users/me/profile-visibility")
+def update_profile_visibility(
+    payload: ProfileVisibilityPayload,
+    current_user: dict = Depends(get_current_user),
+):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"UPDATE users SET is_profile_public = {SQL_PARAM} WHERE id = {SQL_PARAM}",
+        (bool(payload.is_public), current_user["id"]),
+    )
+    conn.commit()
+    conn.close()
+    return {"is_public": bool(payload.is_public)}
 
 
 @app.get("/users/me/recovery-email")
@@ -4771,14 +4853,17 @@ def serialize_review_row(row: Any) -> dict:
 
 def serialize_user_row(row: Any) -> dict:
     row_keys = set(row.keys())
+    is_profile_public = bool(row["is_profile_public"]) if "is_profile_public" in row_keys else False
+    is_following = bool(row["is_following"])
     return {
         "id": row["id"],
         "username": row["username"],
         "avatar_url": row["avatar_url"] if "avatar_url" in row_keys else None,
         "followers_count": row["followers_count"],
         "following_count": row["following_count"],
-        "reviews_count": row["reviews_count"],
-        "is_following": bool(row["is_following"]),
+        "reviews_count": row["reviews_count"] if is_profile_public or is_following else 0,
+        "is_following": is_following,
+        "is_profile_public": is_profile_public,
     }
 
 
@@ -8333,6 +8418,7 @@ def social_users(
             u.id,
             u.username,
             u.avatar_url,
+            u.is_profile_public,
             (SELECT COUNT(*) FROM follows f WHERE f.followed_id = u.id) AS followers_count,
             (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
             (SELECT COUNT(*) FROM reviews r WHERE r.user_id = u.id) AS reviews_count,
@@ -8379,6 +8465,17 @@ def social_group_recommendations(
     if not selected_user_ids:
         raise HTTPException(status_code=400, detail="Aucun profil selectionne")
 
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    try:
+        for selected_user_id in selected_user_ids:
+            if is_hidden_user_relationship(cursor, current_user["id"], selected_user_id):
+                raise HTTPException(status_code=404, detail="Profil introuvable")
+            if not can_view_profile_content(cursor, current_user["id"], selected_user_id):
+                raise HTTPException(status_code=403, detail="Ce profil privé doit être suivi pour être ajouté au groupe")
+    finally:
+        conn.close()
+
     return build_group_recommendations(
         current_user_id=current_user["id"],
         selected_user_ids=selected_user_ids,
@@ -8404,6 +8501,7 @@ def social_profile(
             u.id,
             u.username,
             u.avatar_url,
+            u.is_profile_public,
             (SELECT COUNT(*) FROM follows f WHERE f.followed_id = u.id) AS followers_count,
             (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
             (SELECT COUNT(*) FROM reviews r WHERE r.user_id = u.id) AS reviews_count,
@@ -8426,14 +8524,22 @@ def social_profile(
         conn.close()
         raise HTTPException(status_code=404, detail="Profil introuvable")
 
-    reviews = fetch_serialized_reviews(
+    can_view_profile = can_view_profile_content(
         cursor,
         current_user["id"],
-        f"r.user_id = {SQL_PARAM}",
-        (profile_row["id"],),
-        safe_limit,
+        int(profile_row["id"]),
     )
-    preferences = get_user_preferences(cursor, int(profile_row["id"]))
+    reviews = []
+    preferences = {}
+    if can_view_profile:
+        reviews = fetch_serialized_reviews(
+            cursor,
+            current_user["id"],
+            f"r.user_id = {SQL_PARAM}",
+            (profile_row["id"],),
+            safe_limit,
+        )
+        preferences = get_user_preferences(cursor, int(profile_row["id"]))
     conn.close()
 
     return {
@@ -8442,10 +8548,12 @@ def social_profile(
         "avatar_url": profile_row["avatar_url"],
         "followers_count": profile_row["followers_count"],
         "following_count": profile_row["following_count"],
-        "reviews_count": profile_row["reviews_count"],
-        "favorites_count": profile_row["favorites_count"],
+        "reviews_count": profile_row["reviews_count"] if can_view_profile else 0,
+        "favorites_count": profile_row["favorites_count"] if can_view_profile else 0,
         "is_following": bool(profile_row["is_following"]),
         "is_self": profile_row["id"] == current_user["id"],
+        "is_profile_public": bool(profile_row["is_profile_public"]),
+        "can_view_profile": can_view_profile,
         **serialize_profile_preferences(preferences),
         "reviews": reviews,
     }
@@ -8711,25 +8819,41 @@ def unregister_web_push_subscription(
 
 
 @app.get("/social/feed")
-def social_feed(limit: int = 30, current_user: dict = Depends(get_current_user)):
+def social_feed(
+    limit: int = 30,
+    scope: str = "friends",
+    current_user: dict = Depends(get_current_user),
+):
     safe_limit = max(1, min(limit, 60))
+    normalized_scope = scope.strip().lower()
+    if normalized_scope not in {"friends", "public"}:
+        raise HTTPException(status_code=400, detail="Fil social invalide")
 
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    reviews = fetch_serialized_reviews(
-        cursor,
-        current_user["id"],
-        """
-        r.user_id = {param}
-        OR r.user_id IN (
-            SELECT followed_id
-            FROM follows
-            WHERE follower_id = {param}
+    if normalized_scope == "public":
+        reviews = fetch_serialized_reviews(
+            cursor,
+            current_user["id"],
+            "u.is_profile_public = TRUE",
+            (),
+            safe_limit,
         )
-        """.format(param=SQL_PARAM),
-        (current_user["id"], current_user["id"]),
-        safe_limit,
-    )
+    else:
+        reviews = fetch_serialized_reviews(
+            cursor,
+            current_user["id"],
+            """
+            r.user_id = {param}
+            OR r.user_id IN (
+                SELECT followed_id
+                FROM follows
+                WHERE follower_id = {param}
+            )
+            """.format(param=SQL_PARAM),
+            (current_user["id"], current_user["id"]),
+            safe_limit,
+        )
     conn.close()
     return reviews
 
@@ -8738,6 +8862,7 @@ def social_feed(limit: int = 30, current_user: dict = Depends(get_current_user))
 def get_social_review(review_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
+    ensure_review_visible(cursor, review_id, current_user["id"])
     reviews = fetch_serialized_reviews(cursor, current_user["id"], f"r.id = {SQL_PARAM}", (review_id,), 1)
     conn.close()
     if not reviews:
@@ -8940,10 +9065,7 @@ def delete_review(review_id: int, current_user: dict = Depends(get_current_user)
 def social_review_comments(review_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
-    cursor.execute(f"SELECT 1 FROM reviews WHERE id = {SQL_PARAM}", (review_id,))
-    if not cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=404, detail="Critique introuvable")
+    ensure_review_visible(cursor, review_id, current_user["id"])
 
     comments = fetch_review_comments(cursor, review_id, current_user["id"])
     conn.close()
@@ -8971,6 +9093,11 @@ def create_review_comment(
     if not review_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Critique introuvable")
+    review_owner_id = int(review_row["user_id"])
+    if not can_view_profile_content(cursor, current_user["id"], review_owner_id):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
+    ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
 
     parent_user_id = None
     if payload.parent_id is not None:
@@ -8993,8 +9120,6 @@ def create_review_comment(
         (review_id, current_user["id"], payload.parent_id, content),
     )
 
-    review_owner_id = int(review_row["user_id"])
-    ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
     review_notification_targets: list[int] = []
     reply_notification_targets: list[int] = []
     if review_owner_id != current_user["id"]:
@@ -9076,6 +9201,9 @@ def toggle_review_like(review_id: int, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Critique introuvable")
     review_owner_id = int(review_row["user_id"])
     review_title = str(review_row["title"] or "ce contenu")
+    if not can_view_profile_content(cursor, current_user["id"], review_owner_id):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Critique introuvable")
     ensure_user_interaction_allowed(cursor, current_user["id"], review_owner_id)
 
     cursor.execute(

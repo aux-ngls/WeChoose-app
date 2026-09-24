@@ -441,8 +441,11 @@ export async function searchMedia(token: string, query: string, mediaType: 'all'
   );
 }
 
-export async function fetchSocialFeed(token: string): Promise<SocialReview[]> {
-  return request<SocialReview[]>('/social/feed', undefined, token);
+export async function fetchSocialFeed(
+  token: string,
+  scope: 'friends' | 'public' = 'friends',
+): Promise<SocialReview[]> {
+  return request<SocialReview[]>(`/social/feed?scope=${scope}`, undefined, token);
 }
 
 export async function createReview(
@@ -727,6 +730,25 @@ export async function fetchSocialProfile(token: string, username: string): Promi
 
 export async function fetchProfilePreferences(token: string): Promise<ProfilePreferencesPayload> {
   return request<ProfilePreferencesPayload>('/profile/preferences', undefined, token);
+}
+
+export async function fetchProfileVisibility(token: string): Promise<{ is_public: boolean }> {
+  return request<{ is_public: boolean }>('/users/me/profile-visibility', undefined, token);
+}
+
+export async function saveProfileVisibility(
+  token: string,
+  isPublic: boolean,
+): Promise<{ is_public: boolean }> {
+  return request<{ is_public: boolean }>(
+    '/users/me/profile-visibility',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_public: isPublic }),
+    },
+    token,
+  );
 }
 
 export async function fetchRecoveryEmail(token: string): Promise<RecoveryEmailPayload> {

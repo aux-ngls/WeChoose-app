@@ -12,11 +12,13 @@ import {
   deleteAccount,
   fetchBlockedUsers,
   fetchProfilePreferences,
+  fetchProfileVisibility,
   fetchRecoveryEmail,
   resetRecommendationProfile,
   resetTestUserData,
   saveRecoveryEmail,
   saveProfilePreferences,
+  saveProfileVisibility,
   unblockUser,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -73,6 +75,9 @@ export default function SettingsScreen() {
   const [loadingRecoveryEmail, setLoadingRecoveryEmail] = useState(false);
   const [savingRecoveryEmail, setSavingRecoveryEmail] = useState(false);
   const [profilePreferences, setProfilePreferences] = useState<ProfilePreferencesPayload | null>(null);
+  const [isProfilePublic, setIsProfilePublic] = useState(false);
+  const [loadingProfileVisibility, setLoadingProfileVisibility] = useState(false);
+  const [savingProfileVisibility, setSavingProfileVisibility] = useState(false);
   const [loadingStreamingServices, setLoadingStreamingServices] = useState(false);
   const [savingStreamingServices, setSavingStreamingServices] = useState(false);
   const [ownedStreamingServices, setOwnedStreamingServices] = useState<string[]>([]);
@@ -153,6 +158,30 @@ export default function SettingsScreen() {
     }
   }, [session, signOut]);
 
+  const loadProfileVisibility = useCallback(async () => {
+    if (!session) {
+      setIsProfilePublic(false);
+      return;
+    }
+
+    setLoadingProfileVisibility(true);
+    try {
+      const payload = await fetchProfileVisibility(session.token);
+      setIsProfilePublic(payload.is_public);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: 'Impossible de charger la visibilité de ton profil.',
+      });
+    } finally {
+      setLoadingProfileVisibility(false);
+    }
+  }, [session, signOut]);
+
   const loadRecoveryEmail = useCallback(async () => {
     if (!session) {
       setRecoveryEmail('');
@@ -182,9 +211,40 @@ export default function SettingsScreen() {
       void loadNotificationStatus();
       void loadBlockedUsers();
       void loadProfilePreferences();
+      void loadProfileVisibility();
       void loadRecoveryEmail();
-    }, [loadBlockedUsers, loadNotificationStatus, loadProfilePreferences, loadRecoveryEmail]),
+    }, [loadBlockedUsers, loadNotificationStatus, loadProfilePreferences, loadProfileVisibility, loadRecoveryEmail]),
   );
+
+  const handleProfileVisibilityChange = async (nextIsPublic: boolean) => {
+    if (!session || savingProfileVisibility || nextIsPublic === isProfilePublic) {
+      return;
+    }
+
+    const previousValue = isProfilePublic;
+    setIsProfilePublic(nextIsPublic);
+    setSavingProfileVisibility(true);
+    try {
+      const payload = await saveProfileVisibility(session.token, nextIsPublic);
+      setIsProfilePublic(payload.is_public);
+      setFeedback({
+        tone: 'success',
+        message: payload.is_public ? 'Ton profil est maintenant public.' : 'Ton profil est maintenant privé.',
+      });
+    } catch (error) {
+      setIsProfilePublic(previousValue);
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        return;
+      }
+      setFeedback({
+        tone: 'error',
+        message: 'Impossible de modifier la visibilité de ton profil.',
+      });
+    } finally {
+      setSavingProfileVisibility(false);
+    }
+  };
 
   const handleThemePreferenceChange = async (preference: ThemePreference) => {
     if (savingThemePreference || preference === themePreference) {
@@ -631,6 +691,65 @@ export default function SettingsScreen() {
         <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
           Le choix est sauvegardé sur ce téléphone et s'applique aux écrans principaux de l'app.
         </Text>
+      </View>
+
+      <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="shield-outline" size={18} color={theme.colors.accent} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Confidentialité du profil</Text>
+          </View>
+          <Text style={[styles.currentBadge, { color: theme.colors.accent }]}>
+            {loadingProfileVisibility ? '...' : isProfilePublic ? 'Public' : 'Privé'}
+          </Text>
+        </View>
+
+        {loadingProfileVisibility ? (
+          <View style={styles.inlineLoaderRow}>
+            <ActivityIndicator color={theme.colors.text} />
+            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement de la visibilité...</Text>
+          </View>
+        ) : (
+          <View style={styles.optionsList}>
+            <Pressable
+              style={[
+                styles.optionCard,
+                { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+                isProfilePublic && { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
+              ]}
+              onPress={() => void handleProfileVisibilityChange(true)}
+              disabled={savingProfileVisibility}
+            >
+              <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }, isProfilePublic && { backgroundColor: theme.colors.accent }]}>
+                <Ionicons name="earth-outline" size={18} color={isProfilePublic ? theme.colors.accentText : theme.colors.accent} />
+              </View>
+              <View style={styles.optionBody}>
+                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Profil public</Text>
+                <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Tes critiques peuvent apparaître dans le fil Public.</Text>
+              </View>
+              {isProfilePublic ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} /> : null}
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.optionCard,
+                { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card },
+                !isProfilePublic && { borderColor: theme.colors.secondaryAccent, backgroundColor: theme.rgba.cardStrong },
+              ]}
+              onPress={() => void handleProfileVisibilityChange(false)}
+              disabled={savingProfileVisibility}
+            >
+              <View style={[styles.optionIcon, { borderColor: theme.colors.accentSoft }, !isProfilePublic && { backgroundColor: theme.colors.secondaryAccent }]}>
+                <Ionicons name="lock-closed-outline" size={18} color={!isProfilePublic ? theme.colors.secondaryAccentText : theme.colors.secondaryAccent} />
+              </View>
+              <View style={styles.optionBody}>
+                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>Profil privé</Text>
+                <Text style={[styles.optionDetail, { color: theme.colors.textMuted }]}>Ton contenu reste réservé à toi et aux personnes qui te suivent.</Text>
+              </View>
+              {!isProfilePublic ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.secondaryAccent} /> : null}
+            </Pressable>
+          </View>
+        )}
       </View>
 
       <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>

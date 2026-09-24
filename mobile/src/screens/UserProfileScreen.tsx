@@ -110,11 +110,10 @@ export default function UserProfileScreen() {
     try {
       if (profile.is_following) {
         await unfollowUser(session.token, profile.id);
-        setProfile((current) => current ? { ...current, is_following: false, followers_count: Math.max(0, current.followers_count - 1) } : current);
       } else {
         await followUser(session.token, profile.id);
-        setProfile((current) => current ? { ...current, is_following: true, followers_count: current.followers_count + 1 } : current);
       }
+      await loadProfile();
       setError('');
     } catch (followError) {
       if (followError instanceof ApiError && followError.status === 401) {
@@ -261,9 +260,21 @@ export default function UserProfileScreen() {
                 </View>
               )}
               <View style={styles.identityBody}>
-                <Text style={[styles.username, { color: theme.colors.text }]} numberOfLines={1}>@{profile.username}</Text>
+                <View style={styles.usernameRow}>
+                  <Text style={[styles.username, { color: theme.colors.text }]} numberOfLines={1}>@{profile.username}</Text>
+                  <View style={[styles.visibilityBadge, { backgroundColor: theme.rgba.card }]}>
+                    <Ionicons
+                      name={profile.is_profile_public ? 'earth-outline' : 'lock-closed-outline'}
+                      size={12}
+                      color={theme.colors.textMuted}
+                    />
+                    <Text style={[styles.visibilityBadgeLabel, { color: theme.colors.textMuted }]}>
+                      {profile.is_profile_public ? 'Public' : 'Privé'}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={[styles.description, { color: theme.colors.textSoft }]} numberOfLines={4}>
-                  {description || 'Aucune description pour le moment.'}
+                  {profile.can_view_profile ? (description || 'Aucune description pour le moment.') : 'Ce profil est privé.'}
                 </Text>
               </View>
             </View>
@@ -309,6 +320,18 @@ export default function UserProfileScreen() {
               </View>
             ) : null}
           </View>
+
+          {!profile.can_view_profile ? (
+            <View style={[styles.privateProfileCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+              <Ionicons name="lock-closed-outline" size={26} color={theme.colors.secondaryAccent} />
+              <View style={styles.privateProfileBody}>
+                <Text style={[styles.privateProfileTitle, { color: theme.colors.text }]}>Profil privé</Text>
+                <Text style={[styles.privateProfileText, { color: theme.colors.textMuted }]}>
+                  Suis @{profile.username} pour voir ses films favoris et ses critiques.
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {profile.profile_movies.length > 0 ? (
             <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
@@ -366,7 +389,7 @@ export default function UserProfileScreen() {
             </View>
           ) : null}
 
-          <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
+          {profile.can_view_profile ? <View style={[styles.sectionCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Critiques</Text>
             {profile.reviews.length > 0 ? (
               <View style={styles.reviewsList}>
@@ -405,7 +428,7 @@ export default function UserProfileScreen() {
             ) : (
               <EmptyStateCard title="Aucune critique" />
             )}
-          </View>
+          </View> : null}
         </>
       ) : null}
       <MovieQuickAddModal
@@ -481,10 +504,30 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: 8,
   },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   username: {
     color: '#ffffff',
     fontSize: 24,
     fontWeight: '900',
+  },
+  visibilityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  visibilityBadgeLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   description: {
     color: '#fce7f3',
@@ -566,6 +609,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  privateProfileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 18,
+  },
+  privateProfileBody: {
+    flex: 1,
+    gap: 4,
+  },
+  privateProfileTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  privateProfileText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
   },
   sectionCard: {
     gap: 14,
