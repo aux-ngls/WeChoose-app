@@ -68,8 +68,21 @@ const INITIAL_PLAYLIST_PAGE_SIZE = 120;
 const PLAYLIST_PAGE_SIZE = 72;
 const SEARCH_DEBOUNCE_MS = 220;
 const PERSISTED_PLAYLIST_SCOPE = 'playlist-details-screen-v2';
+const MAX_MEMORY_CACHE_ENTRIES = 24;
 
 const playlistMoviesCache = new Map<string, PlaylistCacheEntry>();
+
+function writePlaylistMemoryCache(cacheKey: string, entry: PlaylistCacheEntry) {
+  playlistMoviesCache.delete(cacheKey);
+  playlistMoviesCache.set(cacheKey, entry);
+  while (playlistMoviesCache.size > MAX_MEMORY_CACHE_ENTRIES) {
+    const oldestKey = playlistMoviesCache.keys().next().value;
+    if (typeof oldestKey !== 'string') {
+      break;
+    }
+    playlistMoviesCache.delete(oldestKey);
+  }
+}
 
 const MEDIA_FILTER_OPTIONS: Array<{ key: PlaylistMediaFilter; label: string }> = [
   { key: 'all', label: 'Tout' },
@@ -155,7 +168,8 @@ export default function PlaylistDetailsScreen({
   const nextOffsetRef = useRef(nextOffset);
   const bufferedPageRef = useRef(bufferedPage);
   const generationRef = useRef(0);
-  const prefetchInFlightRef = useRef(false);
+  const prefetchInFlightRef = useRef<string | null>(null);
+  const activeRequestControllersRef = useRef(new Set<AbortController>());
   const cacheKey = useMemo(
     () => buildPlaylistCacheKey(route.params.playlistId, sortMode, debouncedQuery, onlyOwnedStreamingServices, mediaFilter),
     [debouncedQuery, mediaFilter, onlyOwnedStreamingServices, route.params.playlistId, sortMode],
@@ -168,6 +182,23 @@ export default function PlaylistDetailsScreen({
     () => buildUserCacheKey(PERSISTED_PLAYLIST_SCOPE, session?.username, dataCacheKey),
     [dataCacheKey, session?.username],
   );
+  const shouldUsePersistentCache = !debouncedQuery && !onlyOwnedStreamingServices && mediaFilter === 'all';
+
+  const abortActiveRequests = useCallback(() => {
+    for (const controller of activeRequestControllersRef.current) {
+      controller.abort();
+    }
+    activeRequestControllersRef.current.clear();
+    prefetchInFlightRef.current = null;
+  }, []);
+
+  const beginRequestGeneration = useCallback(() => {
+    abortActiveRequests();
+    generationRef.current += 1;
+    return generationRef.current;
+  }, [abortActiveRequests]);
+
+  useEffect(() => abortActiveRequests, [abortActiveRequests]);
 
   useEffect(() => {
     moviesRef.current = movies;
@@ -224,11 +255,22 @@ export default function PlaylistDetailsScreen({
       nextOffset,
       bufferedPage,
     };
-    playlistMoviesCache.set(dataCacheKey, cacheEntry);
-    if (session && movies.length > 0) {
+    writePlaylistMemoryCache(dataCacheKey, cacheEntry);
+    if (session && movies.length > 0 && shouldUsePersistentCache && dataCacheKey === cacheKey) {
       void writePersistentCache(persistentDataCacheKey, cacheEntry);
     }
-  }, [bufferedPage, dataCacheKey, hasMore, movies, nextOffset, persistentDataCacheKey, session, totalCount]);
+  }, [
+    bufferedPage,
+    cacheKey,
+    dataCacheKey,
+    hasMore,
+    movies,
+    nextOffset,
+    persistentDataCacheKey,
+    session,
+    shouldUsePersistentCache,
+    totalCount,
+  ]);
 
   useEffect(() => {
     if (!canReorder && reorderingMovieId) {
@@ -242,20 +284,32 @@ export default function PlaylistDetailsScreen({
         return null;
       }
 
-      const payload = await fetchPlaylistMoviesPage(session.token, route.params.playlistId, {
-        limit,
-        offset,
-        sort: sortMode,
-        query: debouncedQuery,
-        onlyOwnedStreamingServices,
-        mediaTypeFilter: mediaFilter,
-      });
+      const controller = new AbortController();
+      activeRequestControllersRef.current.add(controller);
+      try {
+        const payload = await fetchPlaylistMoviesPage(session.token, route.params.playlistId, {
+          limit,
+          offset,
+          sort: sortMode,
+          query: debouncedQuery,
+          onlyOwnedStreamingServices,
+          mediaTypeFilter: mediaFilter,
+          signal: controller.signal,
+        });
 
-      if (generation !== generationRef.current) {
-        return null;
+        if (generation !== generationRef.current) {
+          return null;
+        }
+
+        return payload;
+      } catch (fetchError) {
+        if (controller.signal.aborted) {
+          return null;
+        }
+        throw fetchError;
+      } finally {
+        activeRequestControllersRef.current.delete(controller);
       }
-
-      return payload;
     },
     [debouncedQuery, mediaFilter, onlyOwnedStreamingServices, route.params.playlistId, session, sortMode],
   );
@@ -280,11 +334,12 @@ export default function PlaylistDetailsScreen({
 
   const startBackgroundPrefetch = useCallback(
     async (generation: number, requestCacheKey: string, offset: number, shouldPrefetch: boolean) => {
-      if (!shouldPrefetch || prefetchInFlightRef.current) {
+      const prefetchKey = `${generation}:${requestCacheKey}:${offset}`;
+      if (!shouldPrefetch || prefetchInFlightRef.current !== null) {
         return;
       }
 
-      prefetchInFlightRef.current = true;
+      prefetchInFlightRef.current = prefetchKey;
       try {
         const payload = await fetchPage(offset, PLAYLIST_PAGE_SIZE, generation);
         if (!payload) {
@@ -301,7 +356,9 @@ export default function PlaylistDetailsScreen({
           await signOut();
         }
       } finally {
-        prefetchInFlightRef.current = false;
+        if (prefetchInFlightRef.current === prefetchKey) {
+          prefetchInFlightRef.current = null;
+        }
       }
     },
     [fetchPage, signOut],
@@ -314,7 +371,6 @@ export default function PlaylistDetailsScreen({
       }
       setLoadingMore(false);
       setBufferedPage(null);
-      prefetchInFlightRef.current = false;
 
       try {
         const payload = await fetchPage(0, INITIAL_PLAYLIST_PAGE_SIZE, generation);
@@ -366,8 +422,7 @@ export default function PlaylistDetailsScreen({
       return;
     }
 
-    generationRef.current += 1;
-    const generation = generationRef.current;
+    const generation = beginRequestGeneration();
     const cachedPage = playlistMoviesCache.get(cacheKey);
     setIsSortMenuOpen(false);
     setIsMediaFilterMenuOpen(false);
@@ -376,22 +431,22 @@ export default function PlaylistDetailsScreen({
     if (cachedPage) {
       const filteredCachedMovies = applyMediaFilter(cachedPage.movies, mediaFilter);
       startTransition(() => setMovies(filteredCachedMovies));
-      setTotalCount(mediaFilter === 'all' ? cachedPage.totalCount : filteredCachedMovies.length);
+      setTotalCount(cachedPage.totalCount);
       setHasMore(cachedPage.hasMore);
       setNextOffset(cachedPage.nextOffset);
       setBufferedPage(cachedPage.bufferedPage);
       setDataCacheKey(cacheKey);
       setLoading(false);
       setLoadingMore(false);
-      if (!cachedPage.bufferedPage && cachedPage.hasMore) {
-        void startBackgroundPrefetch(generation, cacheKey, cachedPage.nextOffset, cachedPage.hasMore);
-      }
+      void loadInitialPage(generation, cacheKey, { silent: true, suppressError: true });
       return;
     }
 
     let active = true;
     void (async () => {
-      const persistedPage = await readPersistentCache<PlaylistCacheEntry>(persistentCacheKey);
+      const persistedPage = shouldUsePersistentCache
+        ? await readPersistentCache<PlaylistCacheEntry>(persistentCacheKey)
+        : null;
       if (!active || generation !== generationRef.current) {
         return;
       }
@@ -399,7 +454,7 @@ export default function PlaylistDetailsScreen({
       if (persistedPage?.movies?.length) {
         const filteredPersistedMovies = applyMediaFilter(persistedPage.movies, mediaFilter);
         startTransition(() => setMovies(filteredPersistedMovies));
-        setTotalCount(mediaFilter === 'all' ? persistedPage.totalCount : filteredPersistedMovies.length);
+        setTotalCount(persistedPage.totalCount);
         setHasMore(persistedPage.hasMore);
         setNextOffset(persistedPage.nextOffset);
         setBufferedPage(persistedPage.bufferedPage);
@@ -410,27 +465,34 @@ export default function PlaylistDetailsScreen({
         return;
       }
 
-      startTransition(() => setMovies([]));
-      setTotalCount(0);
-      setHasMore(false);
-      setNextOffset(0);
-      setBufferedPage(null);
-      setDataCacheKey(cacheKey);
-      void loadInitialPage(generation, cacheKey);
+      const hasVisibleMovies = moviesRef.current.length > 0;
+      if (!hasVisibleMovies) {
+        startTransition(() => setMovies([]));
+        setTotalCount(0);
+        setHasMore(false);
+        setNextOffset(0);
+        setBufferedPage(null);
+      }
+      void loadInitialPage(generation, cacheKey, { silent: hasVisibleMovies });
     })();
 
     return () => {
       active = false;
     };
-  }, [cacheKey, loadInitialPage, persistentCacheKey, session, startBackgroundPrefetch]);
+  }, [
+    beginRequestGeneration,
+    cacheKey,
+    loadInitialPage,
+    mediaFilter,
+    persistentCacheKey,
+    session,
+    shouldUsePersistentCache,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
       void loadOwnedStreamingServices();
-      if (session && moviesRef.current.length === 0) {
-        generationRef.current += 1;
-        void loadInitialPage(generationRef.current, cacheKey);
-      } else if (session && !bufferedPageRef.current && hasMoreRef.current) {
+      if (session && moviesRef.current.length > 0 && !bufferedPageRef.current && hasMoreRef.current) {
         void startBackgroundPrefetch(generationRef.current, cacheKey, nextOffsetRef.current, hasMoreRef.current);
       }
     }, [cacheKey, loadInitialPage, loadOwnedStreamingServices, session, startBackgroundPrefetch]),
@@ -439,12 +501,12 @@ export default function PlaylistDetailsScreen({
   const refreshPlaylist = useCallback(async () => {
     setRefreshing(true);
     try {
-      generationRef.current += 1;
-      await loadInitialPage(generationRef.current, cacheKey, { silent: moviesRef.current.length > 0 });
+      const generation = beginRequestGeneration();
+      await loadInitialPage(generation, cacheKey, { silent: moviesRef.current.length > 0 });
     } finally {
       setRefreshing(false);
     }
-  }, [cacheKey, loadInitialPage]);
+  }, [beginRequestGeneration, cacheKey, loadInitialPage]);
 
   const handleRemove = useCallback(async (item: SearchMovie) => {
     if (!session || !canRemove) {
@@ -489,8 +551,8 @@ export default function PlaylistDetailsScreen({
           void startBackgroundPrefetch(generationRef.current, cacheKey, nextOffsetRef.current, hasMoreRef.current);
         }
       } catch (actionError) {
-        generationRef.current += 1;
-        void loadInitialPage(generationRef.current, cacheKey, { silent: true });
+        const generation = beginRequestGeneration();
+        void loadInitialPage(generation, cacheKey, { silent: true });
         if (actionError instanceof ApiError && actionError.status === 401) {
           await signOut();
           return;
@@ -498,7 +560,7 @@ export default function PlaylistDetailsScreen({
         setError('Impossible de réordonner cette playlist.');
       }
     },
-    [cacheKey, loadInitialPage, route.params.playlistId, session, signOut, startBackgroundPrefetch],
+    [beginRequestGeneration, cacheKey, loadInitialPage, route.params.playlistId, session, signOut, startBackgroundPrefetch],
   );
 
   const handleReorderPress = useCallback(

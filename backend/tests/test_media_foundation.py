@@ -26,6 +26,48 @@ EMPTY_PROVIDERS = {
 
 
 class MediaFoundationTests(unittest.TestCase):
+    def make_playlist_connection(self):
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        connection.executescript(
+            """
+            CREATE TABLE playlists (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                name TEXT
+            );
+            CREATE TABLE playlist_items (
+                playlist_id INTEGER,
+                movie_id INTEGER,
+                media_type TEXT,
+                title TEXT,
+                poster_url TEXT,
+                rating REAL,
+                added_at TIMESTAMP,
+                sort_index INTEGER,
+                primary_genre TEXT,
+                subscription_provider_names TEXT,
+                metadata_updated_at TIMESTAMP
+            );
+            CREATE TABLE user_ratings (
+                user_id INTEGER,
+                movie_id INTEGER,
+                media_type TEXT,
+                rating REAL,
+                title TEXT,
+                poster_url TEXT,
+                primary_genre TEXT,
+                metadata_updated_at TIMESTAMP,
+                added_at TIMESTAMP
+            );
+            CREATE TABLE user_preferences (
+                user_id INTEGER PRIMARY KEY,
+                owned_streaming_services TEXT
+            );
+            """
+        )
+        return connection
+
     def test_pooled_connection_is_returned_after_context_error(self):
         class FakeNativeConnection:
             closed = False
@@ -343,6 +385,101 @@ class MediaFoundationTests(unittest.TestCase):
             main.social_feed(scope="unknown", current_user={"id": 7})
 
         self.assertEqual(context.exception.status_code, 400)
+
+    def test_playlist_browse_filters_and_searches_before_pagination(self):
+        connection = self.make_playlist_connection()
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO playlists VALUES (?, ?, ?)", (7, 42, "Grande playlist"))
+        cursor.executemany(
+            """
+            INSERT INTO playlist_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (7, 101, "movie", "Alpha", "poster-101", 7.0, "2026-01-01", 1, "Action", "[]", "2026-01-01"),
+                (7, 102, "tv", "Serie beta", "poster-102", 8.0, "2026-01-02", 2, "Drame", "[]", "2026-01-02"),
+                (7, 103, "movie", "Gamma", "poster-103", 6.0, "2026-01-03", 3, "Comedie", "[]", "2026-01-03"),
+                (7, 104, "tv", "Serie delta", "poster-104", 9.0, "2026-01-04", 4, "Drame", "[]", "2026-01-04"),
+                (7, 105, "movie", "Cible cachee", "poster-105", 8.5, "2026-01-05", 5, "Thriller", "[]", "2026-01-05"),
+            ],
+        )
+
+        with patch.object(main, "get_tmdb_media_details", side_effect=AssertionError("TMDB called while browsing")), \
+            patch.object(main, "get_tmdb_media_watch_providers", side_effect=AssertionError("TMDB providers called while browsing")), \
+            patch.object(main, "get_tmdb_tv_summary", side_effect=AssertionError("TMDB TV called while browsing")):
+            first_page = main.browse_playlist_rows(
+                cursor,
+                7,
+                42,
+                offset=0,
+                limit=2,
+                sort_mode="manual",
+                query="",
+                only_owned_streaming_services=False,
+                media_type_filter="all",
+            )
+            search_page = main.browse_playlist_rows(
+                cursor,
+                7,
+                42,
+                offset=0,
+                limit=2,
+                sort_mode="recent",
+                query="cible cachee",
+                only_owned_streaming_services=False,
+                media_type_filter="all",
+            )
+            movie_page = main.browse_playlist_rows(
+                cursor,
+                7,
+                42,
+                offset=0,
+                limit=10,
+                sort_mode="recent",
+                query="",
+                only_owned_streaming_services=False,
+                media_type_filter="movie",
+            )
+
+        self.assertEqual([item["id"] for item in first_page["items"]], [101, 102])
+        self.assertEqual(first_page["playlist_total_count"], 5)
+        self.assertTrue(first_page["has_more"])
+        self.assertEqual([item["id"] for item in search_page["items"]], [105])
+        self.assertEqual(search_page["playlist_total_count"], 1)
+        self.assertEqual([item["id"] for item in movie_page["items"]], [105, 103, 101])
+        self.assertFalse(movie_page["has_more"])
+        connection.close()
+
+    def test_watch_later_platform_filter_runs_in_database(self):
+        connection = self.make_playlist_connection()
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO playlists VALUES (?, ?, ?)", (9, 42, main.WATCH_LATER_NAME))
+        cursor.execute("INSERT INTO user_preferences VALUES (?, ?)", (42, '["Netflix", "Canal+"]'))
+        cursor.executemany(
+            "INSERT INTO playlist_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (9, 201, "movie", "Netflix movie", "poster-201", 7.5, "2026-01-01", 1, "Action", '["Netflix"]', "2026-01-01"),
+                (9, 202, "movie", "Prime movie", "poster-202", 8.0, "2026-01-02", 2, "Drame", '["Prime Video"]', "2026-01-02"),
+                (9, 203, "tv", "Canal series", "poster-203", 8.5, "2026-01-03", 3, "Drame", '["Canal+"]', "2026-01-03"),
+            ],
+        )
+
+        with patch.object(main, "get_tmdb_media_watch_providers", side_effect=AssertionError("TMDB providers called while filtering")):
+            payload = main.browse_playlist_rows(
+                cursor,
+                main.WATCH_LATER_SYSTEM_ID,
+                42,
+                offset=0,
+                limit=10,
+                sort_mode="recent",
+                query="",
+                only_owned_streaming_services=True,
+                media_type_filter="all",
+            )
+
+        self.assertEqual([item["id"] for item in payload["items"]], [203, 201])
+        self.assertEqual(payload["playlist_total_count"], 2)
+        self.assertFalse(payload["has_more"])
+        connection.close()
 
 
 if __name__ == "__main__":

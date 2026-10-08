@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS user_ratings (
     rating DOUBLE PRECISION,
     title TEXT,
     poster_url TEXT,
+    primary_genre TEXT,
+    metadata_updated_at TIMESTAMP,
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT user_ratings_media_pkey PRIMARY KEY (user_id, media_type, movie_id)
 );

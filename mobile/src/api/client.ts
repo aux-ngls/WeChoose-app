@@ -70,6 +70,13 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
   }
 
   const controller = new AbortController();
+  const externalSignal = init?.signal;
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal?.aborted) {
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener('abort', abortFromExternalSignal);
+  }
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
 
@@ -77,7 +84,7 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     response = await fetch(`${API_URL}${path}`, {
       ...init,
       headers,
-      signal: init?.signal ?? controller.signal,
+      signal: controller.signal,
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
@@ -86,6 +93,7 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     throw error;
   } finally {
     clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal);
   }
 
   const payload = await parseJson<unknown>(response);
@@ -814,6 +822,7 @@ export async function fetchPlaylistMoviesPage(
     query?: string;
     onlyOwnedStreamingServices?: boolean;
     mediaTypeFilter?: 'all' | MediaType;
+    signal?: AbortSignal;
   },
 ): Promise<PlaylistMoviesPage> {
   const params = new URLSearchParams();
@@ -831,7 +840,11 @@ export async function fetchPlaylistMoviesPage(
   if (options?.mediaTypeFilter && options.mediaTypeFilter !== 'all') {
     params.set('media_type_filter', options.mediaTypeFilter);
   }
-  return request<PlaylistMoviesPage>(`/playlists/${playlistId}/paged?${params.toString()}`, undefined, token);
+  return request<PlaylistMoviesPage>(
+    `/playlists/${playlistId}/paged?${params.toString()}`,
+    { signal: options?.signal },
+    token,
+  );
 }
 
 export async function removeMovieFromPlaylist(token: string, playlistId: number, movieId: number): Promise<void> {
