@@ -5729,6 +5729,8 @@ def serialize_social_ranking_item(row: Any, rank: int, metric: str) -> dict:
     people_count = int(row["people_count"] or 0)
     ratings_count = int(row["ratings_count"] or 0)
     activity_count = int(row["activity_count"] or 0)
+    title = decode_db_text(row["title"]).strip() or "Sans titre"
+    poster_url = decode_db_text(row["poster_url"]).strip()
     if metric == "most_watched":
         metric_label = (
             "1 membre l’a vu"
@@ -5746,8 +5748,8 @@ def serialize_social_ranking_item(row: Any, rank: int, metric: str) -> dict:
         "rank": rank,
         "movie_id": int(row["movie_id"]),
         "media_type": normalize_media_type(row["media_type"]),
-        "title": str(row["title"] or "Sans titre"),
-        "poster_url": str(row["poster_url"] or ""),
+        "title": title,
+        "poster_url": poster_url,
         "average_rating": round(average_rating, 2),
         "ratings_count": ratings_count,
         "people_count": people_count,

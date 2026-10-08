@@ -317,6 +317,27 @@ class MediaFoundationTests(unittest.TestCase):
         self.assertEqual(sections["trending"]["items"][0]["media_type"], "movie")
         connection.close()
 
+    def test_social_ranking_item_decodes_postgres_byte_values(self):
+        item = main.serialize_social_ranking_item(
+            {
+                "movie_id": 42,
+                "media_type": b"movie",
+                "title": "Le Fabuleux Destin d'Amélie Poulain".encode("utf-8"),
+                "poster_url": b"https://image.tmdb.org/t/p/w500/poster.jpg",
+                "average_rating": 4.5,
+                "ratings_count": 3,
+                "people_count": 3,
+                "activity_count": 3,
+            },
+            rank=1,
+            metric="top_rated",
+        )
+
+        self.assertEqual(item["title"], "Le Fabuleux Destin d'Amélie Poulain")
+        self.assertEqual(item["poster_url"], "https://image.tmdb.org/t/p/w500/poster.jpg")
+        self.assertEqual(item["media_type"], "movie")
+        self.assertNotIn("b'", item["title"])
+
     def test_invalid_social_feed_scope_is_rejected(self):
         with self.assertRaises(HTTPException) as context:
             main.social_feed(scope="unknown", current_user={"id": 7})
