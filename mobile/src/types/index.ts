@@ -98,6 +98,36 @@ export interface SocialReview {
   likes_count: number;
   liked_by_me: boolean;
   comments_count: number;
+  discovery_reason?: 'for_you' | 'popular';
+  discovery_label?: string;
+}
+
+export type SocialRankingKey = 'most_watched' | 'top_rated' | 'trending' | 'most_saved';
+
+export interface SocialRankingItem {
+  rank: number;
+  movie_id: number;
+  media_type: MediaType;
+  title: string;
+  poster_url: string;
+  average_rating: number;
+  ratings_count: number;
+  people_count: number;
+  activity_count: number;
+  metric_label: string;
+}
+
+export interface SocialRankingSection {
+  key: SocialRankingKey;
+  title: string;
+  subtitle: string;
+  items: SocialRankingItem[];
+}
+
+export interface SocialRankingsPayload {
+  generated_at: string;
+  media_type: 'all' | MediaType;
+  sections: SocialRankingSection[];
 }
 
 export interface SocialComment {

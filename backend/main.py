@@ -118,6 +118,8 @@ TMDB_WATCH_PROVIDERS_CACHE_TTL_SECONDS = 60 * 60 * 6
 TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 6
 WATCHMODE_SOURCES_CACHE_TTL_SECONDS = 60 * 60 * 6
 TMDB_WATCH_PAGE_LINKS_CACHE_TTL_SECONDS = 60 * 60 * 12
+SOCIAL_PUBLIC_CANDIDATE_LIMIT = 180
+SOCIAL_RANKINGS_CACHE_TTL_SECONDS = 60 * 5
 TMDB_WATCH_SCRAPER_STATUS_KEY = "tmdb_watch_scraper_status"
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
 news_highlights_cache: dict[int, tuple[float, dict]] = {}
@@ -126,6 +128,7 @@ tmdb_movie_details_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 tmdb_tv_watch_providers_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 tmdb_tv_details_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 watchmode_sources_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+social_rankings_cache: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
 TEST_AI_ALGORITHM_VARIANT = "seed_cluster_feedback_v1"
 GLOBAL_RECOMMENDATION_AI_ENABLED = True
 TEST_AI_DASHBOARD_USERNAME = "test"
@@ -211,6 +214,7 @@ STRICT_RATE_LIMITS = {
 rate_limit_events: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 rate_limit_lock = Lock()
 tmdb_cache_lock = Lock()
+social_rankings_cache_lock = Lock()
 notification_executor = ThreadPoolExecutor(max_workers=int(os.getenv("NOTIFICATION_WORKERS", "4") or "4"))
 DBIntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError) if psycopg is not None else (sqlite3.IntegrityError,)
 SQL_PARAM = "%s" if DATABASE_BACKEND == "postgres" else "?"
@@ -1062,6 +1066,9 @@ def init_sqlite_db():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_reviews_movie_id ON reviews(movie_id)"
     )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reviews_created_at ON reviews(created_at DESC)"
+    )
 
     # Table REVIEW_LIKES
     cursor.execute('''CREATE TABLE IF NOT EXISTS review_likes (
@@ -1254,7 +1261,13 @@ def init_sqlite_db():
         "CREATE INDEX IF NOT EXISTS idx_user_ratings_media ON user_ratings(user_id, media_type, movie_id)"
     )
     cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_ratings_rankings ON user_ratings(media_type, movie_id, rating, added_at DESC)"
+    )
+    cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_playlist_items_media ON playlist_items(playlist_id, media_type, movie_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_rankings ON playlist_items(media_type, movie_id, added_at DESC)"
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_reviews_media ON reviews(media_type, movie_id, created_at DESC)"
@@ -5506,6 +5519,382 @@ def fetch_serialized_reviews(cursor, current_user_id: int, where_clause: str, pa
     return [serialize_review_row(row) for row in cursor.fetchall()]
 
 
+def normalize_db_datetime(value: Any) -> datetime.datetime:
+    if isinstance(value, datetime.datetime):
+        parsed = value
+    elif isinstance(value, datetime.date):
+        parsed = datetime.datetime.combine(value, datetime.time.min)
+    else:
+        try:
+            parsed = datetime.datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return datetime.datetime.utcnow()
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def score_public_review_candidate(
+    candidate: dict[str, Any],
+    now: Optional[datetime.datetime] = None,
+) -> dict[str, float]:
+    reference_time = now or datetime.datetime.utcnow()
+    created_at = normalize_db_datetime(candidate.get("created_at"))
+    age_days = max(0.0, (reference_time - created_at).total_seconds() / 86400)
+    likes_count = max(0, int(candidate.get("likes_count") or 0))
+    comments_count = max(0, int(candidate.get("comments_count") or 0))
+
+    # Recent engagement defines relative buzz without requiring a large community.
+    freshness_score = max(0.0, 21.0 - age_days) * 0.18
+    buzz_score = likes_count * 3.0 + comments_count * 4.25 + freshness_score
+
+    affinity_score = 0.0
+    my_rating = candidate.get("my_rating")
+    if my_rating is not None:
+        affinity_score += 10.0
+        affinity_score += max(0.0, 2.5 - abs(float(my_rating) - float(candidate.get("rating") or 0)))
+    if candidate.get("same_media_saved"):
+        affinity_score += 7.0
+    if candidate.get("author_followed"):
+        affinity_score += 5.0
+    if candidate.get("author_engaged"):
+        affinity_score += 4.0
+
+    return {
+        "buzz_score": buzz_score,
+        "affinity_score": affinity_score,
+        "total_score": buzz_score + affinity_score * 1.65,
+    }
+
+
+def fetch_relevant_public_reviews(cursor, current_user_id: int, limit: int) -> list[dict]:
+    safe_limit = max(1, min(int(limit), 60))
+    candidate_limit = max(SOCIAL_PUBLIC_CANDIDATE_LIMIT, safe_limit * 5)
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
+    query = """
+        SELECT
+            r.id,
+            r.user_id,
+            u.username,
+            u.avatar_url,
+            r.movie_id,
+            r.media_type,
+            r.title,
+            r.poster_url,
+            r.rating,
+            r.content,
+            r.created_at,
+            (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id = r.id) AS likes_count,
+            EXISTS(
+                SELECT 1
+                FROM review_likes rl
+                WHERE rl.review_id = r.id AND rl.user_id = {param}
+            ) AS liked_by_me,
+            (SELECT COUNT(*) FROM comments c WHERE c.review_id = r.id) AS comments_count,
+            EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = {param} AND f.followed_id = r.user_id
+            ) AS author_followed,
+            (
+                SELECT ur.rating
+                FROM user_ratings ur
+                WHERE ur.user_id = {param}
+                  AND ur.media_type = r.media_type
+                  AND ur.movie_id = r.movie_id
+                LIMIT 1
+            ) AS my_rating,
+            EXISTS(
+                SELECT 1
+                FROM playlist_items pi
+                JOIN playlists p ON p.id = pi.playlist_id
+                WHERE p.user_id = {param}
+                  AND pi.media_type = r.media_type
+                  AND pi.movie_id = r.movie_id
+            ) AS same_media_saved,
+            EXISTS(
+                SELECT 1
+                FROM reviews previous_review
+                WHERE previous_review.user_id = r.user_id
+                  AND previous_review.id != r.id
+                  AND (
+                    EXISTS(
+                        SELECT 1
+                        FROM review_likes previous_like
+                        WHERE previous_like.review_id = previous_review.id
+                          AND previous_like.user_id = {param}
+                    )
+                    OR EXISTS(
+                        SELECT 1
+                        FROM comments previous_comment
+                        WHERE previous_comment.review_id = previous_review.id
+                          AND previous_comment.user_id = {param}
+                    )
+                  )
+            ) AS author_engaged
+        FROM reviews r
+        JOIN users u ON u.id = r.user_id
+        WHERE u.is_profile_public = TRUE
+          AND r.user_id != {param}
+    """.format(param=SQL_PARAM)
+    query_params: tuple[Any, ...] = (
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
+        current_user_id,
+    )
+    if hidden_user_ids:
+        placeholders = sql_placeholders(len(hidden_user_ids))
+        query += f" AND r.user_id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+
+    query += f" ORDER BY r.created_at DESC, r.id DESC LIMIT {SQL_PARAM}"
+    query_params = (*query_params, candidate_limit)
+    cursor.execute(query, query_params)
+
+    candidates: list[dict[str, Any]] = []
+    for row in cursor.fetchall():
+        serialized = serialize_review_row(row)
+        serialized["author_followed"] = bool(row["author_followed"])
+        serialized["my_rating"] = row["my_rating"]
+        serialized["same_media_saved"] = bool(row["same_media_saved"])
+        serialized["author_engaged"] = bool(row["author_engaged"])
+        serialized["_discovery_scores"] = score_public_review_candidate(serialized)
+        candidates.append(serialized)
+
+    if not candidates:
+        return []
+
+    popular_count = min(len(candidates), max(safe_limit, 24))
+    popular_review_ids = {
+        candidate["id"]
+        for candidate in sorted(
+            candidates,
+            key=lambda item: (
+                item["_discovery_scores"]["buzz_score"],
+                normalize_db_datetime(item["created_at"]),
+                item["id"],
+            ),
+            reverse=True,
+        )[:popular_count]
+    }
+
+    selected = [
+        candidate
+        for candidate in candidates
+        if candidate["_discovery_scores"]["affinity_score"] > 0
+        or candidate["id"] in popular_review_ids
+    ]
+    selected.sort(
+        key=lambda item: (
+            item["_discovery_scores"]["total_score"],
+            normalize_db_datetime(item["created_at"]),
+            item["id"],
+        ),
+        reverse=True,
+    )
+
+    payload: list[dict] = []
+    for candidate in selected[:safe_limit]:
+        scores = candidate.pop("_discovery_scores")
+        is_personalized = scores["affinity_score"] > 0
+        candidate["discovery_reason"] = "for_you" if is_personalized else "popular"
+        if candidate.get("my_rating") is not None:
+            candidate["discovery_label"] = "Vous l’avez vu aussi"
+        elif candidate.get("same_media_saved"):
+            candidate["discovery_label"] = "Dans vos envies"
+        elif is_personalized:
+            candidate["discovery_label"] = "Pour vous"
+        else:
+            candidate["discovery_label"] = "Populaire"
+        candidate.pop("author_followed", None)
+        candidate.pop("my_rating", None)
+        candidate.pop("same_media_saved", None)
+        candidate.pop("author_engaged", None)
+        payload.append(candidate)
+    return payload
+
+
+def invalidate_social_rankings_cache():
+    with social_rankings_cache_lock:
+        social_rankings_cache.clear()
+
+
+def serialize_social_ranking_item(row: Any, rank: int, metric: str) -> dict:
+    average_rating = float(row["average_rating"] or 0)
+    people_count = int(row["people_count"] or 0)
+    ratings_count = int(row["ratings_count"] or 0)
+    activity_count = int(row["activity_count"] or 0)
+    if metric == "most_watched":
+        metric_label = (
+            "1 membre l’a vu"
+            if people_count == 1
+            else f"{people_count} membres l’ont vu"
+        )
+    elif metric == "top_rated":
+        metric_label = f"{average_rating:.1f}/5 · {ratings_count} note{'s' if ratings_count != 1 else ''}"
+    elif metric == "most_saved":
+        metric_label = f"{people_count} ajout{'s' if people_count != 1 else ''} en playlist"
+    else:
+        metric_label = f"{activity_count} interaction{'s' if activity_count != 1 else ''} récente{'s' if activity_count != 1 else ''}"
+
+    return {
+        "rank": rank,
+        "movie_id": int(row["movie_id"]),
+        "media_type": normalize_media_type(row["media_type"]),
+        "title": str(row["title"] or "Sans titre"),
+        "poster_url": str(row["poster_url"] or ""),
+        "average_rating": round(average_rating, 2),
+        "ratings_count": ratings_count,
+        "people_count": people_count,
+        "activity_count": activity_count,
+        "metric_label": metric_label,
+    }
+
+
+def build_social_rankings(cursor, media_type: str, limit: int) -> dict:
+    safe_limit = max(4, min(int(limit), 16))
+    normalized_media_type = media_type.strip().lower()
+    if normalized_media_type not in {"all", *MEDIA_TYPES}:
+        raise HTTPException(status_code=400, detail="Type de contenu invalide")
+
+    media_filter = ""
+    media_params: tuple[Any, ...] = ()
+    if normalized_media_type != "all":
+        media_filter = f" AND media_type = {SQL_PARAM}"
+        media_params = (normalized_media_type,)
+
+    base_ratings_query = f"""
+        SELECT
+            media_type,
+            movie_id,
+            MAX(title) AS title,
+            MAX(poster_url) AS poster_url,
+            AVG(rating) AS average_rating,
+            COUNT(*) AS ratings_count,
+            COUNT(DISTINCT user_id) AS people_count,
+            COUNT(*) AS activity_count
+        FROM user_ratings
+        WHERE COALESCE(title, '') != ''{media_filter}
+        GROUP BY media_type, movie_id
+    """
+
+    cursor.execute(
+        base_ratings_query
+        + f" ORDER BY people_count DESC, average_rating DESC, movie_id DESC LIMIT {SQL_PARAM}",
+        (*media_params, safe_limit),
+    )
+    most_watched_rows = cursor.fetchall()
+
+    cursor.execute(
+        base_ratings_query
+        + f" HAVING COUNT(*) >= {SQL_PARAM} ORDER BY average_rating DESC, ratings_count DESC, movie_id DESC LIMIT {SQL_PARAM}",
+        (*media_params, 2, safe_limit),
+    )
+    top_rated_rows = cursor.fetchall()
+    if not top_rated_rows:
+        cursor.execute(
+            base_ratings_query
+            + f" ORDER BY average_rating DESC, ratings_count DESC, movie_id DESC LIMIT {SQL_PARAM}",
+            (*media_params, safe_limit),
+        )
+        top_rated_rows = cursor.fetchall()
+
+    saved_filter = ""
+    saved_params: tuple[Any, ...] = ()
+    if normalized_media_type != "all":
+        saved_filter = f" AND pi.media_type = {SQL_PARAM}"
+        saved_params = (normalized_media_type,)
+    cursor.execute(
+        f"""
+        SELECT
+            pi.media_type,
+            pi.movie_id,
+            MAX(pi.title) AS title,
+            MAX(pi.poster_url) AS poster_url,
+            AVG(COALESCE(pi.rating, 0)) AS average_rating,
+            0 AS ratings_count,
+            COUNT(DISTINCT p.user_id) AS people_count,
+            COUNT(*) AS activity_count
+        FROM playlist_items pi
+        JOIN playlists p ON p.id = pi.playlist_id
+        WHERE COALESCE(pi.title, '') != ''{saved_filter}
+        GROUP BY pi.media_type, pi.movie_id
+        ORDER BY people_count DESC, activity_count DESC, pi.movie_id DESC
+        LIMIT {SQL_PARAM}
+        """,
+        (*saved_params, safe_limit),
+    )
+    most_saved_rows = cursor.fetchall()
+
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+    activity_media_filter = ""
+    activity_params: tuple[Any, ...] = (cutoff, cutoff, cutoff)
+    if normalized_media_type != "all":
+        activity_media_filter = f" WHERE media_type = {SQL_PARAM}"
+        activity_params = (*activity_params, normalized_media_type)
+    cursor.execute(
+        f"""
+        SELECT
+            media_type,
+            movie_id,
+            MAX(title) AS title,
+            MAX(poster_url) AS poster_url,
+            AVG(CASE WHEN rating > 0 THEN rating ELSE NULL END) AS average_rating,
+            SUM(CASE WHEN event_type = 'rating' THEN 1 ELSE 0 END) AS ratings_count,
+            COUNT(DISTINCT user_id) AS people_count,
+            COUNT(*) AS activity_count
+        FROM (
+            SELECT media_type, movie_id, title, poster_url, rating, user_id, 'rating' AS event_type
+            FROM user_ratings
+            WHERE added_at >= {SQL_PARAM} AND COALESCE(title, '') != ''
+            UNION ALL
+            SELECT media_type, movie_id, title, poster_url, rating, user_id, 'review' AS event_type
+            FROM reviews
+            WHERE created_at >= {SQL_PARAM} AND COALESCE(title, '') != ''
+            UNION ALL
+            SELECT pi.media_type, pi.movie_id, pi.title, pi.poster_url, COALESCE(pi.rating, 0), p.user_id, 'playlist' AS event_type
+            FROM playlist_items pi
+            JOIN playlists p ON p.id = pi.playlist_id
+            WHERE pi.added_at >= {SQL_PARAM} AND COALESCE(pi.title, '') != ''
+        ) recent_activity
+        {activity_media_filter}
+        GROUP BY media_type, movie_id
+        ORDER BY people_count DESC, activity_count DESC, movie_id DESC
+        LIMIT {SQL_PARAM}
+        """,
+        (*activity_params, safe_limit),
+    )
+    trending_rows = cursor.fetchall()
+
+    section_specs = (
+        ("most_watched", "Les plus vus", "Les œuvres les plus regardées par la communauté", most_watched_rows),
+        ("top_rated", "Les mieux notés", "Les meilleures moyennes attribuées sur Qulte", top_rated_rows),
+        ("trending", "Tendances du moment", "Ce qui attire le plus la communauté ces 30 derniers jours", trending_rows),
+        ("most_saved", "Les plus ajoutés", "Les œuvres qui reviennent le plus dans les playlists", most_saved_rows),
+    )
+    return {
+        "generated_at": datetime.datetime.utcnow().isoformat(),
+        "media_type": normalized_media_type,
+        "sections": [
+            {
+                "key": key,
+                "title": title,
+                "subtitle": subtitle,
+                "items": [
+                    serialize_social_ranking_item(row, index, key)
+                    for index, row in enumerate(rows, start=1)
+                ],
+            }
+            for key, title, subtitle, rows in section_specs
+        ],
+    }
+
+
 def fetch_review_comments(cursor, review_id: int, current_user_id: int) -> list[dict]:
     hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
     query = """
@@ -6470,6 +6859,7 @@ def add_media_to_specific_playlist(
             conn.rollback()
 
     conn.close()
+    invalidate_social_rankings_cache()
     return {"status": "added"}
 
 
@@ -6513,6 +6903,7 @@ def remove_media_from_specific_playlist(
         )
     conn.commit()
     conn.close()
+    invalidate_social_rankings_cache()
     return {"status": "removed"}
 
 
@@ -6670,6 +7061,7 @@ def rate_media(media_type: str, media_id: int, rating: float, current_user: dict
         )
     conn.commit()
     conn.close()
+    invalidate_social_rankings_cache()
     return {"status": "rated"}
 
 
@@ -6715,6 +7107,7 @@ def delete_media_rating(media_type: str, media_id: int, current_user: dict):
         )
     conn.commit()
     conn.close()
+    invalidate_social_rankings_cache()
     return {"status": "removed"}
 
 
@@ -8832,13 +9225,7 @@ def social_feed(
     conn = get_db_connection(row_factory=True)
     cursor = conn.cursor()
     if normalized_scope == "public":
-        reviews = fetch_serialized_reviews(
-            cursor,
-            current_user["id"],
-            "u.is_profile_public = TRUE",
-            (),
-            safe_limit,
-        )
+        reviews = fetch_relevant_public_reviews(cursor, current_user["id"], safe_limit)
     else:
         reviews = fetch_serialized_reviews(
             cursor,
@@ -8856,6 +9243,37 @@ def social_feed(
         )
     conn.close()
     return reviews
+
+
+@app.get("/social/rankings")
+def social_rankings(
+    limit: int = 10,
+    media_type: str = "all",
+    current_user: dict = Depends(get_current_user),
+):
+    del current_user  # The ranking is global, authentication only controls access.
+    safe_limit = max(4, min(limit, 16))
+    normalized_media_type = media_type.strip().lower()
+    if normalized_media_type not in {"all", *MEDIA_TYPES}:
+        raise HTTPException(status_code=400, detail="Type de contenu invalide")
+
+    cache_key = (normalized_media_type, safe_limit)
+    now = time.time()
+    with social_rankings_cache_lock:
+        cached = social_rankings_cache.get(cache_key)
+        if cached and cached[0] > now:
+            return cached[1]
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    try:
+        payload = build_social_rankings(cursor, normalized_media_type, safe_limit)
+    finally:
+        conn.close()
+
+    with social_rankings_cache_lock:
+        social_rankings_cache[cache_key] = (now + SOCIAL_RANKINGS_CACHE_TTL_SECONDS, payload)
+    return payload
 
 
 @app.get("/social/reviews/{review_id}")
@@ -8960,6 +9378,7 @@ def create_review(review: ReviewCreate, current_user: dict = Depends(get_current
     if not created_reviews:
         raise HTTPException(status_code=500, detail="Impossible de relire la critique créée")
 
+    invalidate_social_rankings_cache()
     return created_reviews[0]
 
 
@@ -9034,6 +9453,7 @@ def update_review(
     if not updated_reviews:
         raise HTTPException(status_code=500, detail="Impossible de relire la critique modifiée")
 
+    invalidate_social_rankings_cache()
     return updated_reviews[0]
 
 
@@ -9058,6 +9478,7 @@ def delete_review(review_id: int, current_user: dict = Depends(get_current_user)
     )
     conn.commit()
     conn.close()
+    invalidate_social_rankings_cache()
     return {"status": "deleted"}
 
 

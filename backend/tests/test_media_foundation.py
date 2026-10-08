@@ -1,5 +1,7 @@
 import unittest
+import datetime
 import os
+import sqlite3
 import sys
 import tempfile
 from unittest.mock import patch
@@ -204,20 +206,116 @@ class MediaFoundationTests(unittest.TestCase):
         self.assertTrue(main.can_view_profile_content(FakeCursor((True, False)), 1, 2))
         self.assertTrue(main.can_view_profile_content(FakeCursor(None), 1, 1))
 
-    def test_public_social_feed_filters_on_profile_visibility(self):
+    def test_public_social_feed_uses_relevance_ranking(self):
+        cursor = object()
+
         class FakeConnection:
             def cursor(self):
-                return object()
+                return cursor
 
             def close(self):
                 return None
 
         with patch.object(main, "get_db_connection", return_value=FakeConnection()), \
-            patch.object(main, "fetch_serialized_reviews", return_value=[]) as fetch_reviews:
+            patch.object(main, "fetch_relevant_public_reviews", return_value=[]) as fetch_reviews:
             payload = main.social_feed(scope="public", current_user={"id": 7})
 
         self.assertEqual(payload, [])
-        self.assertEqual(fetch_reviews.call_args.args[2], "u.is_profile_public = TRUE")
+        fetch_reviews.assert_called_once_with(cursor, 7, 30)
+
+    def test_public_review_relevance_combines_buzz_and_affinity(self):
+        now = datetime.datetime(2026, 10, 8, 12, 0, 0)
+        popular = main.score_public_review_candidate(
+            {
+                "created_at": now.isoformat(),
+                "likes_count": 3,
+                "comments_count": 1,
+                "rating": 4.5,
+            },
+            now,
+        )
+        personalized = main.score_public_review_candidate(
+            {
+                "created_at": now.isoformat(),
+                "likes_count": 0,
+                "comments_count": 0,
+                "rating": 4.5,
+                "my_rating": 4.5,
+                "same_media_saved": True,
+            },
+            now,
+        )
+
+        self.assertGreater(personalized["affinity_score"], 0)
+        self.assertGreater(personalized["total_score"], popular["total_score"])
+
+    def test_social_rankings_are_built_from_community_activity(self):
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        cursor.executescript(
+            """
+            CREATE TABLE user_ratings (
+                user_id INTEGER,
+                media_type TEXT,
+                movie_id INTEGER,
+                rating REAL,
+                title TEXT,
+                poster_url TEXT,
+                added_at TIMESTAMP
+            );
+            CREATE TABLE playlists (id INTEGER, user_id INTEGER);
+            CREATE TABLE playlist_items (
+                playlist_id INTEGER,
+                media_type TEXT,
+                movie_id INTEGER,
+                rating REAL,
+                title TEXT,
+                poster_url TEXT,
+                added_at TIMESTAMP
+            );
+            CREATE TABLE reviews (
+                user_id INTEGER,
+                media_type TEXT,
+                movie_id INTEGER,
+                rating REAL,
+                title TEXT,
+                poster_url TEXT,
+                created_at TIMESTAMP
+            );
+            """
+        )
+        now = datetime.datetime.utcnow().isoformat()
+        cursor.executemany(
+            "INSERT INTO user_ratings VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (1, "movie", 10, 5.0, "Film commun", "poster-10", now),
+                (2, "movie", 10, 4.5, "Film commun", "poster-10", now),
+                (1, "tv", 20, 4.0, "Serie", "poster-20", now),
+            ],
+        )
+        cursor.executemany("INSERT INTO playlists VALUES (?, ?)", [(1, 1), (2, 2)])
+        cursor.executemany(
+            "INSERT INTO playlist_items VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (1, "movie", 10, 5.0, "Film commun", "poster-10", now),
+                (2, "movie", 10, 4.5, "Film commun", "poster-10", now),
+                (1, "tv", 20, 4.0, "Serie", "poster-20", now),
+            ],
+        )
+        cursor.execute(
+            "INSERT INTO reviews VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (1, "movie", 10, 5.0, "Film commun", "poster-10", now),
+        )
+
+        payload = main.build_social_rankings(cursor, "all", 10)
+        sections = {section["key"]: section for section in payload["sections"]}
+
+        self.assertEqual(set(sections), {"most_watched", "top_rated", "trending", "most_saved"})
+        self.assertEqual(sections["most_watched"]["items"][0]["movie_id"], 10)
+        self.assertEqual(sections["most_saved"]["items"][0]["people_count"], 2)
+        self.assertEqual(sections["trending"]["items"][0]["media_type"], "movie")
+        connection.close()
 
     def test_invalid_social_feed_scope_is_rejected(self):
         with self.assertRaises(HTTPException) as context:

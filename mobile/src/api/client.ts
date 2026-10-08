@@ -20,6 +20,7 @@ import type {
   SocialComment,
   SocialNotificationsPayload,
   SocialProfile,
+  SocialRankingsPayload,
   SocialReview,
   SocialUser,
   TestAiMetricsPayload,
@@ -446,6 +447,18 @@ export async function fetchSocialFeed(
   scope: 'friends' | 'public' = 'friends',
 ): Promise<SocialReview[]> {
   return request<SocialReview[]>(`/social/feed?scope=${scope}`, undefined, token);
+}
+
+export async function fetchSocialRankings(
+  token: string,
+  mediaType: 'all' | MediaType = 'all',
+  limit = 10,
+): Promise<SocialRankingsPayload> {
+  return request<SocialRankingsPayload>(
+    `/social/rankings?media_type=${mediaType}&limit=${limit}`,
+    undefined,
+    token,
+  );
 }
 
 export async function createReview(
