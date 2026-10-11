@@ -333,7 +333,6 @@ export default function SocialScreen() {
         </View>
         <View style={styles.composeButtonBody}>
           <Text style={[styles.composeButtonTitle, { color: theme.colors.accentText }]}>Nouvelle critique</Text>
-          <Text style={[styles.composeButtonSubtitle, { color: theme.colors.accentText }]}>Ton avis, ton cercle.</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.colors.accentText} />
       </Pressable>
@@ -371,14 +370,6 @@ export default function SocialScreen() {
         })}
       </View>
 
-      <Text style={[styles.feedDescription, { color: theme.colors.textMuted }]}>
-        {activeSection === 'friends'
-          ? 'Les critiques des personnes que tu suis.'
-          : activeSection === 'public'
-            ? 'Des critiques publiques populaires ou proches de tes goûts.'
-            : 'Les films et séries qui font vivre la communauté Qulte.'}
-      </Text>
-
       {activeSection === 'rankings' ? (
         <>
           {loadingRankings && visibleRankingSections.length === 0 ? (
@@ -391,10 +382,7 @@ export default function SocialScreen() {
             <View style={styles.rankingSections}>
               {visibleRankingSections.map((section) => (
                 <View key={section.key} style={styles.rankingSection}>
-                  <View style={styles.rankingSectionHeader}>
-                    <Text style={[styles.rankingSectionTitle, { color: theme.colors.text }]}>{section.title}</Text>
-                    <Text style={[styles.rankingSectionSubtitle, { color: theme.colors.textMuted }]}>{section.subtitle}</Text>
-                  </View>
+                  <Text style={[styles.rankingSectionTitle, { color: theme.colors.text }]}>{section.title}</Text>
                   <ScrollView
                     horizontal
                     nestedScrollEnabled
@@ -429,7 +417,9 @@ export default function SocialScreen() {
                           </View>
                         </View>
                         <Text style={[styles.rankingTitle, { color: theme.colors.text }]} numberOfLines={2}>{item.title}</Text>
-                        <Text style={[styles.rankingMetric, { color: theme.colors.textMuted }]} numberOfLines={2}>{item.metric_label}</Text>
+                        {section.key !== 'most_watched' ? (
+                          <Text style={[styles.rankingMetric, { color: theme.colors.textMuted }]} numberOfLines={2}>{item.metric_label}</Text>
+                        ) : null}
                       </Pressable>
                     ))}
                   </ScrollView>
@@ -594,19 +584,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
-  feedDescription: {
-    marginTop: -3,
-    paddingHorizontal: 4,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '700',
-  },
-  composeButtonSubtitle: {
-    color: 'rgba(25,7,19,0.70)',
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '700',
-  },
   helperText: {
     color: '#94a3b8',
     fontSize: 13,
@@ -617,18 +594,10 @@ const styles = StyleSheet.create({
   rankingSection: {
     gap: 12,
   },
-  rankingSectionHeader: {
-    gap: 3,
-  },
   rankingSectionTitle: {
     fontSize: 19,
     fontWeight: '900',
     letterSpacing: -0.3,
-  },
-  rankingSectionSubtitle: {
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '600',
   },
   rankingRow: {
     gap: 12,
