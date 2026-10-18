@@ -102,6 +102,49 @@ export interface SocialReview {
   discovery_label?: string;
 }
 
+export interface SocialActivityAuthor {
+  id: number;
+  username: string;
+  avatar_url: string | null;
+}
+
+export interface SocialActivityMedia {
+  id: number;
+  media_type: MediaType;
+  title: string;
+  poster_url: string;
+}
+
+interface SocialActivityBase {
+  id: string;
+  created_at: string;
+  author: SocialActivityAuthor;
+  discovery_reason?: 'for_you' | 'popular';
+  discovery_label?: string;
+}
+
+export interface SocialReviewActivity extends SocialActivityBase {
+  activity_type: 'review';
+  media: SocialActivityMedia;
+  review: SocialReview;
+}
+
+export interface SocialRatingActivity extends SocialActivityBase {
+  activity_type: 'rating';
+  media: SocialActivityMedia;
+  rating: number;
+}
+
+export interface SocialWatchLaterActivity extends SocialActivityBase {
+  activity_type: 'watch_later';
+  media_items: SocialActivityMedia[];
+}
+
+export type SocialActivityItem =
+  | SocialReviewActivity
+  | SocialRatingActivity
+  | SocialWatchLaterActivity;
+
 export type SocialRankingKey = 'most_watched' | 'top_rated' | 'trending' | 'most_saved';
 
 export interface SocialRankingItem {

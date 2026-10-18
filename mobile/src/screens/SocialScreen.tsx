@@ -11,7 +11,7 @@ import MovieQuickAddModal, { type QuickAddMovieTarget } from '../components/Movi
 import ScreenHeader from '../components/ScreenHeader';
 import {
   ApiError,
-  fetchSocialFeed,
+  fetchSocialActivity,
   fetchSocialRankings,
   preloadMediaDetails,
   reportReview,
@@ -20,15 +20,20 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import { useTheme } from '../theme/ThemeContext';
-import { type SocialRankingsPayload, type SocialReview } from '../types';
+import {
+  type SocialActivityItem,
+  type SocialActivityMedia,
+  type SocialRankingsPayload,
+  type SocialReview,
+} from '../types';
 import { REPORT_REASONS, type ReportReason } from '../utils/reporting';
-import { formatDate } from '../utils/format';
+import { formatRelativeDate } from '../utils/format';
 import { SOCIAL_REFRESH_EVENT } from '../utils/events';
 import { buildUserCacheKey, readPersistentCache, writePersistentCache } from '../utils/persistentCache';
 
 interface SocialCache {
   username: string;
-  feeds: Record<FeedScope, SocialReview[]>;
+  feeds: Record<FeedScope, SocialActivityItem[]>;
   rankings: SocialRankingsPayload | null;
 }
 
@@ -36,14 +41,20 @@ type FeedScope = 'friends' | 'public';
 type SocialSection = FeedScope | 'rankings';
 
 let socialCache: SocialCache | null = null;
-const PERSISTED_SOCIAL_SCOPE = 'social-screen';
-const MAX_PERSISTED_REVIEWS = 30;
-const EMPTY_FEEDS: Record<FeedScope, SocialReview[]> = { friends: [], public: [] };
+const PERSISTED_SOCIAL_SCOPE = 'social-screen-v2';
+const MAX_PERSISTED_ACTIVITIES = 30;
+const EMPTY_FEEDS: Record<FeedScope, SocialActivityItem[]> = { friends: [], public: [] };
 const SOCIAL_SECTIONS: Array<{ value: SocialSection; label: string }> = [
   { value: 'friends', label: 'Amis' },
   { value: 'public', label: 'Public' },
   { value: 'rankings', label: 'Classements' },
 ];
+
+function getActivityMedia(activities: SocialActivityItem[]): SocialActivityMedia[] {
+  return activities.flatMap((activity) => (
+    activity.activity_type === 'watch_later' ? activity.media_items : [activity.media]
+  ));
+}
 
 export default function SocialScreen() {
   const { session, signOut } = useAuth();
@@ -56,13 +67,13 @@ export default function SocialScreen() {
     () => buildUserCacheKey(`${PERSISTED_SOCIAL_SCOPE}:${activeFeed}`, session?.username),
     [activeFeed, session?.username],
   );
-  const [feeds, setFeeds] = useState<Record<FeedScope, SocialReview[]>>(
+  const [feeds, setFeeds] = useState<Record<FeedScope, SocialActivityItem[]>>(
     () => initialCache?.feeds ?? EMPTY_FEEDS,
   );
   const [rankings, setRankings] = useState<SocialRankingsPayload | null>(
     () => initialCache?.rankings ?? null,
   );
-  const reviews = feeds[activeFeed];
+  const activities = feeds[activeFeed];
   const [loadingFeeds, setLoadingFeeds] = useState<FeedScope[]>(
     () => initialCache?.feeds.friends.length ? [] : ['friends'],
   );
@@ -92,19 +103,20 @@ export default function SocialScreen() {
       return;
     }
 
-    void prefetchPosterUrls(reviews.map((review) => review.poster_url), 18);
+    const activityMedia = getActivityMedia(activities);
+    void prefetchPosterUrls(activityMedia.map((media) => media.poster_url), 24);
     if (session) {
-      preloadMediaDetails(session.token, reviews.slice(0, 8).map((review) => ({
-        id: review.movie_id,
-        media_type: review.media_type ?? 'movie',
-        title: review.title,
-        poster_url: review.poster_url,
-        rating: review.rating,
+      preloadMediaDetails(session.token, activityMedia.slice(0, 8).map((media) => ({
+        id: media.id,
+        media_type: media.media_type,
+        title: media.title,
+        poster_url: media.poster_url,
+        rating: 0,
       })));
     }
-  }, [activeSection, feeds, rankings, reviews, session]);
+  }, [activeSection, activities, feeds, rankings, session]);
 
-  const commitFeeds = useCallback((updater: (current: Record<FeedScope, SocialReview[]>) => Record<FeedScope, SocialReview[]>) => {
+  const commitFeeds = useCallback((updater: (current: Record<FeedScope, SocialActivityItem[]>) => Record<FeedScope, SocialActivityItem[]>) => {
     setFeeds((current) => {
       const nextFeeds = updater(current);
       feedsRef.current = nextFeeds;
@@ -130,14 +142,14 @@ export default function SocialScreen() {
 
     let active = true;
     void (async () => {
-      const cachedReviews = await readPersistentCache<SocialReview[]>(persistentCacheKey);
-      if (!active || !cachedReviews || cachedReviews.length === 0) {
+      const cachedActivities = await readPersistentCache<SocialActivityItem[]>(persistentCacheKey);
+      if (!active || !cachedActivities || cachedActivities.length === 0) {
         return;
       }
 
       commitFeeds((current) => current[activeFeed].length > 0
         ? current
-        : { ...current, [activeFeed]: cachedReviews });
+        : { ...current, [activeFeed]: cachedActivities });
       setLoadingFeeds((current) => current.filter((scope) => scope !== activeFeed));
     })();
 
@@ -147,15 +159,15 @@ export default function SocialScreen() {
   }, [activeFeed, activeSection, commitFeeds, persistentCacheKey, session]);
 
   useEffect(() => {
-    if (!session || activeSection === 'rankings' || reviews.length === 0) {
+    if (!session || activeSection === 'rankings' || activities.length === 0) {
       return;
     }
 
     void writePersistentCache(
       persistentCacheKey,
-      reviews.slice(0, MAX_PERSISTED_REVIEWS),
+      activities.slice(0, MAX_PERSISTED_ACTIVITIES),
     );
-  }, [activeSection, persistentCacheKey, reviews, session]);
+  }, [activeSection, activities, persistentCacheKey, session]);
 
   useEffect(() => {
     if (!feedback) {
@@ -175,7 +187,7 @@ export default function SocialScreen() {
     }
 
     try {
-      const payload = await fetchSocialFeed(session.token, scope);
+      const payload = await fetchSocialActivity(session.token, scope);
       commitFeeds((current) => ({ ...current, [scope]: payload }));
       setError('');
     } catch (fetchError) {
@@ -258,17 +270,21 @@ export default function SocialScreen() {
     setLikingReviewIds((current) => [...current, reviewId]);
     try {
       const payload = await toggleReviewLike(session.token, reviewId);
+      const updateActivity = (activity: SocialActivityItem): SocialActivityItem => (
+        activity.activity_type === 'review' && activity.review.id === reviewId
+          ? {
+              ...activity,
+              review: {
+                ...activity.review,
+                liked_by_me: payload.liked,
+                likes_count: payload.likes_count,
+              },
+            }
+          : activity
+      );
       commitFeeds((current) => ({
-        friends: current.friends.map((review) =>
-          review.id === reviewId
-            ? { ...review, liked_by_me: payload.liked, likes_count: payload.likes_count }
-            : review,
-        ),
-        public: current.public.map((review) =>
-          review.id === reviewId
-            ? { ...review, liked_by_me: payload.liked, likes_count: payload.likes_count }
-            : review,
-        ),
+        friends: current.friends.map(updateActivity),
+        public: current.public.map(updateActivity),
       }));
       setError('');
     } catch (likeError) {
@@ -430,103 +446,273 @@ export default function SocialScreen() {
         </>
       ) : (
         <>
-          {loadingFeed && reviews.length === 0 ? (
-            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement du feed...</Text>
+          {loadingFeed && activities.length === 0 ? (
+            <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>Chargement des activités...</Text>
           ) : null}
-          {!loadingFeed && reviews.length === 0 ? (
-            <EmptyStateCard title={activeFeed === 'friends' ? 'Aucune critique de tes amis' : 'Aucune critique publique'} />
+          {!loadingFeed && activities.length === 0 ? (
+            <EmptyStateCard title={activeFeed === 'friends' ? 'Aucune activité de tes amis' : 'Aucune activité publique'} />
           ) : null}
-          {reviews.length > 0 ? (
-        <View style={styles.feedList}>
-          {reviews.map((item) => (
-            <Pressable
-              key={item.id}
-              style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
-              onPress={() => navigation.navigate('ReviewDetails', { reviewId: item.id })}
-            >
-              <Pressable
-                onPress={(event) => {
-                  event.stopPropagation();
-                  navigation.navigate('MovieDetails', {
-                    movieId: item.movie_id,
-                    mediaType: item.media_type ?? 'movie',
-                    title: item.title,
-                  });
-                }}
-                onLongPress={(event) => setQuickAddMovie({
-                  id: item.movie_id,
-                  media_type: item.media_type ?? 'movie',
-                  title: item.title,
-                  anchorX: event.nativeEvent.pageX,
-                  anchorY: event.nativeEvent.pageY,
-                })}
-                delayLongPress={220}
-              >
-                <CachedPoster uri={item.poster_url} style={styles.poster} />
-              </Pressable>
-              <View style={styles.reviewBody}>
-                <View style={styles.reviewHeader}>
-                  <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-                    <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{item.title}</Text>
+          {activities.length > 0 ? (
+            <View style={styles.feedList}>
+              {activities.map((activity) => {
+                if (activity.activity_type === 'review') {
+                  const item = activity.review;
+                  return (
                     <Pressable
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        navigation.navigate('UserProfile', { username: item.author.username });
-                      }}
+                      key={activity.id}
+                      style={[styles.reviewCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                      onPress={() => navigation.navigate('ReviewDetails', { reviewId: item.id })}
                     >
-                      <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{item.author.username} · {formatDate(item.created_at)}</Text>
+                      <Pressable
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          navigation.navigate('MovieDetails', {
+                            movieId: item.movie_id,
+                            mediaType: item.media_type ?? 'movie',
+                            title: item.title,
+                          });
+                        }}
+                        onLongPress={(event) => setQuickAddMovie({
+                          id: item.movie_id,
+                          media_type: item.media_type ?? 'movie',
+                          title: item.title,
+                          anchorX: event.nativeEvent.pageX,
+                          anchorY: event.nativeEvent.pageY,
+                        })}
+                        delayLongPress={220}
+                      >
+                        <CachedPoster uri={item.poster_url} style={styles.poster} />
+                      </Pressable>
+                      <View style={styles.reviewBody}>
+                        <View style={styles.reviewHeader}>
+                          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                            <Text style={[styles.reviewTitle, { color: theme.colors.text }]}>{item.title}</Text>
+                            <Pressable
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                navigation.navigate('UserProfile', { username: item.author.username });
+                              }}
+                            >
+                              <Text style={[styles.reviewMeta, { color: theme.colors.textMuted }]}>@{item.author.username} · {formatRelativeDate(item.created_at)}</Text>
+                            </Pressable>
+                          </View>
+                          {item.author.username !== session?.username ? (
+                            <Pressable
+                              style={[styles.reviewMenuButton, { backgroundColor: theme.rgba.cardStrong }]}
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                presentReviewReportPicker(item);
+                              }}
+                            >
+                              <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textMuted} />
+                            </Pressable>
+                          ) : null}
+                        </View>
+                        {activeSection === 'public' && activity.discovery_label ? (
+                          <View style={[styles.discoveryPill, { backgroundColor: theme.colors.accentSoft }]}>
+                            <Ionicons
+                              name={activity.discovery_reason === 'popular' ? 'flame-outline' : 'sparkles-outline'}
+                              size={12}
+                              color={theme.colors.accent}
+                            />
+                            <Text style={[styles.discoveryPillText, { color: theme.colors.accent }]}>{activity.discovery_label}</Text>
+                          </View>
+                        ) : null}
+                        <View style={styles.inlinePills}>
+                          <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
+                            <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.rating.toFixed(1)} / 5</Text>
+                          </View>
+                          <Pressable
+                            style={[styles.likeButton, item.liked_by_me && { backgroundColor: theme.colors.accentSoft }]}
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              void handleToggleLike(item.id);
+                            }}
+                            disabled={likingReviewIds.includes(item.id)}
+                          >
+                            <Ionicons
+                              name={item.liked_by_me ? 'heart' : 'heart-outline'}
+                              size={14}
+                              color={item.liked_by_me ? theme.colors.accent : theme.colors.textSoft}
+                            />
+                            <Text style={[styles.inlineMeta, { color: item.liked_by_me ? theme.colors.accent : theme.colors.textSoft }]}>{item.likes_count}</Text>
+                          </Pressable>
+                          <Text style={[styles.inlineMeta, { color: theme.colors.textSoft }]}>{item.comments_count} commentaires</Text>
+                        </View>
+                        <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={4}>
+                          {item.content}
+                        </Text>
+                      </View>
                     </Pressable>
-                  </View>
-                  {item.author.username !== session?.username ? (
+                  );
+                }
+
+                if (activity.activity_type === 'rating') {
+                  const media = activity.media;
+                  return (
                     <Pressable
-                      style={[styles.reviewMenuButton, { backgroundColor: theme.rgba.cardStrong }]}
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        presentReviewReportPicker(item);
-                      }}
+                      key={activity.id}
+                      style={[styles.activityCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                      onPress={() => navigation.navigate('MovieDetails', {
+                        movieId: media.id,
+                        mediaType: media.media_type,
+                        title: media.title,
+                      })}
+                      onLongPress={(event) => setQuickAddMovie({
+                        id: media.id,
+                        media_type: media.media_type,
+                        title: media.title,
+                        anchorX: event.nativeEvent.pageX,
+                        anchorY: event.nativeEvent.pageY,
+                      })}
+                      delayLongPress={220}
                     >
-                      <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textMuted} />
+                      <CachedPoster uri={media.poster_url} style={styles.activityPoster} />
+                      <View style={styles.activityBody}>
+                        <View style={styles.activityActorLine}>
+                          <Pressable
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              navigation.navigate('UserProfile', { username: activity.author.username });
+                            }}
+                          >
+                            <Text style={[styles.activityUsername, { color: theme.colors.accent }]}>@{activity.author.username}</Text>
+                          </Pressable>
+                          <Text style={[styles.activityVerb, { color: theme.colors.textMuted }]}>a noté</Text>
+                        </View>
+                        <Text style={[styles.activityTitle, { color: theme.colors.text }]} numberOfLines={2}>{media.title}</Text>
+                        <View style={styles.activityFooter}>
+                          <View style={[styles.compactRating, { backgroundColor: theme.colors.ratingBackground }]}>
+                            <Ionicons name="star" size={13} color={theme.colors.ratingText} />
+                            <Text style={[styles.compactRatingText, { color: theme.colors.ratingText }]}>{activity.rating.toFixed(1)}</Text>
+                          </View>
+                          <Text style={[styles.activityDate, { color: theme.colors.textMuted }]}>{formatRelativeDate(activity.created_at)}</Text>
+                        </View>
+                        {activeSection === 'public' && activity.discovery_label ? (
+                          <View style={[styles.discoveryPill, { backgroundColor: theme.colors.accentSoft }]}>
+                            <Ionicons
+                              name={activity.discovery_reason === 'popular' ? 'flame-outline' : 'sparkles-outline'}
+                              size={12}
+                              color={theme.colors.accent}
+                            />
+                            <Text style={[styles.discoveryPillText, { color: theme.colors.accent }]}>{activity.discovery_label}</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </Pressable>
-                  ) : null}
-                </View>
-                {activeSection === 'public' && item.discovery_label ? (
-                  <View style={[styles.discoveryPill, { backgroundColor: theme.colors.accentSoft }]}>
-                    <Ionicons
-                      name={item.discovery_reason === 'popular' ? 'flame-outline' : 'sparkles-outline'}
-                      size={12}
-                      color={theme.colors.accent}
-                    />
-                    <Text style={[styles.discoveryPillText, { color: theme.colors.accent }]}>{item.discovery_label}</Text>
-                  </View>
-                ) : null}
-                <View style={styles.inlinePills}>
-                  <View style={[styles.ratingPill, { backgroundColor: theme.colors.ratingBackground }]}>
-                    <Text style={[styles.ratingPillLabel, { color: theme.colors.ratingText }]}>{item.rating.toFixed(1)} / 5</Text>
-                  </View>
-                  <Pressable
-                    style={[styles.likeButton, item.liked_by_me && { backgroundColor: theme.colors.accentSoft }]}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      void handleToggleLike(item.id);
-                    }}
-                    disabled={likingReviewIds.includes(item.id)}
+                  );
+                }
+
+                const firstMedia = activity.media_items[0];
+                if (!firstMedia) {
+                  return null;
+                }
+                if (activity.media_items.length === 1) {
+                  return (
+                    <Pressable
+                      key={activity.id}
+                      style={[styles.activityCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
+                      onPress={() => navigation.navigate('MovieDetails', {
+                        movieId: firstMedia.id,
+                        mediaType: firstMedia.media_type,
+                        title: firstMedia.title,
+                      })}
+                      onLongPress={(event) => setQuickAddMovie({
+                        id: firstMedia.id,
+                        media_type: firstMedia.media_type,
+                        title: firstMedia.title,
+                        anchorX: event.nativeEvent.pageX,
+                        anchorY: event.nativeEvent.pageY,
+                      })}
+                      delayLongPress={220}
+                    >
+                      <CachedPoster uri={firstMedia.poster_url} style={styles.activityPoster} />
+                      <View style={styles.activityBody}>
+                        <View style={styles.activityActorLine}>
+                          <Pressable
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              navigation.navigate('UserProfile', { username: activity.author.username });
+                            }}
+                          >
+                            <Text style={[styles.activityUsername, { color: theme.colors.accent }]}>@{activity.author.username}</Text>
+                          </Pressable>
+                          <Text style={[styles.activityVerb, { color: theme.colors.textMuted }]}>veut voir</Text>
+                        </View>
+                        <Text style={[styles.activityTitle, { color: theme.colors.text }]} numberOfLines={2}>{firstMedia.title}</Text>
+                        <Text style={[styles.activityDate, { color: theme.colors.textMuted }]}>{formatRelativeDate(activity.created_at)}</Text>
+                        {activeSection === 'public' && activity.discovery_label ? (
+                          <View style={[styles.discoveryPill, { backgroundColor: theme.colors.accentSoft }]}>
+                            <Ionicons
+                              name={activity.discovery_reason === 'popular' ? 'flame-outline' : 'sparkles-outline'}
+                              size={12}
+                              color={theme.colors.accent}
+                            />
+                            <Text style={[styles.discoveryPillText, { color: theme.colors.accent }]}>{activity.discovery_label}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                }
+
+                return (
+                  <View
+                    key={activity.id}
+                    style={[styles.activityGroupCard, { borderColor: theme.rgba.border, backgroundColor: theme.rgba.card }]}
                   >
-                    <Ionicons
-                      name={item.liked_by_me ? 'heart' : 'heart-outline'}
-                      size={14}
-                      color={item.liked_by_me ? theme.colors.accent : theme.colors.textSoft}
-                    />
-                    <Text style={[styles.inlineMeta, { color: item.liked_by_me ? theme.colors.accent : theme.colors.textSoft }]}>{item.likes_count}</Text>
-                  </Pressable>
-                  <Text style={[styles.inlineMeta, { color: theme.colors.textSoft }]}>{item.comments_count} commentaires</Text>
-                </View>
-                <Text style={[styles.reviewContent, { color: theme.colors.textSoft }]} numberOfLines={4}>
-                  {item.content}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
+                    <View style={styles.activityGroupHeader}>
+                      <View style={styles.activityActorLine}>
+                        <Pressable onPress={() => navigation.navigate('UserProfile', { username: activity.author.username })}>
+                          <Text style={[styles.activityUsername, { color: theme.colors.accent }]}>@{activity.author.username}</Text>
+                        </Pressable>
+                        <Text style={[styles.activityVerb, { color: theme.colors.textMuted }]}>a ajouté {activity.media_items.length} titres</Text>
+                      </View>
+                      <Text style={[styles.activityDate, { color: theme.colors.textMuted }]}>{formatRelativeDate(activity.created_at)}</Text>
+                    </View>
+                    {activeSection === 'public' && activity.discovery_label ? (
+                      <View style={[styles.discoveryPill, { backgroundColor: theme.colors.accentSoft }]}>
+                        <Ionicons
+                          name={activity.discovery_reason === 'popular' ? 'flame-outline' : 'sparkles-outline'}
+                          size={12}
+                          color={theme.colors.accent}
+                        />
+                        <Text style={[styles.discoveryPillText, { color: theme.colors.accent }]}>{activity.discovery_label}</Text>
+                      </View>
+                    ) : null}
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.activityMediaRow}
+                    >
+                      {activity.media_items.map((media) => (
+                        <Pressable
+                          key={`${media.media_type}:${media.id}`}
+                          style={styles.activityMediaItem}
+                          onPress={() => navigation.navigate('MovieDetails', {
+                            movieId: media.id,
+                            mediaType: media.media_type,
+                            title: media.title,
+                          })}
+                          onLongPress={(event) => setQuickAddMovie({
+                            id: media.id,
+                            media_type: media.media_type,
+                            title: media.title,
+                            anchorX: event.nativeEvent.pageX,
+                            anchorY: event.nativeEvent.pageY,
+                          })}
+                          delayLongPress={220}
+                        >
+                          <CachedPoster uri={media.poster_url} style={styles.activityGroupPoster} />
+                          <Text style={[styles.activityMediaTitle, { color: theme.colors.text }]} numberOfLines={2}>{media.title}</Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                );
+              })}
+            </View>
           ) : null}
         </>
       )}
@@ -669,6 +855,98 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(255,255,255,0.04)',
     padding: 12,
+  },
+  activityCard: {
+    minHeight: 120,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 10,
+  },
+  activityPoster: {
+    width: 66,
+    height: 99,
+    borderRadius: 14,
+  },
+  activityBody: {
+    flex: 1,
+    alignItems: 'flex-start',
+    gap: 7,
+  },
+  activityActorLine: {
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  activityUsername: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  activityVerb: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  activityTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+  },
+  activityFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  compactRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  compactRatingText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  activityDate: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  activityGroupCard: {
+    gap: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 12,
+  },
+  activityGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  activityMediaRow: {
+    gap: 10,
+    paddingRight: 4,
+  },
+  activityMediaItem: {
+    width: 72,
+    gap: 5,
+  },
+  activityGroupPoster: {
+    width: 72,
+    height: 108,
+    borderRadius: 13,
+  },
+  activityMediaTitle: {
+    minHeight: 30,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
   },
   poster: {
     width: 80,

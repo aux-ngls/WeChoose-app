@@ -68,6 +68,93 @@ class MediaFoundationTests(unittest.TestCase):
         )
         return connection
 
+    def make_social_activity_connection(self):
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        connection.executescript(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                username TEXT,
+                avatar_url TEXT,
+                is_profile_public INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE follows (
+                follower_id INTEGER,
+                followed_id INTEGER,
+                created_at TIMESTAMP
+            );
+            CREATE TABLE blocked_users (
+                blocker_id INTEGER,
+                blocked_id INTEGER,
+                created_at TIMESTAMP
+            );
+            CREATE TABLE reviews (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                movie_id INTEGER,
+                media_type TEXT,
+                title TEXT,
+                poster_url TEXT,
+                rating REAL,
+                content TEXT,
+                created_at TIMESTAMP
+            );
+            CREATE TABLE review_likes (
+                review_id INTEGER,
+                user_id INTEGER,
+                created_at TIMESTAMP
+            );
+            CREATE TABLE comments (
+                id INTEGER PRIMARY KEY,
+                review_id INTEGER,
+                user_id INTEGER,
+                content TEXT,
+                created_at TIMESTAMP
+            );
+            CREATE TABLE user_ratings (
+                user_id INTEGER,
+                movie_id INTEGER,
+                media_type TEXT,
+                rating REAL,
+                title TEXT,
+                poster_url TEXT,
+                added_at TIMESTAMP
+            );
+            CREATE TABLE playlists (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                name TEXT
+            );
+            CREATE TABLE playlist_items (
+                playlist_id INTEGER,
+                movie_id INTEGER,
+                media_type TEXT,
+                title TEXT,
+                poster_url TEXT,
+                added_at TIMESTAMP
+            );
+            """
+        )
+        connection.executemany(
+            "INSERT INTO users VALUES (?, ?, ?, ?)",
+            [
+                (1, "me", None, 0),
+                (2, "private_friend", None, 0),
+                (3, "public_member", None, 1),
+                (4, "blocked_member", None, 1),
+            ],
+        )
+        connection.execute(
+            "INSERT INTO follows VALUES (?, ?, ?)",
+            (1, 2, "2026-10-01T10:00:00"),
+        )
+        connection.execute(
+            "INSERT INTO blocked_users VALUES (?, ?, ?)",
+            (1, 4, "2026-10-01T10:00:00"),
+        )
+        return connection
+
     def test_pooled_connection_is_returned_after_context_error(self):
         class FakeNativeConnection:
             closed = False
@@ -385,6 +472,85 @@ class MediaFoundationTests(unittest.TestCase):
             main.social_feed(scope="unknown", current_user={"id": 7})
 
         self.assertEqual(context.exception.status_code, 400)
+
+    def test_friends_activity_feed_merges_and_deduplicates_activity(self):
+        connection = self.make_social_activity_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "INSERT INTO reviews VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (10, 2, 100, "movie", "Critique", "poster-100", 4.5, "Excellent", "2026-10-18T12:00:00"),
+        )
+        cursor.executemany(
+            "INSERT INTO user_ratings VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (2, 100, "movie", 4.5, "Critique", "poster-100", "2026-10-18T12:00:00"),
+                (2, 101, "tv", 4.0, "Serie notee", "poster-101", "2026-10-18T11:55:00"),
+                (3, 102, "movie", 5.0, "Public mais pas ami", "poster-102", "2026-10-18T11:50:00"),
+                (4, 103, "movie", 5.0, "Bloque", "poster-103", "2026-10-18T11:45:00"),
+            ],
+        )
+        cursor.execute("INSERT INTO playlists VALUES (?, ?, ?)", (20, 2, main.WATCH_LATER_NAME))
+        cursor.executemany(
+            "INSERT INTO playlist_items VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (20, 104, "movie", "Envie 1", "poster-104", "2026-10-18T11:40:00"),
+                (20, 105, "movie", "Envie 2", "poster-105", "2026-10-18T11:32:00"),
+            ],
+        )
+
+        payload = main.fetch_social_activity_feed(cursor, 1, "friends", 30)
+
+        self.assertEqual(
+            [activity["activity_type"] for activity in payload],
+            ["review", "rating", "watch_later"],
+        )
+        self.assertEqual(payload[0]["review"]["id"], 10)
+        self.assertEqual(payload[1]["media"]["id"], 101)
+        self.assertEqual(
+            [item["id"] for item in payload[2]["media_items"]],
+            [104, 105],
+        )
+        self.assertNotIn("rating:2:movie:100", {activity["id"] for activity in payload})
+        self.assertEqual({activity["author"]["id"] for activity in payload}, {2})
+        connection.close()
+
+    def test_public_activity_feed_only_exposes_public_unblocked_profiles(self):
+        connection = self.make_social_activity_connection()
+        cursor = connection.cursor()
+        cursor.executemany(
+            "INSERT INTO user_ratings VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (1, 200, "movie", 4.0, "Affinite", "poster-200", "2026-10-18T12:05:00"),
+                (2, 201, "movie", 4.0, "Profil prive", "poster-201", "2026-10-18T12:04:00"),
+                (3, 200, "movie", 4.5, "Affinite", "poster-200", "2026-10-18T12:03:00"),
+                (4, 202, "movie", 5.0, "Profil bloque", "poster-202", "2026-10-18T12:02:00"),
+            ],
+        )
+        cursor.executemany(
+            "INSERT INTO playlists VALUES (?, ?, ?)",
+            [
+                (30, 3, main.WATCH_LATER_NAME),
+                (40, 4, main.WATCH_LATER_NAME),
+            ],
+        )
+        cursor.executemany(
+            "INSERT INTO playlist_items VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (30, 203, "tv", "Serie publique", "poster-203", "2026-10-18T12:01:00"),
+                (40, 204, "movie", "Film bloque", "poster-204", "2026-10-18T12:00:00"),
+            ],
+        )
+
+        payload = main.fetch_social_activity_feed(cursor, 1, "public", 30)
+
+        self.assertEqual({activity["author"]["id"] for activity in payload}, {3})
+        self.assertEqual(
+            {activity["activity_type"] for activity in payload},
+            {"rating", "watch_later"},
+        )
+        rating_activity = next(activity for activity in payload if activity["activity_type"] == "rating")
+        self.assertEqual(rating_activity["discovery_label"], "Vous l’avez vu aussi")
+        connection.close()
 
     def test_playlist_browse_filters_and_searches_before_pagination(self):
         connection = self.make_playlist_connection()

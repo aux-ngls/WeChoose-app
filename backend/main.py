@@ -119,6 +119,8 @@ TMDB_MOVIE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 6
 WATCHMODE_SOURCES_CACHE_TTL_SECONDS = 60 * 60 * 6
 TMDB_WATCH_PAGE_LINKS_CACHE_TTL_SECONDS = 60 * 60 * 12
 SOCIAL_PUBLIC_CANDIDATE_LIMIT = 180
+SOCIAL_ACTIVITY_GROUP_WINDOW_SECONDS = 30 * 60
+SOCIAL_ACTIVITY_GROUP_MAX_ITEMS = 6
 SOCIAL_RANKINGS_CACHE_TTL_SECONDS = 60 * 5
 TMDB_WATCH_SCRAPER_STATUS_KEY = "tmdb_watch_scraper_status"
 now_playing_cache: dict[str, object] = {"expires_at": 0.0, "items": []}
@@ -941,6 +943,15 @@ def init_postgres_db():
     )
     with open(POSTGRES_MEDIA_TYPE_MIGRATION_PATH, "r", encoding="utf-8") as migration_file:
         cursor.execute(migration_file.read())
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_ratings_activity ON user_ratings(added_at DESC, user_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_activity ON playlist_items(added_at DESC, playlist_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reviews_user_media ON reviews(user_id, media_type, movie_id)"
+    )
     conn.commit()
     conn.close()
 
@@ -1313,6 +1324,15 @@ def init_sqlite_db():
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_reviews_media ON reviews(media_type, movie_id, created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_ratings_activity ON user_ratings(added_at DESC, user_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_activity ON playlist_items(added_at DESC, playlist_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reviews_user_media ON reviews(user_id, media_type, movie_id)"
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_direct_messages_media ON direct_messages(media_type, movie_id)"
@@ -5653,6 +5673,480 @@ def fetch_relevant_public_reviews(cursor, current_user_id: int, limit: int) -> l
     return payload
 
 
+def serialize_social_activity_author(row: Any) -> dict:
+    return {
+        "id": int(row["user_id"]),
+        "username": decode_db_text(row["username"]).strip(),
+        "avatar_url": decode_db_text(row["avatar_url"]).strip() or None,
+    }
+
+
+def serialize_social_activity_media(row: Any) -> dict:
+    media_type = normalize_media_type(row["media_type"])
+    title = decode_db_text(row["title"]).strip()
+    return {
+        "id": int(row["movie_id"]),
+        "media_type": media_type,
+        "title": title or ("Série sans titre" if media_type == "tv" else "Film sans titre"),
+        "poster_url": decode_db_text(row["poster_url"]).strip(),
+    }
+
+
+def wrap_review_activity(review: dict) -> dict:
+    activity = {
+        "id": f"review:{review['id']}",
+        "activity_type": "review",
+        "created_at": review["created_at"],
+        "author": review["author"],
+        "media": {
+            "id": int(review["movie_id"]),
+            "media_type": normalize_media_type(review.get("media_type") or "movie"),
+            "title": decode_db_text(review.get("title")).strip(),
+            "poster_url": decode_db_text(review.get("poster_url")).strip(),
+        },
+        "review": review,
+    }
+    if review.get("discovery_reason"):
+        activity["discovery_reason"] = review["discovery_reason"]
+    if review.get("discovery_label"):
+        activity["discovery_label"] = review["discovery_label"]
+    return activity
+
+
+def score_public_simple_activity(candidate: dict[str, Any]) -> dict[str, float]:
+    created_at = normalize_db_datetime(candidate.get("created_at"))
+    age_days = max(
+        0.0,
+        (datetime.datetime.utcnow() - created_at).total_seconds() / 86400,
+    )
+    freshness_score = max(0.0, 21.0 - age_days) * 0.22
+    community_score = min(20, max(0, int(candidate.get("community_count") or 0))) * 1.4
+
+    affinity_score = 0.0
+    if candidate.get("author_followed"):
+        affinity_score += 5.0
+    if candidate.get("my_rating") is not None:
+        affinity_score += 9.0
+    if candidate.get("same_media_saved"):
+        affinity_score += 7.0
+
+    return {
+        "affinity_score": affinity_score,
+        "popularity_score": community_score + freshness_score,
+        "total_score": affinity_score * 1.65 + community_score + freshness_score,
+    }
+
+
+def fetch_social_rating_activities(
+    cursor,
+    current_user_id: int,
+    scope: str,
+    limit: int,
+) -> list[dict]:
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
+    if scope == "public":
+        public_columns = """
+            EXISTS(
+                SELECT 1 FROM follows followed_author
+                WHERE followed_author.follower_id = {param}
+                  AND followed_author.followed_id = ur.user_id
+            ) AS author_followed,
+            (
+                SELECT own_rating.rating FROM user_ratings own_rating
+                WHERE own_rating.user_id = {param}
+                  AND own_rating.media_type = ur.media_type
+                  AND own_rating.movie_id = ur.movie_id
+                LIMIT 1
+            ) AS my_rating,
+            EXISTS(
+                SELECT 1 FROM playlist_items own_item
+                JOIN playlists own_playlist ON own_playlist.id = own_item.playlist_id
+                WHERE own_playlist.user_id = {param}
+                  AND own_item.media_type = ur.media_type
+                  AND own_item.movie_id = ur.movie_id
+            ) AS same_media_saved,
+            (
+                SELECT COUNT(DISTINCT community_rating.user_id)
+                FROM user_ratings community_rating
+                WHERE community_rating.media_type = ur.media_type
+                  AND community_rating.movie_id = ur.movie_id
+            ) AS community_count
+        """.format(param=SQL_PARAM)
+        visibility_clause = f"u.is_profile_public = TRUE AND ur.user_id != {SQL_PARAM}"
+        query_params: tuple[Any, ...] = (
+            current_user_id,
+            current_user_id,
+            current_user_id,
+            current_user_id,
+        )
+    else:
+        public_columns = """
+            0 AS author_followed,
+            NULL AS my_rating,
+            0 AS same_media_saved,
+            0 AS community_count
+        """
+        visibility_clause = """
+            (
+                ur.user_id = {param}
+                OR EXISTS(
+                    SELECT 1 FROM follows followed_author
+                    WHERE followed_author.follower_id = {param}
+                      AND followed_author.followed_id = ur.user_id
+                )
+            )
+        """.format(param=SQL_PARAM)
+        query_params = (current_user_id, current_user_id)
+
+    query = f"""
+        SELECT
+            ur.user_id,
+            u.username,
+            u.avatar_url,
+            ur.movie_id,
+            ur.media_type,
+            ur.title,
+            ur.poster_url,
+            ur.rating,
+            ur.added_at,
+            {public_columns}
+        FROM user_ratings ur
+        JOIN users u ON u.id = ur.user_id
+        WHERE COALESCE(ur.title, '') != ''
+          AND ur.added_at IS NOT NULL
+          AND NOT EXISTS(
+              SELECT 1 FROM reviews duplicate_review
+              WHERE duplicate_review.user_id = ur.user_id
+                AND duplicate_review.media_type = ur.media_type
+                AND duplicate_review.movie_id = ur.movie_id
+          )
+          AND {visibility_clause}
+    """
+    if hidden_user_ids:
+        placeholders = sql_placeholders(len(hidden_user_ids))
+        query += f" AND ur.user_id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+    query += f" ORDER BY ur.added_at DESC, ur.movie_id DESC LIMIT {SQL_PARAM}"
+    query_params = (*query_params, limit)
+    cursor.execute(query, query_params)
+
+    activities: list[dict] = []
+    for row in cursor.fetchall():
+        media = serialize_social_activity_media(row)
+        created_at = serialize_db_datetime(row["added_at"])
+        activity = {
+            "id": f"rating:{row['user_id']}:{media['media_type']}:{media['id']}",
+            "activity_type": "rating",
+            "created_at": created_at,
+            "author": serialize_social_activity_author(row),
+            "media": media,
+            "rating": float(row["rating"] or 0),
+            "author_followed": bool(row["author_followed"]),
+            "my_rating": row["my_rating"],
+            "same_media_saved": bool(row["same_media_saved"]),
+            "community_count": int(row["community_count"] or 0),
+        }
+        activities.append(activity)
+    return activities
+
+
+def fetch_social_watch_later_activities(
+    cursor,
+    current_user_id: int,
+    scope: str,
+    limit: int,
+) -> list[dict]:
+    hidden_user_ids = get_hidden_user_ids(cursor, current_user_id)
+    if scope == "public":
+        public_columns = """
+            EXISTS(
+                SELECT 1 FROM follows followed_author
+                WHERE followed_author.follower_id = {param}
+                  AND followed_author.followed_id = p.user_id
+            ) AS author_followed,
+            (
+                SELECT own_rating.rating FROM user_ratings own_rating
+                WHERE own_rating.user_id = {param}
+                  AND own_rating.media_type = pi.media_type
+                  AND own_rating.movie_id = pi.movie_id
+                LIMIT 1
+            ) AS my_rating,
+            EXISTS(
+                SELECT 1 FROM playlist_items own_item
+                JOIN playlists own_playlist ON own_playlist.id = own_item.playlist_id
+                WHERE own_playlist.user_id = {param}
+                  AND own_item.media_type = pi.media_type
+                  AND own_item.movie_id = pi.movie_id
+            ) AS same_media_saved,
+            (
+                SELECT COUNT(DISTINCT community_playlist.user_id)
+                FROM playlist_items community_item
+                JOIN playlists community_playlist ON community_playlist.id = community_item.playlist_id
+                WHERE community_playlist.name = {param}
+                  AND community_item.media_type = pi.media_type
+                  AND community_item.movie_id = pi.movie_id
+            ) AS community_count
+        """.format(param=SQL_PARAM)
+        visibility_clause = f"u.is_profile_public = TRUE AND p.user_id != {SQL_PARAM}"
+        query_params: tuple[Any, ...] = (
+            current_user_id,
+            current_user_id,
+            current_user_id,
+            WATCH_LATER_NAME,
+            WATCH_LATER_NAME,
+            current_user_id,
+        )
+    else:
+        public_columns = """
+            0 AS author_followed,
+            NULL AS my_rating,
+            0 AS same_media_saved,
+            0 AS community_count
+        """
+        visibility_clause = """
+            (
+                p.user_id = {param}
+                OR EXISTS(
+                    SELECT 1 FROM follows followed_author
+                    WHERE followed_author.follower_id = {param}
+                      AND followed_author.followed_id = p.user_id
+                )
+            )
+        """.format(param=SQL_PARAM)
+        query_params = (WATCH_LATER_NAME, current_user_id, current_user_id)
+
+    query = f"""
+        SELECT
+            p.user_id,
+            u.username,
+            u.avatar_url,
+            pi.movie_id,
+            pi.media_type,
+            pi.title,
+            pi.poster_url,
+            pi.added_at,
+            {public_columns}
+        FROM playlist_items pi
+        JOIN playlists p ON p.id = pi.playlist_id
+        JOIN users u ON u.id = p.user_id
+        WHERE p.name = {SQL_PARAM}
+          AND COALESCE(pi.title, '') != ''
+          AND pi.added_at IS NOT NULL
+          AND {visibility_clause}
+    """
+    if hidden_user_ids:
+        placeholders = sql_placeholders(len(hidden_user_ids))
+        query += f" AND p.user_id NOT IN ({placeholders})"
+        query_params = (*query_params, *hidden_user_ids)
+    query += f" ORDER BY pi.added_at DESC, pi.movie_id DESC LIMIT {SQL_PARAM}"
+    query_params = (*query_params, limit)
+    cursor.execute(query, query_params)
+
+    activities: list[dict] = []
+    for row in cursor.fetchall():
+        media = serialize_social_activity_media(row)
+        created_at = serialize_db_datetime(row["added_at"])
+        activity = {
+            "id": f"watch_later:{row['user_id']}:{media['media_type']}:{media['id']}:{created_at}",
+            "activity_type": "watch_later",
+            "created_at": created_at,
+            "author": serialize_social_activity_author(row),
+            "media_items": [media],
+            "author_followed": bool(row["author_followed"]),
+            "my_rating": row["my_rating"],
+            "same_media_saved": bool(row["same_media_saved"]),
+            "community_count": int(row["community_count"] or 0),
+        }
+        activities.append(activity)
+    return activities
+
+
+def group_social_watch_later_activities(activities: list[dict]) -> list[dict]:
+    groups: list[dict] = []
+    latest_group_by_author: dict[int, dict] = {}
+    seen_media_by_group: dict[str, set[tuple[str, int]]] = {}
+
+    for activity in sorted(
+        activities,
+        key=lambda item: normalize_db_datetime(item["created_at"]),
+        reverse=True,
+    ):
+        author_id = int(activity["author"]["id"])
+        current_time = normalize_db_datetime(activity["created_at"])
+        group = latest_group_by_author.get(author_id)
+        can_join_group = False
+        if group is not None and len(group["media_items"]) < SOCIAL_ACTIVITY_GROUP_MAX_ITEMS:
+            oldest_group_time = normalize_db_datetime(group["_oldest_created_at"])
+            can_join_group = (
+                oldest_group_time - current_time
+            ).total_seconds() <= SOCIAL_ACTIVITY_GROUP_WINDOW_SECONDS
+
+        media = activity["media_items"][0]
+        media_key = (media["media_type"], int(media["id"]))
+        if can_join_group and media_key not in seen_media_by_group[group["id"]]:
+            group["media_items"].append(media)
+            group["_oldest_created_at"] = activity["created_at"]
+            group["community_count"] = max(
+                int(group.get("community_count") or 0),
+                int(activity.get("community_count") or 0),
+            )
+            group["author_followed"] = bool(group.get("author_followed")) or bool(activity.get("author_followed"))
+            group["my_rating"] = group.get("my_rating") if group.get("my_rating") is not None else activity.get("my_rating")
+            group["same_media_saved"] = bool(group.get("same_media_saved")) or bool(activity.get("same_media_saved"))
+            seen_media_by_group[group["id"]].add(media_key)
+            continue
+
+        group = dict(activity)
+        group["media_items"] = list(activity["media_items"])
+        group["_oldest_created_at"] = activity["created_at"]
+        groups.append(group)
+        latest_group_by_author[author_id] = group
+        seen_media_by_group[group["id"]] = {media_key}
+
+    for group in groups:
+        group.pop("_oldest_created_at", None)
+    return groups
+
+
+def finalize_public_simple_activities(activities: list[dict], limit: int) -> list[dict]:
+    if not activities:
+        return []
+
+    for activity in activities:
+        activity["_discovery_scores"] = score_public_simple_activity(activity)
+
+    popular_count = min(len(activities), max(limit, 24))
+    popular_ids = {
+        activity["id"]
+        for activity in sorted(
+            activities,
+            key=lambda item: (
+                item["_discovery_scores"]["popularity_score"],
+                normalize_db_datetime(item["created_at"]),
+            ),
+            reverse=True,
+        )[:popular_count]
+    }
+
+    selected: list[dict] = []
+    for activity in activities:
+        scores = activity["_discovery_scores"]
+        if scores["affinity_score"] <= 0 and activity["id"] not in popular_ids:
+            continue
+        activity["_feed_score"] = scores["total_score"]
+        if activity.get("my_rating") is not None:
+            activity["discovery_reason"] = "for_you"
+            activity["discovery_label"] = "Vous l’avez vu aussi"
+        elif activity.get("same_media_saved"):
+            activity["discovery_reason"] = "for_you"
+            activity["discovery_label"] = "Dans vos envies"
+        elif activity.get("author_followed"):
+            activity["discovery_reason"] = "for_you"
+            activity["discovery_label"] = "Pour vous"
+        else:
+            activity["discovery_reason"] = "popular"
+            activity["discovery_label"] = "Populaire"
+        selected.append(activity)
+    return selected
+
+
+def strip_social_activity_internal_fields(activity: dict) -> dict:
+    for key in (
+        "_discovery_scores",
+        "_feed_score",
+        "author_followed",
+        "my_rating",
+        "same_media_saved",
+        "community_count",
+    ):
+        activity.pop(key, None)
+    return activity
+
+
+def fetch_social_activity_feed(
+    cursor,
+    current_user_id: int,
+    scope: str,
+    limit: int,
+) -> list[dict]:
+    safe_limit = max(1, min(int(limit), 60))
+    candidate_limit = min(240, max(80, safe_limit * 4))
+    if scope == "public":
+        reviews = fetch_relevant_public_reviews(cursor, current_user_id, min(60, candidate_limit))
+    else:
+        reviews = fetch_serialized_reviews(
+            cursor,
+            current_user_id,
+            """
+            r.user_id = {param}
+            OR r.user_id IN (
+                SELECT followed_id FROM follows WHERE follower_id = {param}
+            )
+            """.format(param=SQL_PARAM),
+            (current_user_id, current_user_id),
+            candidate_limit,
+        )
+
+    review_activities = [wrap_review_activity(review) for review in reviews]
+    rating_activities = fetch_social_rating_activities(
+        cursor,
+        current_user_id,
+        scope,
+        candidate_limit,
+    )
+    watch_later_activities = group_social_watch_later_activities(
+        fetch_social_watch_later_activities(
+            cursor,
+            current_user_id,
+            scope,
+            candidate_limit,
+        )
+    )
+
+    if scope == "public":
+        simple_activities = finalize_public_simple_activities(
+            [*rating_activities, *watch_later_activities],
+            safe_limit,
+        )
+        for index, activity in enumerate(review_activities):
+            review = activity["review"]
+            age_days = max(
+                0.0,
+                (
+                    datetime.datetime.utcnow()
+                    - normalize_db_datetime(activity["created_at"])
+                ).total_seconds()
+                / 86400,
+            )
+            activity["_feed_score"] = (
+                10.0
+                + max(0.0, 21.0 - age_days) * 0.25
+                + int(review.get("likes_count") or 0) * 3.0
+                + int(review.get("comments_count") or 0) * 4.0
+                + (9.0 if activity.get("discovery_reason") == "for_you" else 4.0)
+                - index * 0.02
+            )
+        combined = [*review_activities, *simple_activities]
+        combined.sort(
+            key=lambda item: (
+                float(item.get("_feed_score") or 0),
+                normalize_db_datetime(item["created_at"]),
+            ),
+            reverse=True,
+        )
+    else:
+        combined = [*review_activities, *rating_activities, *watch_later_activities]
+        combined.sort(
+            key=lambda item: normalize_db_datetime(item["created_at"]),
+            reverse=True,
+        )
+
+    return [
+        strip_social_activity_internal_fields(activity)
+        for activity in combined[:safe_limit]
+    ]
+
+
 def invalidate_social_rankings_cache():
     with social_rankings_cache_lock:
         social_rankings_cache.clear()
@@ -9153,6 +9647,28 @@ def social_feed(
         )
     conn.close()
     return reviews
+
+
+@app.get("/social/activity")
+def social_activity_feed(
+    limit: int = 30,
+    scope: str = "friends",
+    current_user: dict = Depends(get_current_user),
+):
+    normalized_scope = scope.strip().lower()
+    if normalized_scope not in {"friends", "public"}:
+        raise HTTPException(status_code=400, detail="Fil social invalide")
+
+    conn = get_db_connection(row_factory=True)
+    cursor = conn.cursor()
+    activities = fetch_social_activity_feed(
+        cursor,
+        current_user["id"],
+        normalized_scope,
+        limit,
+    )
+    conn.close()
+    return activities
 
 
 @app.get("/social/rankings")

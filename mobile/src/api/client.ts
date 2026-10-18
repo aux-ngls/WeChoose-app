@@ -17,6 +17,7 @@ import type {
   ProfileShowcasePerson,
   ProfileShowcaseSoundtrack,
   SearchMovie,
+  SocialActivityItem,
   SocialComment,
   SocialNotificationsPayload,
   SocialProfile,
@@ -455,6 +456,13 @@ export async function fetchSocialFeed(
   scope: 'friends' | 'public' = 'friends',
 ): Promise<SocialReview[]> {
   return request<SocialReview[]>(`/social/feed?scope=${scope}`, undefined, token);
+}
+
+export async function fetchSocialActivity(
+  token: string,
+  scope: 'friends' | 'public' = 'friends',
+): Promise<SocialActivityItem[]> {
+  return request<SocialActivityItem[]>(`/social/activity?scope=${scope}`, undefined, token);
 }
 
 export async function fetchSocialRankings(
